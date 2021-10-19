@@ -1,0 +1,16 @@
+Metadata-Version: 1.1
+Name: cryspy-editor
+Version: 1.5.7
+Summary: Editor of CRYSPY files
+Home-page:  
+Author: Iurii Kibalin
+Author-email: yurikibalin@outlook.com
+License: MIT License
+Description: UNKNOWN
+Keywords: STAR,CrysPy,RhoChi,MEM
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Operating System :: OS Independent

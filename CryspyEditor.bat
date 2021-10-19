@@ -1,0 +1,1 @@
+python -m cryspy_editor

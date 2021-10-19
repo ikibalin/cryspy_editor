@@ -1,0 +1,2 @@
+include *.rst
+recursive-include cryspy_editor *.py *.pyw *.png *.gif *.rcif *.txt *.dat

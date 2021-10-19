@@ -1,0 +1,163 @@
+global_
+
+
+_add_url 6t2_data.rcif
+
+_add_url 6t2_calc.rcif
+
+
+_add_url 5c1_data.rcif
+
+_add_url 5c1_calc.rcif
+
+
+data_phase1
+_cell_length_a 12.03581
+_cell_length_b 12.03581
+_cell_length_c 12.03581
+_cell_angle_alpha 90.0
+_cell_angle_beta 90.0
+_cell_angle_gamma 90.0
+
+_space_group_name_H-M_alt Ia-3d
+_space_group_it_coordinate_system_code 1
+
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_adp_type
+_atom_site_B_iso_or_equiv
+_atom_site_occupancy
+_atom_site_multiplicity
+Dy0 Dy3+ 0.0 0.25 0.125 uiso 0.0 1.0 24
+Al1 Al3+ 0.0 0.25 0.375 uiso 0.0 1.0 24
+Al2 Al3+ 0.0 0.0 0.0 uiso 0.0 1.0 16
+O3 O2- 0.030431 0.050707 0.64906 uiso 0.0 1.0 96
+
+
+loop_
+_atom_site_magnetism_label
+_atom_site_magnetism_lande
+_atom_site_magnetism_kappa
+Dy0 1.361 1.0
+
+loop_
+_atom_site_magnetism_aniso_label
+_atom_site_magnetism_aniso_chi_type
+_atom_site_magnetism_aniso_chi_11
+_atom_site_magnetism_aniso_chi_22
+_atom_site_magnetism_aniso_chi_33
+_atom_site_magnetism_aniso_chi_12
+_atom_site_magnetism_aniso_chi_13
+_atom_site_magnetism_aniso_chi_23
+Dy0 cani  1.7923(97) 1.7923212608002446 11.316 0.205 0.0 0.0
+
+
+data_6t2
+_diffrn_radiation_wavelength 1.400138
+_diffrn_ambient_field 1.0
+
+_pd2d_chi2_sum True
+_pd2d_chi2_diff True
+_pd2d_chi2_up False
+_pd2d_chi2_down False
+
+_pd2d_2theta_range_min 7.600
+_pd2d_2theta_range_max 71.000
+
+_pd2d_phi_range_min 0.000
+_pd2d_phi_range_max 40.000
+_pd2d_calib_2theta_offset 0.32474
+
+_pd2d_background_2theta_phi_intensity
+;
+           2   7.60        21.40        28.80        54.00        70.00      
+        0.00 435931.0     673017.0     497334.0     416902.0     411430.0    
+       40.00 540533.0     663984.0     938185.0     801526.0     1438991.0   
+;
+
+loop_
+_pd2d_exclude_2theta_min
+_pd2d_exclude_2theta_max
+_pd2d_exclude_phi_min
+_pd2d_exclude_phi_max
+32.0 45.0 0.0 40.0
+
+_pd2d_instr_reflex_asymmetry_p1 0.0
+_pd2d_instr_reflex_asymmetry_p2 0.0
+_pd2d_instr_reflex_asymmetry_p3 0.0
+_pd2d_instr_reflex_asymmetry_p4 0.0
+
+_diffrn_radiation_polarization 0.93
+_diffrn_radiation_efficiency 1.0
+
+_pd2d_instr_resolution_u 14.647
+_pd2d_instr_resolution_v 1.423
+_pd2d_instr_resolution_w 0.683
+_pd2d_instr_resolution_x 0.0
+_pd2d_instr_resolution_y 0.0
+
+loop_
+_pd2d_phase_label
+_pd2d_phase_scale
+_pd2d_phase_igsize
+phase1 3.4525 0.0
+
+data_5c1
+_diffrn_radiation_wavelength 0.829462
+_diffrn_ambient_field 1.0
+
+_pd2d_chi2_sum False
+_pd2d_chi2_diff True
+_pd2d_chi2_up False
+_pd2d_chi2_down False
+
+_pd2d_2theta_range_min 7.600
+_pd2d_2theta_range_max 80.000
+
+_pd2d_phi_range_min 0.000
+_pd2d_phi_range_max 40.000
+_pd2d_calib_2theta_offset -1.5201
+
+_pd2d_background_2theta_phi_intensity
+;
+           2   5.00        20.00        80.00      
+        0.00 73526.0      73461.0      43518.0     
+       40.00 75843.0      46251.0      2658.0      
+;
+
+loop_
+_pd2d_exclude_2theta_min
+_pd2d_exclude_2theta_max
+_pd2d_exclude_phi_min
+_pd2d_exclude_phi_max
+17.0 25.9 0.0 40.0
+30.1 34.0 0.0 40.0
+35.9 41.4 0.0 40.0
+48.9 55.1 0.0 40.0
+56.7 64.2 0.0 40.0
+70.6 74.5 0.0 40.0
+
+_pd2d_instr_reflex_asymmetry_p1 0.0
+_pd2d_instr_reflex_asymmetry_p2 0.0
+_pd2d_instr_reflex_asymmetry_p3 0.0
+_pd2d_instr_reflex_asymmetry_p4 0.0
+
+_diffrn_radiation_polarization 0.88
+_diffrn_radiation_efficiency 1.0
+
+_pd2d_instr_resolution_u 19.306
+_pd2d_instr_resolution_v -3.92
+_pd2d_instr_resolution_w 0.6782
+_pd2d_instr_resolution_x 0.0
+_pd2d_instr_resolution_y 0.0
+
+loop_
+_pd2d_phase_label
+_pd2d_phase_scale
+_pd2d_phase_igsize
+phase1 0.03296 0.0
