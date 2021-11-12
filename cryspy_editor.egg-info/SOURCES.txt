@@ -1,4 +1,5 @@
 MANIFEST.in
+README.md
 setup.py
 cryspy_editor/__init__.py
 cryspy_editor/__main__.py

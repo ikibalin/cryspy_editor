@@ -324,8 +324,14 @@ class CMainWindow(QtWidgets.QMainWindow):
             QtGui.QIcon(os.path.join(dir_prog_icon, 'refresh.png')),
             'Refresh', self)
         refresh_view.setStatusTip('Refresh')
-        refresh_view.triggered.connect(self.renew_object_presentation)
+        refresh_view.triggered.connect(self.refresh_view)
         self.toolbar_1.addAction(refresh_view)
+
+    def refresh_view(self):
+        self.text_edit.setText("")
+        self.print_welcome()
+        self.renew_object_presentation()
+        self.print_object_info()
 
     def form_menu_options(self):
         """Form menu "Options".
@@ -401,14 +407,24 @@ class CMainWindow(QtWidgets.QMainWindow):
         self.renew_file_data_from_d_setup()
         if os.path.isfile(self.file_data):
             print(f"Loading data from file '{os.path.basename(self.file_data)}'...", end="\r")
-            object = load_file(self.file_data)
+            try:
+                object = load_file(self.file_data)
+            except Exception as e:
+                print(80*"*")
+                print("ERROR during data opening", end="\n")
+                print(e)
+                print(80*"*")
+                return
             print(f"Data is loaded from file '{os.path.basename(self.file_data)}'.", end="\n")
         else:
             object = GlobalN.make_container((), (), "global")
         self.object = object
         self.renew_object_presentation()
-
+        self.print_object_info()
+    
+    def print_object_info(self):
         try:
+            object = self.object
             variable_names = object.get_variable_names()
             print(f"\nNumber of variables is {len(variable_names):}")
             for name in variable_names:
@@ -424,6 +440,7 @@ class CMainWindow(QtWidgets.QMainWindow):
         self.w_object_panel.set_object(object_)
         # self.w_variables.set_object(object_)
         self.display_item(object_)
+        
 
     # procedures which is sended to  local classes to have connection with whole object
     def press_procedure(self, procedure):

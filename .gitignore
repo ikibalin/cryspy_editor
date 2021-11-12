@@ -1,0 +1,15 @@
+*.lis
+*.out
+*.bkg
+*.json
+*.pyc
+*.xcf
+cryspy_editor.egg-info
+build/*
+dist/*
+.pytest_cache/*
+.spyproject/*
+.vs/*
+.vscode/*
+__pycache__/*
+examples/*
