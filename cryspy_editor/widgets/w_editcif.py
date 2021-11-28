@@ -1,7 +1,7 @@
 """WEditCif class."""
 from typing import Callable, NoReturn
 from PyQt5 import QtWidgets, QtCore, QtGui
-
+from cryspy import ItemN
 
 # class WEditCif(QtWidgets.QScrollArea):
 class WEditCif(QtWidgets.QTextEdit):
@@ -28,7 +28,11 @@ class WEditCif(QtWidgets.QTextEdit):
 
     def set_object(self, obj):
         """Set object."""
-        self.setText(str(obj))
+        text = str(obj)
+        if (isinstance(obj, ItemN) and (text.strip() == "")):
+            self.setText(obj.to_cif(separator="_", flag_all_attributes=True))
+        else:
+            self.setText(text)
         self.setToolTip(obj.__doc__)
         self.object = obj
         self.text_changed = False

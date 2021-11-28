@@ -18,7 +18,7 @@ from cryspy_editor.widgets.w_editcif import WEditCif
 
 from cryspy_editor.widgets.w_loop_items import WLoopItems
 
-from cryspy import Pd2dMeas, Pd2dProc
+from cryspy import Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus
 
 from cryspy_editor.widgets.matplotlib import Graph
 import matplotlib.pyplot as plt
@@ -86,7 +86,7 @@ class WItemTabs(QtWidgets.QTabWidget):
 
         # RCIF tab
         
-        if (isinstance(object_, (LoopN, ItemN)) and not(isinstance(object_, (Pd2dMeas, Pd2dProc)))):
+        if (isinstance(object_, (LoopN, ItemN)) and not(isinstance(object_, (Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus)))):
             w_plain_text = WEditCif(self)
             # w_plain_text.set_function_object_refresh(self.func_object_refresh)
             w_plain_text.set_object(object_)
