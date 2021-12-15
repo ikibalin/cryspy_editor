@@ -177,11 +177,11 @@ class CMainWindow(QtWidgets.QMainWindow):
     def location_on_the_screen(self) -> NoReturn:
         """Location on the screen."""
         screen = QtWidgets.QDesktopWidget().screenGeometry()
-        self.setMinimumSize(screen.width() * 1 / 4, screen.height() * 1 / 4)
-        self.info_width = screen.width() * 8. / 10.
-        self.info_height = screen.height() * 14. / 16.
-        self.move(screen.width() / 10, screen.height() / 20)
-        self.resize(screen.width() * 8. / 10., screen.height() * 14. / 16.)
+        self.setMinimumSize(int(screen.width() * 1 / 4), int(screen.height() * 1 / 4))
+        self.info_width = int(screen.width() * 8. / 10.)
+        self.info_height = int(screen.height() * 14. / 16.)
+        self.move(int(screen.width() / 10), int(screen.height() / 20))
+        self.resize(int(screen.width() * 8. / 10.), int(screen.height() * 14. / 16.))
         return 
 
     def create_graphic_elements(self):
@@ -240,9 +240,9 @@ class CMainWindow(QtWidgets.QMainWindow):
         #     lambda: self.w_variables.set_object(self.object))
 
 
-        width_m_1 = 1 * self.info_width / 6.
-        width_m_2 = 3 * self.info_width / 6.
-        width_m_3 = self.info_width - (width_m_1 + width_m_2)
+        width_m_1 = int(1 * self.info_width / 6.)
+        width_m_2 = int(3 * self.info_width / 6.)
+        width_m_3 = int(self.info_width - (width_m_1 + width_m_2))
 
         w_splitter.setSizes([width_m_1, width_m_2, width_m_3])
 

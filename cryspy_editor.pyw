@@ -1,2 +1,2 @@
-from cryspy_editor.main_window import main_w
+from cryspy_editor.cl_main_window import main_w
 main_w([])
