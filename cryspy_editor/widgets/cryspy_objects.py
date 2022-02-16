@@ -3,7 +3,6 @@ Define actions and toolbars for procedures
 """
 # import logging
 from typing import List, Callable
-from PyQt5 import QtCore, QtGui, QtWidgets, Qt
 
 from cryspy import GlobalN, DataN, LoopN, ItemN, file_to_globaln, load_packages, \
     L_FUNCTION, L_GLOBAL_CLASS, L_DATA_CLASS, L_LOOP_CLASS, L_ITEM_CLASS

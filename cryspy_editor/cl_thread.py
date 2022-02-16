@@ -1,7 +1,7 @@
 import traceback
 
-from cryspy_editor.cl_calc_window import CCalcWindow
-from PyQt5 import QtCore, QtGui, QtWidgets, Qt
+
+from PyQt5 import QtCore
 
 class CThread(QtCore.QThread):
     """CThread class."""
@@ -26,16 +26,16 @@ class CThread(QtCore.QThread):
         arg = self.arguments
         n_row_need = func.__code__.co_argcount
         l_var_name = func.__code__.co_varnames[:n_row_need]
-
+        
         self.signal_start.emit()
-
+        
         try:
             out = func(*arg)
         except Exception:
-            out = "MISTAKE DURING PROGRAM EXECUTION\n\n" + \
+            out = "ERROR DURING PROGRAM EXECUTION\n\n" + \
                 str(traceback.format_exc())
         print(80*"*")
-        print("Calculations stopped")
+        print("Calculations are completed.")
         print(80*"*")
         if out is not None:
             print("Result of function is \n")

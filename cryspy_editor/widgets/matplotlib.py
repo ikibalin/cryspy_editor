@@ -1,8 +1,7 @@
 import os
 
 from PyQt5 import QtWidgets
-from PyQt5 import QtGui
-from PyQt5 import QtCore
+
 
 import matplotlib
 import matplotlib.backends.backend_qt5agg
