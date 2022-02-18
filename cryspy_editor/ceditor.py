@@ -203,6 +203,7 @@ class CMainWindow(QMainWindow):
     def refresh_view(self):
         self.text_edit.setText("")
         self.print_welcome()
+        self.w_item_tabs.item_way_in_w_item_tabs = None
         self.renew_w_object_panel()
         self.print_object_info()
 
