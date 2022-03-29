@@ -287,7 +287,7 @@ class CMainWindow(QMainWindow):
         else:
             f_dir = "."
 
-        file_name, ok = QtWidgets.QFileDialog.getSaveFileName(self, "Save file as ...", f_dir, "RCIF Files (*.rcif)")
+        file_name, ok = QtWidgets.QFileDialog.getSaveFileName(self, "Save file as ...", f_dir, "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)")
         if ok:
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
@@ -299,7 +299,7 @@ class CMainWindow(QMainWindow):
         if not(os.path.isdir(f_dir)):
             f_dir = "."
         # options = QtWidgets.QFileDialog.Options()
-        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(self,"Open file", f_dir,"RCIF Files (*.rcif)")
+        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(self,"Open file", f_dir,"RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)")
         if ok:
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
