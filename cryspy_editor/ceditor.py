@@ -130,7 +130,8 @@ class CMainWindow(QMainWindow):
     def init_user_interface(self):
         self.location_on_the_screen()
         dir_prog_icon = os.path.join(self.dir_prog, 'f_icon')
-
+        self.setWindowIcon(QtGui.QIcon(
+            os.path.join(dir_prog_icon, 'logo.png')))
         self.menu_bar = self.menuBar()
         toolbar_1 = self.addToolBar("Actions")
 
