@@ -1,1 +1,3 @@
-pycifstar
+cryspy
+pyqtwebengine
+pyqt5

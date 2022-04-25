@@ -183,7 +183,7 @@ class CMainWindow(QMainWindow):
         # Menu Options
         menu_options = self.menu_bar.addMenu('Options')
         manual_site = menu_options.addAction("Manual (site)")
-        manual_site.triggered.connect(lambda x: os.startfile(r"https://ikibalin.github.io/cryspy/"))
+        manual_site.triggered.connect(lambda x: os.startfile(r"https://sites.google.com/view/cryspy/main"))
 
         about = menu_options.addAction("About")
         about.triggered.connect(self.display_about)
