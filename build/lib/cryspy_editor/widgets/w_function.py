@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets, QtCore
 from typing import NoReturn, Callable
 import numpy
 
+import cryspy
 
 class WFunction(QtWidgets.QFrame):
     """WFunction class."""
@@ -44,7 +45,7 @@ class WFunction(QtWidgets.QFrame):
         else:
             self.show()
 
-    def set_function(self, func: Callable, thread: QtCore.QThread):
+    def set_function(self, func: Callable, thread: QtCore.QThread, globaln=None):
         """Set function."""
         self.push_button.setText(f"Run '{func.__name__:}'")
         self.w_cb_hide.setCheckState(0)
@@ -63,62 +64,133 @@ class WFunction(QtWidgets.QFrame):
         del_layout(layout)
 
         self.l_w_arg = []
-
+        self.globaln = None
+        
         d_annotations = func.__annotations__
         var_annotations = d_annotations.keys()
+
+        flag_first_globaln = False
+        flag_in_globaln = globaln is not None
         for _i_var, _var_name in enumerate(l_var_name):
             i_default = _i_var-(n_var_names-n_defaults)
             if i_default >= 0:
                 s_def = str(l_defaults[i_default]) + " (default)"
             else:
                 s_def = "<drop object>"
-            if (_var_name != "self"):
-                if _var_name != "d_info":
-                    flag_special = False
-                    flag_label = True
-                    if _var_name in var_annotations:
-                        var_type = d_annotations[_var_name]
-                        if i_default >= 0:
-                            if var_type is bool:
-                                widget = QtWidgets.QCheckBox(_var_name)
-                                widget.setCheckState(2*l_defaults[i_default])
-                                widget.attached_object = l_defaults[i_default]
-                                widget.clicked.connect(
-                                    lambda: setattr(widget, "attached_object",
-                                                    widget.checkState()//2))
-                                flag_special = True
-                                flag_label = False
-                            # elif var_type is float:
-                            #     widget = QtWidgets.QDoubleSpinBox()
-                            #     widget.setValue(l_defaults[i_default])
-                            #     widget.attached_object = l_defaults[i_default]
-                            #     widget.valueChanged.connect(
-                            #         lambda: setattr(widget, "attached_object",
-                            #                         widget.value()))
-                            #     flag_special = True
-                            elif var_type is int:
-                                widget = QtWidgets.QSpinBox()
-                                widget.setValue(l_defaults[i_default])
-                                widget.attached_object = l_defaults[i_default]
-                                widget.valueChanged.connect(
-                                    lambda: setattr(widget, "attached_object",
-                                                    widget.value()))
-                                flag_special = True
 
-                    if not(flag_special):
-                        widget = DropLabel(f"{s_def:}")
-                        widget.setStyleSheet(
-                            "background:lightyellow; border: 2px solid red;")
-                        if i_default >= 0:
-                            widget.attached_object = l_defaults[i_default]
-                            widget.setStyleSheet("")
-                    if flag_label:
-                        layout.addWidget(QtWidgets.QLabel(_var_name))
-                    layout.addWidget(widget)
-                    self.l_w_arg.append(widget)
+            var_type = object
+            if _var_name in var_annotations:
+                var_type = d_annotations[_var_name]
 
+                if var_type.__class__.__name__ == '_UnionGenericAlias':
+                    item_types = set(var_type.__args__)
+                    cond_1 = False
+                    for item_type in item_types:
+                        cond_1 |= issubclass(item_type, cryspy.GlobalN)
+                else:
+                    cond_1 = issubclass(var_type, cryspy.GlobalN)
+            else:
+                cond_1 = issubclass(var_type, cryspy.GlobalN)
+
+            cond_1 &= flag_in_globaln
+            cond_1 &= not(flag_first_globaln)
+            if (_var_name == "self"):
+                pass
+            elif (_var_name == "d_info"):
+                pass
+            elif cond_1:
+                flag_first_globaln = True
+                self.globaln = globaln
+            else:
+                flag_first_globaln = True #globaln should be only on the first place
+
+                flag_special = False
+                flag_label = True
+
+                if var_type is bool:
+                    widget = QtWidgets.QCheckBox(_var_name)
+                    widget.setCheckState(2*l_defaults[i_default])
+                    widget.attached_object = l_defaults[i_default]
+                    widget.clicked.connect(
+                        lambda: setattr(widget, "attached_object",
+                                        widget.checkState()//2))
+                    flag_special = True
+                    flag_label = False
+
+                if not(flag_special):
+                    widget = DropLabel(f"{s_def:}")
+                    widget.setStyleSheet(
+                        "background:lightyellow; border: 2px solid red;")
+                    if i_default >= 0:
+                        widget.attached_object = l_defaults[i_default]
+                        widget.setStyleSheet("")
+                if flag_label:
+                    layout.addWidget(QtWidgets.QLabel(_var_name))
+                layout.addWidget(widget)
+                self.l_w_arg.append(widget)
+                
+        
+        # for _i_var, _var_name in enumerate(l_var_name):
+        #     i_default = _i_var-(n_var_names-n_defaults)
+        #     if i_default >= 0:
+        #         s_def = str(l_defaults[i_default]) + " (default)"
+        #     else:
+        #         s_def = "<drop object>"
+        #     if (_var_name != "self"):
+        #         # if _var_name == "d_info":
+        #         #     pass
+        #         # elif ii_h == 0:
+        #         #     pass
+        #         if _var_name != "d_info" :
+        #             flag_special = False
+        #             flag_label = True
+        #             if _var_name in var_annotations:
+        #                 var_type = d_annotations[_var_name]
+        #                 if i_default >= 0:
+        #                     if var_type is bool:
+        #                         widget = QtWidgets.QCheckBox(_var_name)
+        #                         widget.setCheckState(2*l_defaults[i_default])
+        #                         widget.attached_object = l_defaults[i_default]
+        #                         widget.clicked.connect(
+        #                             lambda: setattr(widget, "attached_object",
+        #                                             widget.checkState()//2))
+        #                         flag_special = True
+        #                         flag_label = False
+        #                     # elif var_type is float:
+        #                     #     widget = QtWidgets.QDoubleSpinBox()
+        #                     #     widget.setValue(l_defaults[i_default])
+        #                     #     widget.attached_object = l_defaults[i_default]
+        #                     #     widget.valueChanged.connect(
+        #                     #         lambda: setattr(widget, "attached_object",
+        #                     #                         widget.value()))
+        #                     #     flag_special = True
+        #                     # elif var_type is int:
+        #                     #     widget = QtWidgets.QSpinBox()
+        #                     #     widget.setValue(l_defaults[i_default])
+        #                     #     widget.attached_object = l_defaults[i_default]
+        #                     #     widget.valueChanged.connect(
+        #                     #         lambda: setattr(widget, "attached_object",
+        #                     #                         widget.value()))
+        #                     #     flag_special = True
+
+        #             if not(flag_special):
+        #                 widget = DropLabel(f"{s_def:}")
+        #                 widget.setStyleSheet(
+        #                     "background:lightyellow; border: 2px solid red;")
+        #                 if i_default >= 0:
+        #                     widget.attached_object = l_defaults[i_default]
+        #                     widget.setStyleSheet("")
+        #             if flag_label:
+        #                 layout.addWidget(QtWidgets.QLabel(_var_name))
+        #             layout.addWidget(widget)
+        #             self.l_w_arg.append(widget)
+        #         ii_h += 1
         self.function_attached = func
         self.thread_attached = thread
+        
+        if  len(self.l_w_arg) == 0:
+            self.run_function()
+            self.w_cb_hide.setCheckState(2)
 
     def is_defined(self):
         """Is defined."""
@@ -131,11 +203,15 @@ class WFunction(QtWidgets.QFrame):
         thread = self.thread_attached
         if func is None:
             return
-
+        
         l_w_arg = self.l_w_arg
         self.push_button.setEnabled(False)
         l_x = [_.attached_object for _ in l_w_arg]
-        t_x = tuple(l_x)
+        
+        if self.globaln is not None:
+            t_x = tuple([self.globaln, ] + l_x)
+        else:
+            t_x = tuple(l_x)
         if thread is None:
             try:
                 func(*t_x)
@@ -145,6 +221,7 @@ class WFunction(QtWidgets.QFrame):
         else:
             thread.function = func
             thread.arguments = t_x
+            thread.signal_end.connect(self.calculation_finished)
             thread.start()
 
     def calculation_finished(self):
@@ -173,10 +250,24 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
         """Drop event."""
         # pos = event.pos()
         mime_data = event.mimeData()
+        if not(mime_data.hasText()):
+            event.ignore()
+            return
+        event.setDropAction(QtCore.Qt.CopyAction)
         s_cont = mime_data.text()
-        self.attached_object = mime_data.object_to_send
+
+        l_item = cryspy.str_to_items(s_cont)
+        if len(l_item) > 0:
+            item = l_item[0]
+            self.attached_object = item
+            s_cont = type(item).__name__
+        else:
+            event.ignore()
+            return
+
         self.setText(s_cont)
         self.setStyleSheet("")
+        
         event.acceptProposedAction()
 
     def convert_to_object(self):
@@ -212,6 +303,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
                     pass
         if not flag:
             obj = str(text)
+        
         self.attached_object = obj
         self.setAlignment(QtCore.Qt.AlignRight)
         self.setStyleSheet("")

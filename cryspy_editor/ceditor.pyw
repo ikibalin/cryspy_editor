@@ -9,9 +9,8 @@ from PyQt5 import QtCore
 import PyQt5.QtWidgets as QtWidgets
 import PyQt5.QtGui as QtGui
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction
+from PyQt5.QtWidgets import QMainWindow, QAction
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSlot
 
 try:
     from PyQt5.QtWebEngineWidgets import QWebEngineView # install module PyQtWebEngine
@@ -21,6 +20,7 @@ except:
 
 import matplotlib.pyplot as plt
 
+from importlib import import_module
 
 from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus
 from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
@@ -34,56 +34,187 @@ from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
 from cryspy_editor.widgets.matplotlib import Graph
-from cryspy_editor.widgets.cryspy_objects import cryspy_procedures_to_dictionary, check_function_to_auto_run
+from cryspy_editor.widgets.cryspy_objects import cryspy_procedures_to_dictionary, check_function_to_auto_run, check_function_for_procedure
 
 from cryspy_editor.cl_thread import CThread
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
 
+def get_external_functions(l_f_name_external: list):
+    l_func_external = []
+    for f_name in l_f_name_external:
+        try:
+            f_name_sh = f_name.strip()
+            if os.path.isfile(f_name_sh):
+                module_name = os.path.basename(f_name_sh)[:-3]
+                module_way = os.path.dirname(f_name_sh)
+                sys.path.append(module_way)
+                module = import_module(module_name)
+                for obj_name in dir(module):
+                    if not(obj_name.startswith("__")):
+                        obj = getattr(module, obj_name)
+                        if hasattr(obj, "__call__"):
+                            if check_function_for_procedure(obj): # 
+                                l_func_external.append(obj)
+        except:
+            pass
+    return l_func_external
 
-class OutputLogger(QtCore.QObject):
-    emit_write = QtCore.pyqtSignal(str, int)
 
-    class Severity:
-        DEBUG = 0
-        ERROR = 1
-
-    def __init__(self, io_stream, severity):
-        super().__init__()
-
-        self.io_stream = io_stream
-        self.severity = severity
-
-    def write(self, text):
-        self.io_stream.write(text)
-        self.emit_write.emit(text, self.severity)
-
-    def flush(self):
-        self.io_stream.flush()
+def take_item(rcif_object: Union[GlobalN, DataN, LoopN, ItemN], way: tuple):
+    if len(way) > 0:
+        way_1 = way[0]
+        if rcif_object.is_attribute(way_1):
+            item_object = getattr(rcif_object, way_1)
+            item = take_item(item_object, way[1:])
+            return item
+        else:
+            return None
+    else:
+        return rcif_object
 
 
-OUTPUT_LOGGER_STDOUT = OutputLogger(sys.stdout, OutputLogger.Severity.DEBUG)
-OUTPUT_LOGGER_STDERR = OutputLogger(sys.stderr, OutputLogger.Severity.ERROR)
+def form_way(tree_widget_item: QtWidgets.QTreeWidgetItem):
+    name_item = tree_widget_item.text(0)
+    parent_tree_widget_item = tree_widget_item.parent()
+    if isinstance(parent_tree_widget_item, QtWidgets.QTreeWidgetItem):
+        way = form_way(parent_tree_widget_item)
+        way_full = way + (name_item, ) 
+    else:
+        return (name_item, )
+    return way_full
 
-sys.stdout = OUTPUT_LOGGER_STDOUT
-sys.stderr = OUTPUT_LOGGER_STDERR
 
+def form_dict_tree_for_rcif_object(rcif_object: GlobalN):
+    dict_rcif = {}
+    if isinstance(rcif_object, (GlobalN, DataN)):
+        l_name = [item.get_name() for item in rcif_object.items]
+        for item in rcif_object.items:
+            name = item.get_name()
+            key_name = f"ITEM_{name:}"
+            dict_item = form_dict_tree_for_rcif_object(item)
+            dict_rcif[key_name] = dict_item
+    elif isinstance(rcif_object, ItemN):
+        for attr_name in rcif_object.ATTR_INT_NAMES:
+            if rcif_object.is_attribute(attr_name):
+                int_obj = getattr(rcif_object, attr_name)
+                if isinstance(int_obj, (ItemN, LoopN)):
+                    key_name = f"ITEM_{attr_name:}"
+                    dict_item = form_dict_tree_for_rcif_object(int_obj)
+                    dict_rcif[key_name] = dict_item
+        for attr_name in rcif_object.ATTR_INT_PROTECTED_NAMES:
+            if attr_name in rcif_object.__dict__.keys():
+                if rcif_object.is_attribute(attr_name):
+                    int_obj = getattr(rcif_object, attr_name)
+                    if isinstance(int_obj, (ItemN, LoopN)):
+                        key_name = f"ITEM_{attr_name:}"
+                        dict_item = form_dict_tree_for_rcif_object(int_obj)
+                        dict_rcif[key_name] = dict_item
+    return dict_rcif
+
+
+class OptionsWindow(QMainWindow):
+    def __init__(self, parent):
+        super(OptionsWindow, self).__init__(parent)
+        self.setWindowTitle("Cryspy Editor: User Scripts")
+        self.parent = parent
+        widget_main = QtWidgets.QWidget(self)
+
+
+        lay_hor = QtWidgets.QHBoxLayout()
+        self.q_list = QtWidgets.QListWidget(widget_main)
+        self.q_list.itemClicked.connect(self.item_clicked)
+        lay_hor.addWidget(self.q_list)
+
+        lay_buttons = QtWidgets.QVBoxLayout()
+        button_add = QtWidgets.QPushButton("Add")
+        button_add.clicked.connect(self.add_function)
+        button_delete = QtWidgets.QPushButton("Delete")
+        button_delete.clicked.connect(self.delete_function)
+        button_template = QtWidgets.QPushButton("Show template")
+        button_template.clicked.connect(self.show_template)
+
+        lay_buttons.addWidget(button_add)
+        lay_buttons.addWidget(button_delete)
+        lay_buttons.addStretch(1)
+        lay_buttons.addWidget(button_template)
+        
+        lay_hor.addLayout(lay_buttons)
+
+        widget_main.setLayout(lay_hor)
+
+        self.setCentralWidget(widget_main)
+
+        self.form_q_list()
+    
+    def item_clicked(self, item: QtWidgets.QListWidgetItem):
+        s_text = item.text()
+        dir_name = os.path.dirname(s_text)
+        if os.path.isdir(dir_name):
+             os.startfile(dir_name)
+
+    def form_q_list(self):
+        l_names = sorted(self.parent.d_setup["file_names_for_external_functions"].split(";"))
+        self.q_list.addItems(l_names)
+
+    def add_function(self):
+
+        if "data_dir_name" in self.parent.d_setup.keys():
+            f_dir = self.parent.d_setup["data_dir_name"]
+        else:
+            f_dir = "."
+        
+        QtWidgets.QMessageBox.information(self, "Tips", 
+            "File name must not match any of the Python modules!\nThen reboot 'CrysPy editor' to use the added procedures.")
+
+        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(self,"Open file", f_dir,"Python Files (*.py);; All Files (*)")
+        if ok:
+            if "file_names_for_external_functions" in self.parent.d_setup.keys():
+                if self.parent.d_setup["file_names_for_external_functions"] == "":
+                    self.parent.d_setup["file_names_for_external_functions"] = file_name
+                else:
+                    self.parent.d_setup["file_names_for_external_functions"] += ";" + file_name
+            else:
+                self.parent.d_setup["file_names_for_external_functions"] = file_name
+            self.q_list.addItem(file_name)
+            numpy.save(self.parent.f_setup, self.parent.d_setup)
+
+    def delete_function(self):
+        f_item = self.q_list.currentItem()
+        try:
+            f_delete = f_item.text()
+            l_names = self.parent.d_setup["file_names_for_external_functions"].split(";")
+            l_names_new = sorted([name for name in l_names if not(name.startswith(f_delete))])
+            self.q_list.clear()
+            self.parent.d_setup["file_names_for_external_functions"] = ";".join(l_names_new)
+            numpy.save(self.parent.f_setup, self.parent.d_setup)
+            self.q_list.addItems(l_names_new)
+        except:
+            pass
+
+    def show_template(self):
+        s_template = """import cryspy
+
+def user_script_name(cryspy_object: cryspy.GlobalN):
+    # define your procedure
+    pass
+    return         
+        """
+        QtWidgets.QMessageBox.information(self, "Tips", s_template)
 
 
 class CMainWindow(QMainWindow):
     def __init__(self):
         super(CMainWindow, self).__init__()
-        
-        OUTPUT_LOGGER_STDOUT.emit_write.connect(self.append_log)
-        OUTPUT_LOGGER_STDERR.emit_write.connect(self.append_log)
 
         self.dir_prog = os.path.dirname(__file__)
-        self.d_setup = {"data_file_name": os.path.join(self.dir_prog, ), "data_dir_name": self.dir_prog}
+        self.d_setup = {
+            "data_file_name": os.path.join(self.dir_prog, ), "data_dir_name": self.dir_prog,
+            "file_names_for_external_functions": ""}
         self.f_setup = os.path.join(self.dir_prog, "setup.npy")
         if os.path.isfile(self.f_setup):
             self.d_setup = numpy.load(self.f_setup, allow_pickle='TRUE').item()
-
 
         # Thread block        
         self.cthread = CThread(self)
@@ -92,46 +223,59 @@ class CMainWindow(QMainWindow):
 
         self.setWindowTitle("Cryspy Editor")
         self.init_user_interface()
+
+        self.show()
         
+
         self.print_welcome()
         if "data_file_name" in self.d_setup.keys():
             self.take_rcif_object_from_d_setup()
             self.print_object_info()
 
 
+    def write(self):
+        try:
+            # text = self.cthread.out_terminal.getvalue()
+            # self.text_edit.setText(text)
 
-    def append_log(self, text, severity):
-        # text = repr(text)
+            text = self.cthread.out_terminal.text_last
+            text_permanent = "\n".join(self.cthread.out_terminal.l_text_permanent)
+            self.text_edit.setText(text_permanent+"\n"+text)
+            # if text.endswith("\r"):
+            #     self.text_edit.rewrite_undo_last_line = True
+            # elif text == "\n":
+            #     pass
+            # else:
+            #     if self.text_edit.rewrite_undo_last_line:
+            #         self.text_edit.undo()
+            #         self.text_edit.rewrite_undo_last_line = False
+            #     self.text_edit.append(text.rstrip())
+        except:
+            pass
 
-        if severity == OutputLogger.Severity.ERROR:
-            text = '<b>{}</b>'.format(text)
-        else:
-            if text.endswith("\r"):
-                self.text_edit.rewrite_undo_last_line = True
-            elif text == "\n":
-                pass
-            else:
-                if self.text_edit.rewrite_undo_last_line:
-                    self.text_edit.undo()
-                    self.text_edit.rewrite_undo_last_line = False
-                self.text_edit.append(text.rstrip())
+    def user_scripts(self):
+        options_window = OptionsWindow(self)
+        options_window.show()
 
     def run_calculations(self):# d_info: dict = None
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
         self.text_edit.setStyleSheet("background-color:yellow;")
+        self.cthread.out_terminal.signal_refresh.connect(self.write)
 
 
     def end_calculations(self): #output_data
         self.text_edit.setStyleSheet("background-color:white;")
+        if not(self.cthread.out_terminal.out_terminal.closed):
+            self.write()
+            self.cthread.out_terminal.close()
         self.renew_w_object_panel()
 
 
     def init_user_interface(self):
         self.location_on_the_screen()
         dir_prog_icon = os.path.join(self.dir_prog, 'f_icon')
-        self.setWindowIcon(QtGui.QIcon(
-            os.path.join(dir_prog_icon, 'logo.png')))
+
         self.menu_bar = self.menuBar()
         toolbar_1 = self.addToolBar("Actions")
 
@@ -185,6 +329,9 @@ class CMainWindow(QMainWindow):
         manual_site = menu_options.addAction("Manual (site)")
         manual_site.triggered.connect(lambda x: os.startfile(r"https://sites.google.com/view/cryspy/main"))
 
+        add_user_scripts = menu_options.addAction("User scripts")
+        add_user_scripts.triggered.connect(self.user_scripts)
+
         about = menu_options.addAction("About")
         about.triggered.connect(self.display_about)
 
@@ -192,8 +339,7 @@ class CMainWindow(QMainWindow):
         self.init_menu_cryspy()
 
         self.init_central_widget()
-        self.show()
-
+        
 
     def display_about(self):
         QtWidgets.QMessageBox.information(
@@ -210,23 +356,34 @@ class CMainWindow(QMainWindow):
 
 
     def print_welcome(self):
-        print("*************************")
-        print("Welcome to CrysPy Editor.")
-        print("*************************")
+        ls_text = ["*************************"]
+        ls_text.append("Welcome to CrysPy Editor.")
+        ls_text.append("*************************")
+        self.text_edit.setText("\n".join(ls_text))
 
     def print_object_info(self):
         try:
             rcif_object = self.rcif_object
             variable_names = rcif_object.get_variable_names()
-            print(f"\nNumber of variables is {len(variable_names):}")
+            ls_text =[f"\nNumber of variables is {len(variable_names):}"]
             for name in variable_names:
                 value = rcif_object.get_variable_by_name(name)
-                print(f" - {name[-1][0]:}  {value:.5f}")
+                ls_text.append(f" - {name[-1][0]:}  {value:.5f}")
+            self.text_edit.append("\n".join(ls_text))
         except:
             pass
 
     def init_menu_cryspy(self):
-        d_procedures = cryspy_procedures_to_dictionary()
+        if not("file_names_for_external_functions" in self.d_setup.keys()):
+            self.d_setup["file_names_for_external_functions"] = ""
+        l_f_name_external_not_checked = self.d_setup["file_names_for_external_functions"].split(";")
+        l_f_name_external = [f_name for f_name in l_f_name_external_not_checked if os.path.isfile(f_name)]
+        self.d_setup["file_names_for_external_functions"] = ";".join(l_f_name_external)
+        numpy.save(self.f_setup, self.d_setup)
+        l_func_external = get_external_functions(l_f_name_external)
+        
+        
+        d_procedures = cryspy_procedures_to_dictionary(l_func_external)
         for key, functions in sorted(d_procedures.items()):
             menu_cryspy = self.menu_bar.addMenu(key)
             menu_cryspy.setToolTipsVisible(True)
@@ -306,7 +463,7 @@ class CMainWindow(QMainWindow):
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
             self.take_rcif_object_from_d_setup()
 
-            self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
+            # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
             numpy.save(self.f_setup, self.d_setup)
             self.print_object_info()
     
@@ -317,16 +474,19 @@ class CMainWindow(QMainWindow):
         # self.print_welcome()
         # self.renew_file_data_from_d_setup()
         file_name = self.d_setup["data_file_name"]
+        ls_out = []
         if os.path.isfile(file_name):
-            print(f"Loading data from file '{os.path.basename(file_name)}'...", end="\r")
+            ls_out.append(f"Loading data from file '{os.path.basename(file_name)}'...")
+            self.text_edit.append("\n".join(ls_out))
             try:
                 rcif_object = load_file(file_name)
                 self.d_setup["data_dir_name"] = os.path.dirname(file_name)
             except Exception as e:
-                print(80*"*")
-                print("ERROR during data opening", end="\n")
-                print(e)
-                print(80*"*")
+                ls_out.append(80*"*")
+                ls_out.append("ERROR during data opening")
+                ls_out.append(str(e))
+                ls_out.append(80*"*")
+                self.text_edit.append("\n".join(ls_out))
                 return
             self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
         else:
@@ -458,8 +618,7 @@ class CMainWindow(QMainWindow):
         w_splitter = QtWidgets.QSplitter(widget_main)
 
         # Panel from left site
-        self.w_object_panel = WObjectPanel(
-            self.item_clicked_on_w_object_panel, self.display_item_menu, parent=w_splitter)
+        self.w_object_panel = WObjectPanel(self.item_clicked_on_w_object_panel, self.display_item_menu, self.item_to_rcif, parent=w_splitter)
         w_splitter.addWidget(self.w_object_panel)
 
         self.w_item_tabs = QtWidgets.QTabWidget(w_splitter)
@@ -487,25 +646,23 @@ class CMainWindow(QMainWindow):
         rcif_object = self.rcif_object
         tree_widget_item = argv[0]
         way_item = form_way(tree_widget_item)
-
-        item = take_item(rcif_object, way_item)
-        if item is None:
-            self.renew_w_object_panel()
-        else:
+        if way_item is not None:
+            item = take_item(rcif_object, way_item)
             self.renew_w_item_tabs(way_item)
+        else:
+            self.renew_w_object_panel()
 
 
     def rewrite_item_in_edit_cif(self, text:str):
         rcif_object = self.rcif_object
         way_item = self.w_item_tabs.item_way_in_w_item_tabs
-
-        item = take_item(rcif_object, way_item)
-        if item is None:
-            self.renew_w_object_panel()
-        else:
+        if way_item is not None:
+            item = take_item(rcif_object, way_item)
             item_2 = item.from_cif(text)
             if item_2 is not None:
                 item.copy_from(item_2)
+        else:
+            self.renew_w_object_panel()
 
     @QtCore.pyqtSlot(QtCore.QPoint,)
     def display_item_menu(self, *argv):
@@ -687,6 +844,14 @@ class CMainWindow(QMainWindow):
                             item.loop_name = new_name
                         self.renew_w_object_panel()
 
+    def item_to_rcif(self, tree_widget_item: QtWidgets.QTreeWidgetItem):
+        rcif_object = self.rcif_object
+        way_item = form_way(tree_widget_item)
+        item = take_item(rcif_object, way_item)
+        return item.to_cif()
+
+
+
     @QtCore.pyqtSlot(bool,)
     def add_item(self, *argv) -> NoReturn:
         """Add object."""
@@ -709,57 +874,9 @@ class CMainWindow(QMainWindow):
             self.renew_w_object_panel()
 
 
-def take_item(rcif_object: Union[GlobalN, DataN, LoopN, ItemN], way: tuple):
-    if len(way) > 0:
-        way_1 = way[0]
-        if rcif_object.is_attribute(way_1):
-            item_object = getattr(rcif_object, way_1)
-            item = take_item(item_object, way[1:])
-            return item
-        else:
-            return None
-    else:
-        return rcif_object
-
-def form_way(tree_widget_item: QtWidgets.QTreeWidgetItem):
-    name_item = tree_widget_item.text(0)
-    parent_tree_widget_item = tree_widget_item.parent()
-    if isinstance(parent_tree_widget_item, QtWidgets.QTreeWidgetItem):
-        way = form_way(parent_tree_widget_item)
-        way_full = way+(name_item, ) 
-    else:
-        return (name_item, )
-    return way_full
-
-def form_dict_tree_for_rcif_object(rcif_object: GlobalN):
-    dict_rcif = {}
-    if isinstance(rcif_object, (GlobalN, DataN)):
-        l_name = [item.get_name() for item in rcif_object.items]
-        for item in rcif_object.items:
-            name = item.get_name()
-            key_name = f"ITEM_{name:}"
-            dict_item = form_dict_tree_for_rcif_object(item)
-            dict_rcif[key_name] = dict_item
-    elif isinstance(rcif_object, ItemN):
-        for attr_name in rcif_object.ATTR_INT_NAMES:
-            if rcif_object.is_attribute(attr_name):
-                int_obj = getattr(rcif_object, attr_name)
-                if isinstance(int_obj, (ItemN, LoopN)):
-                    key_name = f"ITEM_{attr_name:}"
-                    dict_item = form_dict_tree_for_rcif_object(int_obj)
-                    dict_rcif[key_name] = dict_item
-        for attr_name in rcif_object.ATTR_INT_PROTECTED_NAMES:
-            if attr_name in rcif_object.__dict__.keys():
-                if rcif_object.is_attribute(attr_name):
-                    int_obj = getattr(rcif_object, attr_name)
-                    if isinstance(int_obj, (ItemN, LoopN)):
-                        key_name = f"ITEM_{attr_name:}"
-                        dict_item = form_dict_tree_for_rcif_object(int_obj)
-                        dict_rcif[key_name] = dict_item
-    
-    return dict_rcif
-
-if __name__=='__main__':
-    app = QApplication(sys.argv)
-    ex = CMainWindow()
-    sys.exit(app.exec_())
+# if __name__=='__main__':
+#     app = QApplication(sys.argv)
+#     f_icon = os.path.join(os.path.dirname(__file__), "f_icon", "logo.png")
+#     app.setWindowIcon(QtGui.QIcon(f_icon))
+#     ex = CMainWindow()
+#     sys.exit(app.exec_())

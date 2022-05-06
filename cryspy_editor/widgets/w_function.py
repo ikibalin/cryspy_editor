@@ -185,10 +185,9 @@ class WFunction(QtWidgets.QFrame):
         #             layout.addWidget(widget)
         #             self.l_w_arg.append(widget)
         #         ii_h += 1
-
         self.function_attached = func
         self.thread_attached = thread
-
+        
         if  len(self.l_w_arg) == 0:
             self.run_function()
             self.w_cb_hide.setCheckState(2)
@@ -204,10 +203,11 @@ class WFunction(QtWidgets.QFrame):
         thread = self.thread_attached
         if func is None:
             return
-
+        
         l_w_arg = self.l_w_arg
         self.push_button.setEnabled(False)
         l_x = [_.attached_object for _ in l_w_arg]
+        
         if self.globaln is not None:
             t_x = tuple([self.globaln, ] + l_x)
         else:
@@ -255,19 +255,19 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
             return
         event.setDropAction(QtCore.Qt.CopyAction)
         s_cont = mime_data.text()
-        try:
-            self.attached_object = mime_data.object_to_send
-        except AttributeError:
-            l_item = cryspy.str_to_items(s_cont)
-            if len(l_item) > 0:
-                item = l_item[0]
-                self.attached_object = item
-                s_cont = type(item).__name__
-            else:
-                event.ignore()
-                return
+
+        l_item = cryspy.str_to_items(s_cont)
+        if len(l_item) > 0:
+            item = l_item[0]
+            self.attached_object = item
+            s_cont = type(item).__name__
+        else:
+            event.ignore()
+            return
+
         self.setText(s_cont)
         self.setStyleSheet("")
+        
         event.acceptProposedAction()
 
     def convert_to_object(self):
@@ -303,6 +303,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
                     pass
         if not flag:
             obj = str(text)
+        
         self.attached_object = obj
         self.setAlignment(QtCore.Qt.AlignRight)
         self.setStyleSheet("")

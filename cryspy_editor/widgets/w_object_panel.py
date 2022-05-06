@@ -1,5 +1,5 @@
 from typing import Callable, NoReturn # Union, Any
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtWidgets, QtGui
 
 
 
@@ -25,7 +25,7 @@ def make_tree_widget_item(widget_tree: QtWidgets.QTreeWidgetItem,
 class WObjectPanel(QtWidgets.QTreeWidget):
     """WObjectPanel class."""
 
-    def __init__(self, item_clicked: Callable, item_menu: Callable, parent=None) -> NoReturn:
+    def __init__(self, item_clicked: Callable, item_menu: Callable, item_to_rcif: Callable, parent=None) -> NoReturn:
         super(WObjectPanel, self).__init__(parent)
         self.setSizePolicy(
             QtWidgets.QSizePolicy(
@@ -39,6 +39,8 @@ class WObjectPanel(QtWidgets.QTreeWidget):
 
         self.itemClicked.connect(item_clicked)
         self.customContextMenuRequested.connect(item_menu)
+        self.item_to_rcif = item_to_rcif
+
 
     def set_dict_tree(self, dict_tree: dict):
         if self.topLevelItemCount() != 0:
@@ -60,5 +62,27 @@ class WObjectPanel(QtWidgets.QTreeWidget):
 
         self.expandAll()
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        # self.setAcceptDrops(True)
-        # self.setDragEnabled(True)
+        self.setAcceptDrops(False)
+        self.setDragEnabled(True)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if not (event.buttons() == QtCore.Qt.LeftButton):
+            return 
+        drag = QtGui.QDrag(self)
+        w_item = self.currentItem()
+        rcif = self.item_to_rcif(w_item)
+        mimeData = QtCore.QMimeData()
+        mimeData.setText(rcif)
+
+        drag.setMimeData(mimeData)
+        dropAction = drag.exec_(QtCore.Qt.MoveAction)
+
+    # def dropEvent(self, e):
+    #     print("drop: ", e.mimeData().text())
+    # def dragEnterEvent(self, e):
+    #     if e.mimeData().hasFormat('text/plain'):
+    #         e.accept()
+    #         print("HERE")
+    #     else:
+    #         e.ignore()
+

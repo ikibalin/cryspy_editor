@@ -4,7 +4,7 @@ README.md
 setup.py
 cryspy_editor/__init__.py
 cryspy_editor/__main__.py
-cryspy_editor/ceditor.py
+cryspy_editor/ceditor.pyw
 cryspy_editor/cl_thread.py
 cryspy_editor.egg-info/PKG-INFO
 cryspy_editor.egg-info/SOURCES.txt

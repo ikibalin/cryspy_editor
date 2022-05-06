@@ -11,9 +11,11 @@ from cryspy import L_FUNCTION_ADD
 
 
 
-def cryspy_procedures_to_dictionary():
+def cryspy_procedures_to_dictionary(l_func_external: list):
     d_procedures = {}
     l_func = [func for func in L_FUNCTION+L_FUNCTION_ADD if check_function_for_procedure(func)]
+    l_func.extend(l_func_external)
+
     l_func_name = [
         func.__name__.replace("_", " ").title().replace("Mempy", "MEMPy")\
             .replace("Rhochi", "RhoChi").replace("Calc ", "Calculate ")
@@ -159,6 +161,9 @@ def check_function_for_procedure(func: Callable):
     if (f_items | (n_globaln > 1) | (f_basic & (n_globaln == 1))):
         pass
     elif f_basic:
+        f_defined_types = False
+
+    if ((n_globaln ==0) and (f_items==False)):
         f_defined_types = False
     
     return f_defined_types
