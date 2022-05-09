@@ -411,7 +411,6 @@ class CMainWindow(QMainWindow):
     def press_procedure(self, procedure):
         """Run procedure to performe procedure.
         """
-
         if check_function_to_auto_run(procedure):
             self.cthread.function = procedure
             self.cthread.arguments = (self.rcif_object, )
@@ -510,25 +509,28 @@ class CMainWindow(QMainWindow):
         # print("id(self.rcif_object): ", id(self.rcif_object))
         # print("id(item): ", [id(loop_item) for loop_item in item.items], id(item))
         # print("way_item: ", way_item)
-        w_item_tabs = self.w_item_tabs
-        w_item_tabs.item_way_in_w_item_tabs = way_item
-        
-        tab_text = ""
-        if w_item_tabs.count() != 0:
-            tab_text = str(w_item_tabs.tabText(w_item_tabs.currentIndex()))
+        try:
+            w_item_tabs = self.w_item_tabs
+            w_item_tabs.item_way_in_w_item_tabs = way_item
 
-        for ind_item in range(w_item_tabs.count()-1, -1, -1):
-            w_item_tabs.removeTab(ind_item)
-        plt.close()
-        plt.close()
-        
-        if way_item is not None:
-            item = take_item(self.rcif_object, way_item)
-            if item is None:
+            tab_text = ""
+            if w_item_tabs.count() != 0:
+                tab_text = str(w_item_tabs.tabText(w_item_tabs.currentIndex()))
+
+            for ind_item in range(w_item_tabs.count()-1, -1, -1):
+                w_item_tabs.removeTab(ind_item)
+            plt.close()
+            plt.close()
+
+            if way_item is not None:
+                item = take_item(self.rcif_object, way_item)
+                if item is None:
+                    item = self.rcif_object
+            else:
                 item = self.rcif_object
-        else:
-            item = self.rcif_object
-
+        except:
+            print(f"Cannot find item for way {way_item:}")
+            return
         # RCIF tab
         if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus)))):
             if isinstance(item, ItemN):
@@ -658,9 +660,14 @@ class CMainWindow(QMainWindow):
         way_item = self.w_item_tabs.item_way_in_w_item_tabs
         if way_item is not None:
             item = take_item(rcif_object, way_item)
-            item_2 = item.from_cif(text)
-            if item_2 is not None:
-                item.copy_from(item_2)
+            try:
+                item_2 = item.from_cif(text)
+                if item_2 is not None:
+                    item.copy_from(item_2)
+            except Exception as e:
+                ls_out = ["Item defined incorrectly: "]
+                ls_out.append(str(e))
+                self.text_edit.append("\n".join(ls_out))
         else:
             self.renew_w_object_panel()
 
