@@ -365,10 +365,14 @@ class CMainWindow(QMainWindow):
         try:
             rcif_object = self.rcif_object
             variable_names = rcif_object.get_variable_names()
-            ls_text =[f"\nNumber of variables is {len(variable_names):}"]
+            ls_text =[f"\nNumber of variables is {len(variable_names):}.\n"]
+            if len(variable_names) > 0:
+                ls_text.append(f"   NAME                 VALUE      ERROR")
             for name in variable_names:
                 value = rcif_object.get_variable_by_name(name)
-                ls_text.append(f" - {name[-1][0]:}  {value:.5f}")
+                name_sigma = [name[ind] if ind<(len(name)-1) else (name[ind][0]+"_sigma", name[ind][1]) for ind in range(len(name))]
+                sigma = rcif_object.get_variable_by_name(name_sigma)
+                ls_text.append(f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}")
             self.text_edit.append("\n".join(ls_text))
         except:
             pass
