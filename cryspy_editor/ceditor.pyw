@@ -52,19 +52,23 @@ def get_external_functions(l_f_name_external: list):
                 sys.path.append(module_way)
                 module = import_module(module_name)
                 for obj_name in dir(module):
-                    if not(obj_name.startswith("__")):
+                    if not((obj_name.startswith("__") or (obj_name in ["Callable", ]))):
                         obj = getattr(module, obj_name)
+
                         if hasattr(obj, "__call__"):
                             if check_function_for_procedure(obj): # 
                                 l_func_external.append(obj)
-        except:
+                    else:
+                        pass
+        except Exception as e:
+            print(f"Error at reading external module '{f_name:}'\n", e)
             pass
     return l_func_external
 
 
 def take_item(rcif_object: Union[GlobalN, DataN, LoopN, ItemN], way: tuple):
     if len(way) > 0:
-        way_1 = way[0]
+        way_1 = way[0]        
         if rcif_object.is_attribute(way_1):
             item_object = getattr(rcif_object, way_1)
             item = take_item(item_object, way[1:])
@@ -665,10 +669,15 @@ class CMainWindow(QMainWindow):
         if way_item is not None:
             item = take_item(rcif_object, way_item)
             try:
+                
                 item_2 = item.from_cif(text)
-                if item_2 is not None:
+                if (item_2 is not None):
                     item.copy_from(item_2)
             except Exception as e:
+                # print("text: ", text)
+                # print("item: ", item, type(item))
+                # print(way_item)
+                # print(rcif_object.crystal_re2ti2o7.atom_berk)
                 ls_out = ["Item defined incorrectly: "]
                 ls_out.append(str(e))
                 self.text_edit.append("\n".join(ls_out))

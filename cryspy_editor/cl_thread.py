@@ -122,7 +122,7 @@ class CThread(QtCore.QThread):
             if not(isinstance(arg[0], cryspy.GlobalN)):
                 flag_out = True
         try:
-            flag_out = False
+            flag_out = True
             with redirect_stdout(self.out_terminal):
                 out = func(*arg)
         except Exception:
