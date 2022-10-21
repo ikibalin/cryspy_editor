@@ -37,7 +37,8 @@ class WObjectPanel(QtWidgets.QTreeWidget):
 
         self.method_names = []
 
-        self.itemClicked.connect(item_clicked)
+        # self.itemClicked.connect(item_clicked)
+        self.itemPressed.connect(item_clicked)
         self.customContextMenuRequested.connect(item_menu)
         self.item_to_rcif = item_to_rcif
 

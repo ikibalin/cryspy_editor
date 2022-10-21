@@ -12,12 +12,6 @@ import PyQt5.QtGui as QtGui
 from PyQt5.QtWidgets import QMainWindow, QAction
 from PyQt5.QtGui import QIcon
 
-try:
-    from PyQt5.QtWebEngineWidgets import QWebEngineView # install module PyQtWebEngine
-    flag_web_engine = True
-except:
-    flag_web_engine = False
-
 import matplotlib.pyplot as plt
 
 from importlib import import_module
@@ -588,11 +582,15 @@ class CMainWindow(QMainWindow):
             print(e)
 
         if report_html != "":
-            if flag_web_engine:
-                w_plain_text = QWebEngineView(w_item_tabs)
-                w_plain_text.setHtml(report_html)
-                w_item_tabs.addTab(w_plain_text, "View") 
-                # self.insertTab(0, w_plain_text, "View")
+            w_plain_text = QtWidgets.QLabel(w_item_tabs)
+            w_plain_text.setText(report_html)
+            w_plain_text.setSizePolicy(
+                QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                                      QtWidgets.QSizePolicy.Expanding))
+            w_plain_text.setAlignment(QtCore.Qt.AlignTop)
+            w_plain_text.setWordWrap(True)
+            w_plain_text.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            w_item_tabs.addTab(w_plain_text, "View") 
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
