@@ -1,3 +1,2 @@
 cryspy
-pyqtwebengine
 pyqt5

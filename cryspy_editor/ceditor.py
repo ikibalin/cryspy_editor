@@ -35,6 +35,17 @@ from cryspy_editor.cl_thread import CThread
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
 
+
+import os, sys, subprocess
+
+def open_file_wm(filename):
+    if sys.platform == "win32":
+        os.startfile(filename)
+    else:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.call([opener, filename])
+
+
 def get_external_functions(l_f_name_external: list):
     l_func_external = []
     for f_name in l_f_name_external:
@@ -150,7 +161,7 @@ class OptionsWindow(QMainWindow):
         s_text = item.text()
         dir_name = os.path.dirname(s_text)
         if os.path.isdir(dir_name):
-             os.startfile(dir_name)
+             open_file_wm(dir_name)
 
     def form_q_list(self):
         l_names = sorted(self.parent.d_setup["file_names_for_external_functions"].split(";"))
