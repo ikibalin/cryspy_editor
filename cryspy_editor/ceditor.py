@@ -325,7 +325,7 @@ class CMainWindow(QMainWindow):
 
         open_folder = QAction(QIcon(os.path.join(dir_prog_icon, 'open_folder.png')), 'Open folder', self)
         open_folder.setStatusTip('Open folder')
-        open_folder.triggered.connect(lambda: os.startfile(self.d_setup["data_dir_name"]))
+        open_folder.triggered.connect(lambda: open_file_wm(self.d_setup["data_dir_name"]))
         toolbar_1.addAction(open_folder)
 
         refresh_view = QAction(QIcon(os.path.join(dir_prog_icon, 'refresh.png')), 'Refresh', self)
@@ -336,7 +336,7 @@ class CMainWindow(QMainWindow):
         # Menu Options
         menu_options = self.menu_bar.addMenu('Options')
         manual_site = menu_options.addAction("Manual (site)")
-        manual_site.triggered.connect(lambda x: os.startfile(r"https://sites.google.com/view/cryspy/main"))
+        manual_site.triggered.connect(lambda x: open_file_wm(r"https://sites.google.com/view/cryspy/main"))
 
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
