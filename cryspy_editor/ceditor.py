@@ -28,7 +28,12 @@ from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
 from cryspy_editor.widgets.matplotlib import Graph
-from cryspy_editor.widgets.cryspy_objects import cryspy_procedures_to_dictionary, check_function_to_auto_run, check_function_for_procedure
+from cryspy_editor.widgets.cryspy_objects import \
+    cryspy_procedures_to_dictionary, \
+    check_function_to_auto_run, \
+    check_function_for_procedure, \
+    get_plot_functions_for_data_loop_item, \
+    check_function_reserved_for_cryspy_editor
 
 from cryspy_editor.cl_thread import CThread
 
@@ -62,6 +67,8 @@ def get_external_functions(l_f_name_external: list):
 
                         if hasattr(obj, "__call__"):
                             if check_function_for_procedure(obj): # 
+                                l_func_external.append(obj)
+                            elif check_function_reserved_for_cryspy_editor(obj):
                                 l_func_external.append(obj)
                     else:
                         pass
@@ -225,6 +232,9 @@ class CMainWindow(QMainWindow):
         if os.path.isfile(self.f_setup):
             self.d_setup = numpy.load(self.f_setup, allow_pickle='TRUE').item()
 
+        self.functions_plot_data = []
+        self.functions_plot_loop = []
+        self.functions_plot_item = []
         # Thread block        
         self.cthread = CThread(self)
         self.cthread.signal_start.connect(self.run_calculations)
@@ -394,9 +404,12 @@ class CMainWindow(QMainWindow):
         self.d_setup["file_names_for_external_functions"] = ";".join(l_f_name_external)
         numpy.save(self.f_setup, self.d_setup)
         l_func_external = get_external_functions(l_f_name_external)
-        
-        
+
+        self.functions_plot_data, self.functions_plot_loop, self.functions_plot_item = \
+            get_plot_functions_for_data_loop_item(l_func_external)
+
         d_procedures = cryspy_procedures_to_dictionary(l_func_external)
+        
         for key, functions in sorted(d_procedures.items()):
             menu_cryspy = self.menu_bar.addMenu(key)
             menu_cryspy.setToolTipsVisible(True)
@@ -583,7 +596,39 @@ class CMainWindow(QMainWindow):
                 s_text = s_text[:20] + "..."
             w_item_tabs.addTab(widget, s_text)
             # self.insertTab(0, widget, s_text)
+        if len(l_fig_ax) == 0:
+            fig = None
+            if isinstance(item, DataN):
+                for func in self.functions_plot_data:
+                    fig = func(item)
+                    if fig is not None:
+                        break
 
+            if isinstance(item, LoopN):
+                for func in self.functions_plot_loop:
+                    fig = func(item)
+                    if fig is not None:
+                        break
+
+            if isinstance(item, ItemN):
+                for func in self.functions_plot_item:
+                    fig = func(item)
+                    if fig is not None:
+                        break
+            if fig is not None:
+                widget = QtWidgets.QWidget(w_item_tabs)
+                layout = QtWidgets.QVBoxLayout()
+                item_plot = Graph(fig, parent=widget)
+                toolbar = item_plot.get_toolbar(parent=widget)
+                layout.addWidget(toolbar)
+                layout.addWidget(item_plot)
+                widget.setLayout(layout)
+                if len(fig.axes) != 0:
+                    s_text = f"Fig: {fig.axes[0].title.get_text():}"
+                if len(s_text) > 20:
+                    s_text = s_text[:20] + "..."
+                w_item_tabs.addTab(widget, s_text)
+            
         # Report tab
         try:
             report_html = item.report_html()
@@ -901,11 +946,3 @@ class CMainWindow(QMainWindow):
                     item.CLASSES = tuple(list(item.CLASSES) + [type(new_item)])
             item.add_items([new_item])
             self.renew_w_object_panel()
-
-
-# if __name__=='__main__':
-#     app = QApplication(sys.argv)
-#     f_icon = os.path.join(os.path.dirname(__file__), "f_icon", "logo.png")
-#     app.setWindowIcon(QtGui.QIcon(f_icon))
-#     ex = CMainWindow()
-#     sys.exit(app.exec_())

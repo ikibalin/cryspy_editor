@@ -65,7 +65,7 @@ class WFunction(QtWidgets.QFrame):
 
         self.l_w_arg = []
         self.globaln = None
-        
+
         d_annotations = func.__annotations__
         var_annotations = d_annotations.keys()
 
@@ -128,66 +128,10 @@ class WFunction(QtWidgets.QFrame):
                     layout.addWidget(QtWidgets.QLabel(_var_name))
                 layout.addWidget(widget)
                 self.l_w_arg.append(widget)
-                
-        
-        # for _i_var, _var_name in enumerate(l_var_name):
-        #     i_default = _i_var-(n_var_names-n_defaults)
-        #     if i_default >= 0:
-        #         s_def = str(l_defaults[i_default]) + " (default)"
-        #     else:
-        #         s_def = "<drop object>"
-        #     if (_var_name != "self"):
-        #         # if _var_name == "d_info":
-        #         #     pass
-        #         # elif ii_h == 0:
-        #         #     pass
-        #         if _var_name != "d_info" :
-        #             flag_special = False
-        #             flag_label = True
-        #             if _var_name in var_annotations:
-        #                 var_type = d_annotations[_var_name]
-        #                 if i_default >= 0:
-        #                     if var_type is bool:
-        #                         widget = QtWidgets.QCheckBox(_var_name)
-        #                         widget.setCheckState(2*l_defaults[i_default])
-        #                         widget.attached_object = l_defaults[i_default]
-        #                         widget.clicked.connect(
-        #                             lambda: setattr(widget, "attached_object",
-        #                                             widget.checkState()//2))
-        #                         flag_special = True
-        #                         flag_label = False
-        #                     # elif var_type is float:
-        #                     #     widget = QtWidgets.QDoubleSpinBox()
-        #                     #     widget.setValue(l_defaults[i_default])
-        #                     #     widget.attached_object = l_defaults[i_default]
-        #                     #     widget.valueChanged.connect(
-        #                     #         lambda: setattr(widget, "attached_object",
-        #                     #                         widget.value()))
-        #                     #     flag_special = True
-        #                     # elif var_type is int:
-        #                     #     widget = QtWidgets.QSpinBox()
-        #                     #     widget.setValue(l_defaults[i_default])
-        #                     #     widget.attached_object = l_defaults[i_default]
-        #                     #     widget.valueChanged.connect(
-        #                     #         lambda: setattr(widget, "attached_object",
-        #                     #                         widget.value()))
-        #                     #     flag_special = True
 
-        #             if not(flag_special):
-        #                 widget = DropLabel(f"{s_def:}")
-        #                 widget.setStyleSheet(
-        #                     "background:lightyellow; border: 2px solid red;")
-        #                 if i_default >= 0:
-        #                     widget.attached_object = l_defaults[i_default]
-        #                     widget.setStyleSheet("")
-        #             if flag_label:
-        #                 layout.addWidget(QtWidgets.QLabel(_var_name))
-        #             layout.addWidget(widget)
-        #             self.l_w_arg.append(widget)
-        #         ii_h += 1
         self.function_attached = func
         self.thread_attached = thread
-        
+
         if  len(self.l_w_arg) == 0:
             self.run_function()
             self.w_cb_hide.setCheckState(2)
@@ -203,11 +147,11 @@ class WFunction(QtWidgets.QFrame):
         thread = self.thread_attached
         if func is None:
             return
-        
+
         l_w_arg = self.l_w_arg
         self.push_button.setEnabled(False)
         l_x = [_.attached_object for _ in l_w_arg]
-        
+
         if self.globaln is not None:
             t_x = tuple([self.globaln, ] + l_x)
         else:
@@ -267,7 +211,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
 
         self.setText(s_cont)
         self.setStyleSheet("")
-        
+
         event.acceptProposedAction()
 
     def convert_to_object(self):
@@ -303,7 +247,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
                     pass
         if not flag:
             obj = str(text)
-        
+
         self.attached_object = obj
         self.setAlignment(QtCore.Qt.AlignRight)
         self.setStyleSheet("")

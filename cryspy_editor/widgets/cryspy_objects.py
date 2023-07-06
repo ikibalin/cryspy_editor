@@ -20,12 +20,12 @@ def cryspy_procedures_to_dictionary(l_func_external: list):
         func.__name__.replace("_", " ").title().replace("Mempy", "MEMPy")\
             .replace("Rhochi", "RhoChi").replace("Calc ", "Calculate ")
         for func in l_func]
-    
+
     l_first_word = [func_name.split(" ")[0] for func_name in l_func_name]
     s_first_word = set(l_first_word)
 
     d_procedures["Unsorted procedures"] = []
-    
+
     for first_word in s_first_word:
         if l_first_word.count(first_word) != 1:
             d_procedures[first_word] = []
@@ -38,91 +38,55 @@ def cryspy_procedures_to_dictionary(l_func_external: list):
             d_procedures["Unsorted procedures"].append(func)
     return d_procedures
 
+
+def get_plot_functions_for_data_loop_item(l_func_external: list):
+    l_plot_data, l_plot_loop, l_plot_item = [], [], []
+    l_func_reserved = [func for func in L_FUNCTION+L_FUNCTION_ADD+l_func_external if check_function_reserved_for_cryspy_editor(func)]
+    for func in l_func_reserved:
+        if func.__name__.startswith("plot_data_"):
+            l_plot_data.append(func)
+        if func.__name__.startswith("plot_loop_"):
+            l_plot_loop.append(func)
+        if func.__name__.startswith("plot_item_"):
+            l_plot_item.append(func)
+    return l_plot_data, l_plot_loop, l_plot_item
+
+
 def cryspy_classes_to_dictionary():
     d_classes = {"GlobalN": GlobalN, "DataN": DataN, "LoopN": LoopN, "ItemN": ItemN,
         "global": L_GLOBAL_CLASS, "data": L_DATA_CLASS, "loop": L_LOOP_CLASS, "item": L_ITEM_CLASS}
     return d_classes
 
-# # TO DELITE
-# def form_actions(cbuilder, parent_action, functions: List[Callable]):
-#     "Form actions for list of functions"
-#     toolbar = cbuilder.toolbar
 
-#     l_func = [func for func in functions if check_function_for_procedure(func)]
-
-#     l_func_name = [
-#         func.__name__.replace("_", " ").title().replace("Mempy", "MEMPy")\
-#             .replace("Rhochi", "RhoChi").replace("Calc ", "Calculate ")
-#         for func in l_func]
-
-#     l_first_word = [func_name.split(" ")[0] for func_name in l_func_name]
-#     s_first_word = set(l_first_word)
-#     l_numb = [l_first_word.count(first_word) for first_word in l_first_word]    
-
-#     menu_gen = parent_action.addMenu("Unsorted")
-#     for first_word in sorted(list(s_first_word)):
-#         flag_add = False
-#         if l_first_word.count(first_word) != 1:
-#             menu_add = parent_action.addMenu(first_word)
-#             flag_add = True
-
-#         for func, func_name in zip(l_func, l_func_name):
-#             if func_name.split(" ")[0] == first_word: 
-#                 if flag_add:
-#                     func_name_2 = func_name[(func_name.find(" ")+1):]
-#                     f_action = QtWidgets.QAction(func_name_2, menu_add)
-#                     menu_add.addAction(f_action)
-#                 else:
-#                     f_action = QtWidgets.QAction(func_name, menu_gen)
-#                     menu_gen.addAction(f_action)
-
-#                 f_action.object = func
-#                 if func.__doc__ is not None:
-#                     f_action.setStatusTip(func.__doc__.strip().split("\n")[0])
-#                 f_action.triggered.connect(lambda: triggered_action(cbuilder))
-
-#     return
-
-
-# def form_toolbar(cbuilder, functions: List[Callable]):
-#     toolbar = cbuilder.toolbar
-
-#     for func in functions:
-#         if check_function_for_toolbar(func):
-#             func_name = "["+func.__name__.replace("_", " ").title().replace("Mempy", "MEMPy").replace("Rhochi", "RhoChi") + "]"
-#             func_action = QtWidgets.QAction(func_name, toolbar)
-#             func_action.object = func
-#             func_action.triggered.connect(lambda: triggered_toolbar(cbuilder))
-#             toolbar.addAction(func_action)
-
-
-# def triggered_action(cbuilder):
-#     sender = cbuilder.sender()
-#     func = sender.object
-
-#     flag = check_function_for_toolbar(func)
-#     if flag:
-#         obj_globaln = cbuilder.wpanel.object
-
-#         cbuilder.mythread.function = func
-#         cbuilder.mythread.arguments = (obj_globaln, )
-#         cbuilder.mythread.start()
-#     else:
-#         w_function, thread = cbuilder.wfunction, cbuilder.mythread
-#         # make a choise if only GlobalN that thread.start()
-#         w_function.set_function(func, thread)
-
-
-# def triggered_toolbar(cbuilder):
-#     sender = cbuilder.sender()
-#     func = sender.object
-#     obj_globaln = cbuilder.wpanel.object
-#     cbuilder.mythread.function = func
-#     cbuilder.mythread.arguments = (obj_globaln, )
-#     cbuilder.mythread.start()
+def check_function_reserved_for_cryspy_editor(func: Callable):
+    if not("__code__" in dir(func)):
+        return False
+    n_row_need = func.__code__.co_argcount
+    if n_row_need != 1:
+        return False
+    if not(func.__name__.startswith(
+            ("check_data_", "check_loop_", "check_item_",
+            "plot_data_", "plot_loop_", "plot_item_",))):
+        return False
+    d_annotations = func.__annotations__
+    if not("item" in d_annotations.keys()):
+        return False
+    item_type = d_annotations["item"]
+    s_type = func.__name__.split("_")[1]
+    if (s_type == "data") and (item_type is DataN):
+        return True
+    if (s_type == "loop") and (item_type is LoopN):
+        return True
+    if (s_type == "item") and (item_type is ItemN):
+        return True
+    return False
 
 
 def check_function_for_procedure(func: Callable):
+    if check_function_reserved_for_cryspy_editor(func):
+        return False
+    if not("__code__" in dir(func)):
+        return False
     n_row_need = func.__code__.co_argcount
 
     d_annotations = func.__annotations__
@@ -165,13 +129,13 @@ def check_function_for_procedure(func: Callable):
 
     if ((n_globaln ==0) and (f_items==False)):
         f_defined_types = False
-    
+
     return f_defined_types
 
 def check_function_to_auto_run(func: Callable):
     """
     Procedure or method is auto run if there is no
-    external parameters except 
+    external parameters except
     1. Self objetc
     2. GlobalN object (taken from GUI)
     3. d_info object
@@ -184,7 +148,7 @@ def check_function_to_auto_run(func: Callable):
     block_name = ""
     if "return" in d_annotations.keys():
         obj_return = d_annotations.pop("return")
-    
+
     if len(d_annotations.items()) != n_row_need:
         f_defined_types = False
         return f_defined_types
@@ -193,7 +157,7 @@ def check_function_to_auto_run(func: Callable):
             item_types = set(item[1].__args__)
         else:
             item_types = set((item[1], ))
-        
+
         if GlobalN in item_types:
             n_globaln += 1
         elif item == ("d_info", dict):
@@ -206,18 +170,3 @@ def check_function_to_auto_run(func: Callable):
         f_defined_types = False
     return f_defined_types
 
-
-# def check_function_for_toolbar(func: Callable):
-#     n_row_need = func.__code__.co_argcount
-#     if n_row_need > 2:
-#         return False
-#     d_annotations = func.__annotations__
-#     f_globaln, f_info, f_only = False, True, True
-#     for item in d_annotations.items():
-#         if item[1] is GlobalN:
-#             f_globaln = True
-#         elif item == ("d_info", dict):
-#             f_info = True
-#         else:
-#             f_only = False
-#     return (f_globaln & f_info & f_only)
