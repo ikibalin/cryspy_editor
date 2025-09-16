@@ -7,17 +7,17 @@ from PyQt5 import QtWidgets
 
 from cryspy_editor.ceditor import CMainWindow
 import PyQt5.QtGui as QtGui
-# from PyQt5.QtWinExtras import QWinTaskbarButton,QWinTaskbarProgress
+from PyQt5.QtWinExtras import QWinTaskbarButton,QWinTaskbarProgress
 
 def main():
     """Make main window."""
 
     try: # for windows
-        import ctypes
-        myappid = 'ikibalin.llb.cryspy.editor.1' # arbitrary string
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+      import ctypes
+      myappid = 'ikibalin.llb.cryspy.editor.1' # arbitrary string
+      ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
-        pass
+      pass
     
     l_arg = sys.argv
     app = QtWidgets.QApplication(l_arg)
