@@ -201,10 +201,20 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
         s_cont = mime_data.text()
 
         l_item = cryspy.str_to_items(s_cont)
-        if len(l_item) > 0:
+        if len(l_item) == 1:
             item = l_item[0]
             self.attached_object = item
             s_cont = type(item).__name__
+        if len(l_item) > 1:
+            globaln = cryspy.str_to_globaln(s_cont)
+            l_data_item = globaln.items
+            if len(l_data_item) > 0:
+                item = l_data_item[0]
+                self.attached_object = item
+                s_cont = type(item).__name__
+            else:
+                event.ignore()
+                return
         else:
             event.ignore()
             return

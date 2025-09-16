@@ -7,7 +7,7 @@ from PyQt5 import QtWidgets
 
 from cryspy_editor.ceditor import CMainWindow
 import PyQt5.QtGui as QtGui
-from PyQt5.QtWinExtras import QWinTaskbarButton,QWinTaskbarProgress
+# from PyQt5.QtWinExtras import QWinTaskbarButton,QWinTaskbarProgress
 
 def main():
     """Make main window."""
