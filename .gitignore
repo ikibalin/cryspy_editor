@@ -13,4 +13,8 @@ dist/*
 .vscode/*
 __pycache__/*
 examples/*
+cryspy_editor/build/*
+cryspy_editor/dist/*
+cryspy_editor/main.spec
 cryspy_editor/setup.npy
+.DS_store
