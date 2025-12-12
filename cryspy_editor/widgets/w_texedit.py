@@ -35,6 +35,8 @@ class WTextEdit(QtWidgets.QTextEdit):
                 new_size = current_size + 1
             else:
                 new_size = current_size - 1
+            if new_size < 5 or new_size > 60:
+                return
             current_font.setPointSize(new_size)
             self.setFont(current_font)
             ui_setting.save_font_size(new_size)
