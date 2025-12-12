@@ -27,6 +27,7 @@ L_ITEM_CLS = L_ITEM_CLASS
 from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
+from cryspy_editor.widgets.w_texedit import WTextEdit
 from cryspy_editor.widgets.matplotlib import Graph
 from cryspy_editor.widgets.cryspy_objects import \
     cryspy_procedures_to_dictionary, \
@@ -260,6 +261,7 @@ class CMainWindow(QMainWindow):
             text = self.cthread.out_terminal.text_last
             text_permanent = "\n".join(self.cthread.out_terminal.l_text_permanent)
             self.text_edit.setText(text_permanent+"\n"+text)
+            self.text_edit.upload_font_size()
             # if text.endswith("\r"):
             #     self.text_edit.rewrite_undo_last_line = True
             # elif text == "\n":
@@ -279,12 +281,13 @@ class CMainWindow(QMainWindow):
     def run_calculations(self):# d_info: dict = None
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
-        self.text_edit.setStyleSheet("background-color:yellow;")
+        self.text_edit.upload_font_size()
+        # self.text_edit.setStyleSheet("background-color:yellow;")
         self.cthread.out_terminal.signal_refresh.connect(self.write)
 
 
     def end_calculations(self): #output_data
-        self.text_edit.setStyleSheet("background-color:white;")
+        # self.text_edit.setStyleSheet("background-color:white;")
         if not(self.cthread.out_terminal.out_terminal.closed):
             self.write()
             self.cthread.out_terminal.close()
@@ -689,9 +692,9 @@ class CMainWindow(QMainWindow):
         self.w_item_tabs.item_way_in_w_item_tabs = None
         w_splitter.addWidget(self.w_item_tabs)
 
-        self.text_edit = QtWidgets.QTextEdit(w_splitter)
+        self.text_edit = WTextEdit(w_splitter) # QtWidgets.QTextEdit
         self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
-        self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
+        # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
         w_splitter.addWidget(self.text_edit)
