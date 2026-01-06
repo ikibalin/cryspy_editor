@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 from importlib import import_module
 
-from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus
+from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol
 from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 L_GLOBAL_CLS = L_GLOBAL_CLASS
 L_DATA_CLS = L_DATA_CLASS
@@ -561,7 +561,7 @@ class CMainWindow(QMainWindow):
             print(f"Cannot find item for way {way_item:}")
             return
         # RCIF tab
-        if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus)))):
+        if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol)))):
             if isinstance(item, ItemN):
                 s_item = item.to_cif(separator="_", flag_all_attributes=True)
             else:
