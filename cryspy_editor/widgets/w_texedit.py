@@ -40,3 +40,5 @@ class WTextEdit(QtWidgets.QTextEdit):
             current_font.setPointSize(new_size)
             self.setFont(current_font)
             ui_setting.save_font_size(new_size)
+        else:
+            super().wheelEvent(e)

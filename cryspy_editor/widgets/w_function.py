@@ -10,7 +10,7 @@ class WFunction(QtWidgets.QFrame):
 
     def __init__(self, parent=None):
         super(WFunction, self).__init__(parent)
-        self.setStyleSheet("background-color:white;")
+        # self.setStyleSheet("background-color:white;")
         self.setFrameShape(QtWidgets.QFrame.Box)
 
         self.setSizePolicy(QtWidgets.QSizePolicy(

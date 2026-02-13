@@ -50,3 +50,7 @@ class WEditCif(QtWidgets.QTextEdit):
             ui_setting.save_font_size(new_size)
             self.setFont(current_font)
             # event.accept()
+        else:
+            super().wheelEvent(e)
+
+        

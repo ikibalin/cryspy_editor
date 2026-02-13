@@ -15,7 +15,7 @@ from PyQt5.QtGui import QIcon
 import matplotlib.pyplot as plt
 
 from importlib import import_module
-
+from .widgets.ui_setting import is_dark_mode
 from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol
 from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 L_GLOBAL_CLS = L_GLOBAL_CLASS
@@ -282,12 +282,19 @@ class CMainWindow(QMainWindow):
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
         self.text_edit.upload_font_size()
-        # self.text_edit.setStyleSheet("background-color:yellow;")
+        if is_dark_mode():
+            self.text_edit.setStyleSheet("background-color:#521F13;")
+        else:
+            self.text_edit.setStyleSheet("background-color:yellow;")
+
         self.cthread.out_terminal.signal_refresh.connect(self.write)
 
 
     def end_calculations(self): #output_data
-        # self.text_edit.setStyleSheet("background-color:white;")
+        if is_dark_mode():
+            self.text_edit.setStyleSheet("background-color:black;")
+        else:
+            self.text_edit.setStyleSheet("background-color:white;")
         if not(self.cthread.out_terminal.out_terminal.closed):
             self.write()
             self.cthread.out_terminal.close()
