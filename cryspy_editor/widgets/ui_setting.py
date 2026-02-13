@@ -1,4 +1,5 @@
 import os
+from PyQt5 import QtWidgets
 
 F_SETUP = os.path.join(
     os.path.dirname(__file__), "setup.internal")
@@ -8,6 +9,13 @@ L_SETUP_CONTENT = []
 if os.path.isfile(F_SETUP):
     with open(F_SETUP, "r", encoding="utf-8") as fid:
         L_SETUP_CONTENT.extend([_.strip() for _ in fid.readlines()])
+
+
+def is_dark_mode(): 
+    palette = QtWidgets.QApplication.palette() 
+    bg = palette.window().color() 
+    # Dark mode if background is darker than mid‑gray 
+    return bg.lightness() < 128
 
 
 def write_to_setup_file():
