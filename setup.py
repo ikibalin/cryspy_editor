@@ -42,7 +42,7 @@ long_description = ""
 
 setup(
     name='cryspy_editor',
-    version='1.8.0',
+    version='1.8.1',
     description='Editor of CRYSPY files',
     long_description = long_description,
     author='Iurii Kibalin',
@@ -64,7 +64,7 @@ setup(
     include_package_data=True,
     packages=find_packages(),  #same as name
     install_requires=[
-        'cryspy',
+        'cryspy >= 0.10.0',
         "pyqt5"
     ]
 )
