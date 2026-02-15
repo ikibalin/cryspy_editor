@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 from importlib import import_module
 from .widgets.ui_setting import is_dark_mode
-from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol
+from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol, str_to_globaln
 from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 L_GLOBAL_CLS = L_GLOBAL_CLASS
 L_DATA_CLS = L_DATA_CLASS
@@ -849,10 +849,15 @@ class CMainWindow(QMainWindow):
             menu.addAction(del_item)
 
         if isinstance(item, (GlobalN, DataN, LoopN, ItemN)):
-            act_rename = QtWidgets.QAction("Copy to clipboard", menu)
-            act_rename.way_item = way_item
-            act_rename.triggered.connect(self.do_function)
-            menu.addAction(act_rename)
+            act_copy_to_clipboard = QtWidgets.QAction("Copy to clipboard", menu)
+            act_copy_to_clipboard.way_item = way_item
+            act_copy_to_clipboard.triggered.connect(self.do_function)
+            menu.addAction(act_copy_to_clipboard)
+
+            act_paste_from_clipboard = QtWidgets.QAction("Paste from clipboard", menu)
+            act_paste_from_clipboard.way_item = way_item
+            act_paste_from_clipboard.triggered.connect(self.do_function)
+            menu.addAction(act_paste_from_clipboard)
 
 
         method_names = [_1 for _1, _2 in type(item).__dict__.items()
@@ -895,7 +900,7 @@ class CMainWindow(QMainWindow):
             name = "refine_all_variables"
         elif name == "Fix all variables":
             name = "fix_variables"
-        elif (name in ["Delete", "Rename", "Copy to clipboard"]):
+        elif (name in ["Delete", "Rename", "Copy to clipboard", "Paste from clipboard"]):
             flag_do = False
 
         if flag_do:
@@ -954,6 +959,19 @@ class CMainWindow(QMainWindow):
                     cb = QtWidgets.QApplication.clipboard()
                     cb.clear(mode=cb.Clipboard)
                     cb.setText(s_text, mode=cb.Clipboard)
+            elif name == "Paste from clipboard":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if not item is None:
+                    cb = QtWidgets.QApplication.clipboard()
+                    s_text = cb.text()
+                    globaln = str_to_globaln(s_text)
+                    self.rcif_object.add_items(globaln.items)
+                    self.renew_w_object_panel()
+
 
 
     def item_to_rcif(self, tree_widget_item: QtWidgets.QTreeWidgetItem):
