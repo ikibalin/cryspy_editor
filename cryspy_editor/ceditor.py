@@ -839,6 +839,12 @@ class CMainWindow(QMainWindow):
             del_item.triggered.connect(self.do_function)
             menu.addAction(del_item)
 
+        if isinstance(item, (GlobalN, DataN, LoopN, ItemN)):
+            act_rename = QtWidgets.QAction("Copy to clipboard", menu)
+            act_rename.way_item = way_item
+            act_rename.triggered.connect(self.do_function)
+            menu.addAction(act_rename)
+
 
         method_names = [_1 for _1, _2 in type(item).__dict__.items()
                      if ((type(_2) == FunctionType) &
@@ -880,7 +886,7 @@ class CMainWindow(QMainWindow):
             name = "refine_all_variables"
         elif name == "Fix all variables":
             name = "fix_variables"
-        elif (name in ["Delete", "Rename"]):
+        elif (name in ["Delete", "Rename", "Copy to clipboard"]):
             flag_do = False
 
         if flag_do:
@@ -927,6 +933,19 @@ class CMainWindow(QMainWindow):
                         elif isinstance(item, LoopN):
                             item.loop_name = new_name
                         self.renew_w_object_panel()
+            elif name == "Copy to clipboard":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if not item is None:
+                    s_text = item.to_cif()
+
+                    cb = QtWidgets.QApplication.clipboard()
+                    cb.clear(mode=cb.Clipboard)
+                    cb.setText(s_text, mode=cb.Clipboard)
+
 
     def item_to_rcif(self, tree_widget_item: QtWidgets.QTreeWidgetItem):
         rcif_object = self.rcif_object
