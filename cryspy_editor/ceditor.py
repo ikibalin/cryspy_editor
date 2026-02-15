@@ -573,7 +573,16 @@ class CMainWindow(QMainWindow):
                 s_item = item.to_cif(separator="_", flag_all_attributes=True)
             else:
                 s_item = str(item)
-            w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs)
+            l_hh = s_item.split("\n")
+            l_text_placeholder = []
+            for hh in l_hh:
+                if hh.startswith("_") or hh.startswith("loop_"):
+                    l_text_placeholder.append(hh.strip().split()[0])
+                else:
+                    break
+            text_placeholder = "\n".join(l_text_placeholder)
+
+            w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs, text_placeholder=text_placeholder)
             # w_edit_cif.setToolTip(item.__doc__)
             w_item_tabs.addTab(w_edit_cif, "RCIF format") 
 

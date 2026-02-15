@@ -7,7 +7,7 @@ import cryspy_editor.widgets.ui_setting as ui_setting
 class WEditCif(QtWidgets.QTextEdit):
     """WFunction class."""
 
-    def __init__(self, text: str, rewrite_item: Callable, parent=None):
+    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str=""):
         super(WEditCif, self).__init__(parent)
 
         self.setAcceptRichText(True)
@@ -18,6 +18,7 @@ class WEditCif(QtWidgets.QTextEdit):
         self.setFont(QtGui.QFont("Courier", font_size, QtGui.QFont.Normal))
 
         self.setAlignment(QtCore.Qt.AlignTop)
+        self.setPlaceholderText(text_placeholder)
         # self.setStyleSheet("background-color:white;")
         self.setText(text)
         self.text_changed = False
