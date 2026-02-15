@@ -569,18 +569,26 @@ class CMainWindow(QMainWindow):
             return
         # RCIF tab
         if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol)))):
+            l_hh = []
             if isinstance(item, ItemN):
                 s_item = item.to_cif(separator="_", flag_all_attributes=True)
+                try:
+                    prefix = item.PREFIX
+                    l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
+                except:
+                    pass
             else:
                 s_item = str(item)
-            l_hh = s_item.split("\n")
-            l_text_placeholder = []
-            for hh in l_hh:
-                if hh.startswith("_") or hh.startswith("loop_"):
-                    l_text_placeholder.append(hh.strip().split()[0])
-                else:
-                    break
-            text_placeholder = "\n".join(l_text_placeholder)
+                try:
+                    item_class = item.ITEM_CLASS
+                    if item_class == ItemN:
+                        l_hh = []
+                    else:
+                        prefix = item_class.PREFIX
+                        l_hh = ["loop_",] + [f"_{prefix:}_{hh:}" for hh in item_class.ATTR_CIF]
+                except:
+                    pass
+            text_placeholder = "\n".join(l_hh)
 
             w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs, text_placeholder=text_placeholder)
             # w_edit_cif.setToolTip(item.__doc__)
