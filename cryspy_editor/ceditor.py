@@ -279,6 +279,9 @@ class CMainWindow(QMainWindow):
         options_window.show()
 
     def run_calculations(self):# d_info: dict = None
+        current_widget = self.w_item_tabs.currentWidget()
+        if isinstance(current_widget, WEditCif):
+            current_widget.rewrite_item_by_printed_text()
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
         self.text_edit.upload_font_size()
@@ -750,7 +753,6 @@ class CMainWindow(QMainWindow):
         if way_item is not None:
             item = take_item(rcif_object, way_item)
             try:
-                
                 item_2 = item.from_cif(text)
                 if (item_2 is not None):
                     item.copy_from(item_2)

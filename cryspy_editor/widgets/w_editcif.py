@@ -28,11 +28,13 @@ class WEditCif(QtWidgets.QTextEdit):
     def focusOutEvent(self, event):
         """Submit changes just before focusing out."""
         QtWidgets.QTextEdit.focusOutEvent(self, event)
+        self.rewrite_item_by_printed_text()
+
+    def rewrite_item_by_printed_text(self):
         if self.text_changed:
             s_text = self.toPlainText()
             self.rewrite_item(s_text)
             self.text_changed = False
-
 
     def wheelEvent(self, e):
         if e is None:
