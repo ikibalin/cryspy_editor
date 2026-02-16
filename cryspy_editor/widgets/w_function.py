@@ -149,6 +149,14 @@ class WFunction(QtWidgets.QFrame):
             return
 
         l_w_arg = self.l_w_arg
+        for w_arg in l_w_arg:
+            if isinstance(w_arg, DropLabel):
+                s_text = w_arg.text()
+                try:
+                    float(s_text)
+                    w_arg.convert_to_object()
+                except:
+                    pass
         self.push_button.setEnabled(False)
         l_x = [_.attached_object for _ in l_w_arg]
 
