@@ -986,6 +986,8 @@ class CMainWindow(QMainWindow):
 
     def item_to_rcif(self, tree_widget_item: QtWidgets.QTreeWidgetItem):
         rcif_object = self.rcif_object
+        if tree_widget_item is None:
+            return ""
         way_item = form_way(tree_widget_item)
         item = take_item(rcif_object, way_item)
         return item.to_cif()
