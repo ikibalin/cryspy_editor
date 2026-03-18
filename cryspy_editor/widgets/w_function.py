@@ -213,7 +213,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
             item = l_item[0]
             self.attached_object = item
             s_cont = type(item).__name__
-        if len(l_item) > 1:
+        elif len(l_item) > 1:
             globaln = cryspy.str_to_globaln(s_cont)
             l_data_item = globaln.items
             if len(l_data_item) > 0:
