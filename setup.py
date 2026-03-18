@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2018-2023 Iurii Kibalin   
+# Copyright (c) 2018-2026 Iurii Kibalin   
 # https://github.com/ikibalin/cryspy  
 # All rights reserved.
 # 
@@ -42,7 +42,7 @@ long_description = ""
 
 setup(
     name='cryspy_editor',
-    version='1.8.2',
+    version='1.8.3',
     description='Editor of CRYSPY files',
     long_description = long_description,
     author='Iurii Kibalin',
