@@ -42,7 +42,7 @@ long_description = ""
 
 setup(
     name='cryspy_editor',
-    version='1.8.4',
+    version='1.8.5',
     description='Editor of CRYSPY files',
     long_description = long_description,
     author='Iurii Kibalin',
