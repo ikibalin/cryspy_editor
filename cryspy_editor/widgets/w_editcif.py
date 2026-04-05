@@ -18,7 +18,7 @@ class WEditCif(QtWidgets.QTextEdit):
         self.setFont(QtGui.QFont("Courier", font_size, QtGui.QFont.Normal))
 
         self.setAlignment(QtCore.Qt.AlignTop)
-        self.setPlaceholderText(text_placeholder)
+        self.setPlaceholderText(s_info+"\n\n"+text_placeholder)
         # self.setStyleSheet("background-color:white;")
         self.setText(text)
         self.text_changed = False
