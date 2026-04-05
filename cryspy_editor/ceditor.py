@@ -880,6 +880,7 @@ class CMainWindow(QMainWindow):
             menu.addAction(act_paste_from_clipboard)
 
 
+
         method_names = [_1 for _1, _2 in type(item).__dict__.items()
                      if ((type(_2) == FunctionType) &
                          (not(_1.startswith("_"))))]
@@ -909,6 +910,11 @@ class CMainWindow(QMainWindow):
         qaction.triggered.connect(self.do_function)
         menu.addAction(qaction)
 
+        act_info = QtWidgets.QAction("Info", menu)
+        act_info.way_item = way_item
+        act_info.triggered.connect(self.do_function)
+        menu.addAction(act_info)        
+
         menu.exec_(w_object_panel.viewport().mapToGlobal(position))
 
     @QtCore.pyqtSlot(bool,)
@@ -920,6 +926,8 @@ class CMainWindow(QMainWindow):
             name = "refine_all_variables"
         elif name == "Fix all variables":
             name = "fix_variables"
+        elif name == "Info":
+            flag_do = False
         elif (name in ["Delete", "Rename", "Copy to clipboard", "Paste from clipboard"]):
             flag_do = False
 
@@ -967,6 +975,18 @@ class CMainWindow(QMainWindow):
                         elif isinstance(item, LoopN):
                             item.loop_name = new_name
                         self.renew_w_object_panel()
+            elif name == "Info":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if item is not None:
+                    info_text = type(item).__doc__ or "No documentation available for this item class."
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        f"Info: {type(item).__name__}",
+                        info_text)
             elif name == "Copy to clipboard":
                 way_item = sender.way_item
                 if way_item == ():
