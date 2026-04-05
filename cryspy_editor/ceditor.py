@@ -1,7 +1,9 @@
 import os
 import sys
-import numpy
+import random
+import string
 
+import numpy
 from typing import Union, NoReturn
 from types import FunctionType
 
@@ -1039,7 +1041,9 @@ class CMainWindow(QMainWindow):
             item = take_item(self.rcif_object, way_item)        
         if item is not None:
             new_item = sender.cls_item()
-        
+            if isinstance(new_item, DataN):
+                s_name = ''.join(random.choices(string.ascii_letters,k=4)).lower()
+                new_item.data_name = s_name
             if ((type(item) is DataN) | (type(item) is GlobalN)):
                 item_cls = set([type(item) for item in item.items])
                 if type(new_item) not in item_cls:
