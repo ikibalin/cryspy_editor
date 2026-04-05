@@ -475,6 +475,7 @@ class CMainWindow(QMainWindow):
             with open(file_name, "w") as fid:
                 fid.write(rcif_object.to_cif())
             numpy.save(self.f_setup, self.d_setup) 
+            os.chdir(os.path.dirname(file_name))
             
     def save_file_as(self):
         # Save
@@ -488,6 +489,8 @@ class CMainWindow(QMainWindow):
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
             self.save_file()
+            os.chdir(os.path.dirname(file_name))
+
 
     def open_file(self):
         # Load
@@ -504,6 +507,7 @@ class CMainWindow(QMainWindow):
             # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
             numpy.save(self.f_setup, self.d_setup)
             self.print_object_info()
+            os.chdir(f_dir)
     
     def take_rcif_object_from_d_setup(self):
         """Load object from d_setup.
