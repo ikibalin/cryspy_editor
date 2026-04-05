@@ -689,7 +689,7 @@ class CMainWindow(QMainWindow):
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
-                f"No graphs or other information for '{item.get_name():}'.")
+                f"{item.__doc__:}")
             q_label.setSizePolicy(
                 QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
                                       QtWidgets.QSizePolicy.Expanding))
