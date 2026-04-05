@@ -525,6 +525,7 @@ class CMainWindow(QMainWindow):
             try:
                 rcif_object = load_file(file_name)
                 self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+                os.chdir(os.path.dirname(file_name))
             except Exception as e:
                 ls_out.append(80*"*")
                 ls_out.append("ERROR during data opening")
