@@ -51,6 +51,7 @@ class WEditCif(QtWidgets.QTextEdit):
             # font = QtGui.QFont("Courier New")
             # font.setPointSize(new_size)
             ui_setting.save_font_size(new_size)
+            ui_setting.write_to_setup_file()
             self.setFont(current_font)
             # event.accept()
         else:
