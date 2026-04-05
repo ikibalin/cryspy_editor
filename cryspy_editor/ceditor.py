@@ -785,40 +785,48 @@ class CMainWindow(QMainWindow):
                 item = self.rcif_object
         
         menu = QtWidgets.QMenu(w_object_panel)
+        menu.setToolTipsVisible(True)
 
         if ((type(item) is GlobalN) | (type(item) is DataN)):
 
             if type(item) is GlobalN:
                 menu_data = menu.addMenu("Add data block")
+                menu_data.setToolTipsVisible(True)
 
                 for cls_item in L_DATA_CLS:
                     prefix = cls_item.PREFIX
                     add_item = QtWidgets.QAction(f'{prefix :}', menu_data)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_data.addAction(add_item)
 
             menu_loop = menu.addMenu("Add loop block")
+            menu_loop.setToolTipsVisible(True)
             for cls_item in L_LOOP_CLS:
                 prefix = cls_item.ITEM_CLASS.PREFIX
                 add_item = QtWidgets.QAction(f'{prefix :}', menu_loop)
                 add_item.cls_item = cls_item
                 add_item.way_item = way_item
+                add_item.setToolTip(cls_item.__doc__)
                 add_item.triggered.connect(self.add_item)
                 menu_loop.addAction(add_item)
 
             menu_item = menu.addMenu("Add item")
+            menu_item.setToolTipsVisible(True)
             for cls_item in L_ITEM_CLS:
                 prefix = cls_item.PREFIX
                 add_item = QtWidgets.QAction(f'{prefix :}', menu_item)
                 add_item.cls_item = cls_item
                 add_item.way_item = way_item
+                add_item.setToolTip(cls_item.__doc__)
                 add_item.triggered.connect(self.add_item)
                 menu_item.addAction(add_item)
             
         elif isinstance(item, (GlobalN, DataN)):
             menu_item = menu.addMenu("Add")
+            menu_item.setToolTipsVisible(True)
             for cls_item in item.CLASSES_MANDATORY:
                 if ((cls_item is not DataN) & (cls_item is not LoopN) &
                     (cls_item is not ItemN)):
@@ -829,6 +837,7 @@ class CMainWindow(QMainWindow):
                     add_item = QtWidgets.QAction(f'{prefix:}', menu_item)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
             menu_item.addSeparator()
@@ -842,6 +851,7 @@ class CMainWindow(QMainWindow):
                     add_item = QtWidgets.QAction(f'{prefix :}', menu_item)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
 
