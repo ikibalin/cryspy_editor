@@ -7,7 +7,7 @@ import cryspy_editor.widgets.ui_setting as ui_setting
 class WEditCif(QtWidgets.QTextEdit):
     """WFunction class."""
 
-    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str=""):
+    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str="", s_info:str=""):
         super(WEditCif, self).__init__(parent)
 
         self.setAcceptRichText(True)
@@ -24,6 +24,7 @@ class WEditCif(QtWidgets.QTextEdit):
         self.text_changed = False
         self.textChanged.connect(lambda : setattr(self, "text_changed", True))
         self.rewrite_item = rewrite_item
+        self.s_info = s_info
 
     def focusOutEvent(self, event):
         """Submit changes just before focusing out."""
@@ -56,5 +57,14 @@ class WEditCif(QtWidgets.QTextEdit):
             # event.accept()
         else:
             super().wheelEvent(e)
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        if self.s_info != "":
+            info_action = menu.addAction("Info")
+            info_action.triggered.connect(
+                lambda: QtWidgets.QMessageBox.information(self, "Info", self.s_info))
+        menu.exec_(event.globalPos())
+        event.accept()
 
         

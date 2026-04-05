@@ -579,11 +579,13 @@ class CMainWindow(QMainWindow):
         # RCIF tab
         if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol)))):
             l_hh = []
+            s_info = ""
             if isinstance(item, ItemN):
                 s_item = item.to_cif(separator="_", flag_all_attributes=True)
                 try:
                     prefix = item.PREFIX
                     l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
+                    s_info = item.__doc__
                 except:
                     pass
             else:
@@ -595,11 +597,12 @@ class CMainWindow(QMainWindow):
                     else:
                         prefix = item_class.PREFIX
                         l_hh = ["loop_",] + [f"_{prefix:}_{hh:}" for hh in item_class.ATTR_CIF]
+                    s_info = item.__doc__
                 except:
                     pass
             text_placeholder = "\n".join(l_hh)
 
-            w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs, text_placeholder=text_placeholder)
+            w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs, text_placeholder=text_placeholder, s_info=s_info)
             # w_edit_cif.setToolTip(item.__doc__)
             w_item_tabs.addTab(w_edit_cif, "RCIF format") 
 
