@@ -24,7 +24,6 @@ class WEditCif(QtWidgets.QTextEdit):
         self.text_changed = False
         self.textChanged.connect(lambda : setattr(self, "text_changed", True))
         self.rewrite_item = rewrite_item
-        self.s_info = s_info
 
     def focusOutEvent(self, event):
         """Submit changes just before focusing out."""
@@ -60,27 +59,8 @@ class WEditCif(QtWidgets.QTextEdit):
 
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
-        if self.s_info != "":
-            info_action = menu.addAction("Info")
-            info_action.triggered.connect(self.show_info)
         menu.exec_(event.globalPos())
         event.accept()
 
-    def show_info(self):
-        msg = QtWidgets.QMessageBox(self)
-        msg.setWindowTitle("Info")
-        msg.setText(self.s_info)
-        msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
-        msg.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-
-        # calculate a good width for the text block
-        doc = QtGui.QTextDocument()
-        doc.setDefaultFont(self.font())
-        doc.setPlainText(self.s_info)
-        doc.setTextWidth(600)
-        width = int(doc.idealWidth() + 120)
-        msg.setMinimumWidth(width)
-
-        msg.exec_()
 
         

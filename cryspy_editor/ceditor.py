@@ -690,7 +690,8 @@ class CMainWindow(QMainWindow):
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
-                f"{item.__doc__:}")
+                f"No graphs or other information for '{item.get_name():}'.")                
+                # f"{item.__doc__:}")
             q_label.setSizePolicy(
                 QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
                                       QtWidgets.QSizePolicy.Expanding))
@@ -767,10 +768,6 @@ class CMainWindow(QMainWindow):
                 if (item_2 is not None):
                     item.copy_from(item_2)
             except Exception as e:
-                # print("text: ", text)
-                # print("item: ", item, type(item))
-                # print(way_item)
-                # print(rcif_object.crystal_re2ti2o7.atom_berk)
                 ls_out = ["Item defined incorrectly: "]
                 ls_out.append(str(e))
                 self.text_edit.append("\n".join(ls_out))
@@ -993,10 +990,7 @@ class CMainWindow(QMainWindow):
                     item = take_item(self.rcif_object, way_item)
                 if item is not None:
                     info_text = type(item).__doc__ or "No documentation available for this item class."
-                    QtWidgets.QMessageBox.information(
-                        self,
-                        f"Info: {type(item).__name__}",
-                        info_text)
+                    self.text_edit.setText(info_text)
             elif name == "Copy to clipboard":
                 way_item = sender.way_item
                 if way_item == ():
