@@ -176,7 +176,7 @@ class WTextEdit(QtWidgets.QTextEdit):
         
         S_COMMENT = ui_setting.get_comment_character()
         # comments
-        q_color = L_COLOR[0]
+        q_color = transform_color(L_COLOR[0])
         self.setTextBackgroundColor(q_color)
         for line in l_comment:
             self.append(line)
