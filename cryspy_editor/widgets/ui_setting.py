@@ -38,6 +38,14 @@ def get_from_setup(name: str, value_type):
     return value
 
 
+def get_comment_character():
+    s_comment = get_from_setup("comment_character", str)
+    if s_comment is None:
+        return "# "
+    if s_comment == "":
+        return "# "
+    return s_comment
+
 def replace_in_setup(name: str, value):
     l_i_line_del = []
     i_line_replace = None

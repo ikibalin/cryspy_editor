@@ -1,0 +1,28 @@
+"Delete": "delete", "del", "remove", "dd"
+"H": "h", "hkl1", "indexh"
+"K": "k", "hkl2", "indexk"
+"L": "l", "hkl3", "indexl"
+"2Theta": "2theta", "ttheta","twotheta", "tth"
+"Theta": "theta", "th"
+"Omega": "omega", "om",,
+"Chi": "chi", "ch",,
+"Phi": "phi", "ph",,
+"Gamma": "gamma"
+"Nu": "nu"
+"Gamma_D": "gammad", "gammadet", "gammadetector"
+"Nu_D": "nud", "nudet", "nudetector",,
+"Qx": "qx"
+"Qy": "qy"
+"Qz": "qz"
+"Intensity": "intensity", "int", "iint",,
+"sIntensity": "sintensity", "sigmaintensity", "sint", "siint","sig", "sigma",
+"Fsq": "fsq", "f2",,
+"sFsq": "sfsq", "sf2", "sigmaf2"
+"Numor": "numor", "num",,
+"Nx": "nx", "framex", "nx", "pixelx",,
+"Nz": "nz", "framez", "nz", "pixelz",,
+"sthovl": "sthovl",,
+"I_plus": "intensityplus", "iplus",,
+"sI_plus": "intensityplussigma", "siplus",,
+"I_minus": "intensityminus", "iminus",,
+"sI_minus": "intensityminussigma", "siminus",,

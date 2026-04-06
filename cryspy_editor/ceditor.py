@@ -730,9 +730,9 @@ class CMainWindow(QMainWindow):
         w_splitter.addWidget(self.w_item_tabs)
 
         self.text_edit = WTextEdit(w_splitter) # QtWidgets.QTextEdit
-        self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
+        # self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
-        self.text_edit.setLineWrapColumnOrWidth(648)
+        # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
         w_splitter.addWidget(self.text_edit)
 
