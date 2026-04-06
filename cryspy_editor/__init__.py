@@ -4,7 +4,7 @@ CrysPyEditor
 
 """
 name = "cryspy_editor"
-__version__ = "1.8.8"
+__version__ = "1.9.0"
 
 from cryspy_editor.__main__ import main
 
