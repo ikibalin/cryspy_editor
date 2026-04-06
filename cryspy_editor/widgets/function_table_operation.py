@@ -6,11 +6,14 @@ from cryspy_editor.widgets.procedures import procedure_equiv_hkl, \
     procedure_group_hkl, procedure_aver_hkl, procedure_column_mark, procedure_generate_hkl, \
     procedure_print, take_val, procedure_copy_to_clipboard, procedure_column
 
+from cryspy_editor.widgets.cod import load_cif_from_cod_by_formula
+from PyQt5 import QtWidgets
+import cryspy_editor.widgets.ui_setting as ui_setting
 L_ACTION_NAME = [
     "mean", "std", "sort", "del", "group_hkl", 
     "equiv_hkl", "mean_hkl", "calc", "stat", "fit", 
     "aver_hkl", "generate_hkl", "mark", "print", "sum", "min", "max", "copy_to_clipboard",
-    "column"
+    "column", "load_cif",
     ]
 
 def redefine_inline_parameters(d_np_table):
@@ -116,6 +119,13 @@ def redefine_inline_parameters(d_np_table):
                 procedure_copy_to_clipboard(s_param, d_np_table)
             elif L_ACTION_NAME.index(s_hh) == 18: # column
                 procedure_column(s_param, d_np_table)
+            elif L_ACTION_NAME.index(s_hh) == 19: # load_cif
+                s_res = load_cif_from_cod_by_formula(s_param)
+                clipboard = QtWidgets.QApplication.clipboard()
+                clipboard.setText(s_res)
+                S_COMMENT = ui_setting.get_comment_character()
+                d_np_table[" comments"].append(f"{S_COMMENT:} CIF file for '{s_param}' is copied to clipboard.")
+                
             continue
         l_hh = expression_name.split("=")
         s_name_left = l_hh[0].strip()

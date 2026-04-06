@@ -146,6 +146,8 @@ class WTextEdit(QtWidgets.QTextEdit):
 
         try:
             D_NP_Table = transform_lines_to_d_np_table(l_content)
+            # Renew all comments to avoid old comments
+            D_NP_Table[" comments"] = []
             redefine_inline_parameters(D_NP_Table)
         except Exception as e:
             msgbox = QtWidgets.QMessageBox(self)
@@ -157,7 +159,7 @@ class WTextEdit(QtWidgets.QTextEdit):
         self.D_NP_TABLE = D_NP_Table
 
         try:
-            # l_comment = transform_d_np_table_to_comments(self.D_NP_TABLE)
+            l_comment = transform_d_np_table_to_comments(self.D_NP_TABLE)
             l_inline = transform_d_np_table_to_inline(self.D_NP_TABLE)
             l_expression = transform_d_np_table_to_expression(self.D_NP_TABLE)
             l_table = transform_d_np_table_to_table(self.D_NP_TABLE)
@@ -173,12 +175,12 @@ class WTextEdit(QtWidgets.QTextEdit):
         self.setTextColor(transform_color(L_COLOR[-1]))
         
         S_COMMENT = ui_setting.get_comment_character()
-        # # comments
-        # q_color = L_COLOR[0]
-        # self.te_table.setTextBackgroundColor(q_color)
-        # for line in l_comment:
-        #     self.te_table.append(line)
-        # self.te_table.append("")
+        # comments
+        q_color = L_COLOR[0]
+        self.setTextBackgroundColor(q_color)
+        for line in l_comment:
+            self.append(line)
+        self.append("")
 
         # inline
         if len(l_inline) > 0:
