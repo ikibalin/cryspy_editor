@@ -21,7 +21,7 @@
 "Numor": "numor", "num",,
 "Nx": "nx", "framex", "nx", "pixelx",,
 "Nz": "nz", "framez", "nz", "pixelz",,
-"sthovl": "sthovl",,
+"sthovl": "sthovl", "sint/lambda",
 "I_plus": "intensityplus", "iplus",,
 "sI_plus": "intensityplussigma", "siplus",,
 "I_minus": "intensityminus", "iminus",,
