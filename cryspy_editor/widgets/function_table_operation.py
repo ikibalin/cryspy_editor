@@ -4,7 +4,8 @@ from cryspy_editor.widgets.procedures import procedure_equiv_hkl, \
     procedure_column_del, L_OPERATION, estimate_expression, procedure_column_sort, \
     procedure_column_general, procedure_calc, \
     procedure_group_hkl, procedure_aver_hkl, procedure_column_mark, procedure_generate_hkl, \
-    procedure_print, take_val, procedure_copy_to_clipboard, procedure_column
+    procedure_print, take_val, procedure_copy_to_clipboard, procedure_column, procedure_columns_int, \
+    procedure_columns_round
 
 from cryspy_editor.widgets.cod import load_cif_from_cod_by_formula
 from PyQt5 import QtWidgets
@@ -13,7 +14,7 @@ L_ACTION_NAME = [
     "mean", "std", "sort", "del", "group_hkl", 
     "equiv_hkl", "mean_hkl", "calc", "stat", "fit", 
     "aver_hkl", "generate_hkl", "mark", "print", "sum", "min", "max", "copy_to_clipboard",
-    "column", "load_cif",
+    "column", "load_cif", "int", "round",
     ]
 
 def redefine_inline_parameters(d_np_table):
@@ -125,7 +126,11 @@ def redefine_inline_parameters(d_np_table):
                 clipboard.setText(s_res)
                 S_COMMENT = ui_setting.get_comment_character()
                 d_np_table[" comments"].append(f"{S_COMMENT:} CIF file for '{s_param}' is copied to clipboard.")
-                
+            elif L_ACTION_NAME.index(s_hh) == 20: # int columns
+                procedure_columns_int(s_param, d_np_table)
+            elif L_ACTION_NAME.index(s_hh) == 21: # round columns
+                procedure_columns_round(s_param, d_np_table)
+
             continue
         l_hh = expression_name.split("=")
         s_name_left = l_hh[0].strip()

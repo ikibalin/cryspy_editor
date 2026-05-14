@@ -8,6 +8,7 @@ L_OPERATION_IN = [">", "<", "=="]
 
 L_OPERATION = ["+", "-", "*", "/", "^", "%", ]
 
+
 def procedure_column_general(s_line: str, d_np_table: dict):
     s_command = s_line.strip().split()[0].lower()
     l_name = s_line.strip().split()[1:]
@@ -37,6 +38,7 @@ def procedure_column_general(s_line: str, d_np_table: dict):
         d_np_table[s_name] = [float(res), ]
     return
 
+
 def procedure_copy_to_clipboard(s_line: str, d_np_table: dict):
     l_name = s_line.strip().split()
     if len(l_name) < 1:
@@ -56,6 +58,7 @@ def procedure_copy_to_clipboard(s_line: str, d_np_table: dict):
     clipboard.setText(s_out)
     return 
 
+
 def procedure_column_sort(s_line: str, d_np_table: dict):
     if len(s_line.split()) < 1:
         raise ValueError("For function 'sort' the sorting column should be defined")
@@ -73,6 +76,31 @@ def procedure_column_sort(s_line: str, d_np_table: dict):
         d_np_table[name] =d_np_table[name][np_arg_sort] 
 
     d_np_table[" table_colors"] = [transform_color(L_COLOR_TABLE[0]), ]*len(np_arg_sort)
+
+
+def procedure_columns_int(s_line: str, d_np_table:dict):
+    if len(s_line.split()) < 1:
+        raise ValueError("For function 'sort' the sorting column should be defined")
+
+    l_name = s_line.split()
+    for name in l_name:
+        val, flag, name_in_d = take_val(name, d_np_table)
+        if not flag:
+            raise ValueError(f"The column '{name:}' should be defined in table to make sorting")
+        d_np_table[name]=d_np_table[name].astype(int) 
+
+
+def procedure_columns_round(s_line: str, d_np_table:dict):
+    if len(s_line.split()) < 1:
+        raise ValueError("For function 'sort' the sorting column should be defined")
+
+    l_name = s_line.split()
+    for name in l_name:
+        val, flag, name_in_d = take_val(name, d_np_table)
+        if not flag:
+            raise ValueError(f"The column '{name:}' should be defined in table to make sorting")
+        d_np_table[name]=numpy.round(d_np_table[name]).astype(int) 
+
 
 def procedure_column_del(s_line: str, d_np_table: dict):
     
@@ -109,7 +137,6 @@ def procedure_column_del(s_line: str, d_np_table: dict):
             del d_np_table[" table_colors"][i_flag-i_diff]
             i_diff += 1
     return
-
 
 
 def procedure_print(s_line: str, d_np_table: dict):
@@ -165,6 +192,7 @@ def procedure_column_mark(s_line: str, d_np_table: dict):
         if flag:
             d_np_table[" table_colors"][i_flag] = transform_color(L_COLOR[2])
     return
+
 
 def procedure_equiv_hkl(s_line: str, d_np_table: dict):
     """Add to the table equivalent hkl indices.
@@ -225,6 +253,7 @@ def procedure_group_hkl(s_line: str, d_np_table: dict):
     for name in d_np_table[" table_names"]:
         d_np_table[name] =d_np_table[name][l_arg]
     d_np_table[" table_colors"] = l_table_colors
+
 
 def procedure_aver_hkl(s_line: str, d_np_table: dict):
     l_necessary_table = ["H", "K", "L"]
@@ -339,9 +368,11 @@ def calc_aver_saver(np_val, np_sval):
     r_factor = 100* numpy.sum(abs_diff)/numpy.sum(numpy.abs(np_val))
     return aver_val, saver_val, r_factor
 
+
 def chec_equiv_hkl(hkl1, hkl2, func_equiv):
     l_hkl2 = func_equiv(hkl2)
     return tuple(hkl1) in l_hkl2
+
 
 def procedure_calc(s_line: str, d_np_table: dict):
 
@@ -417,6 +448,7 @@ def procedure_calc(s_line: str, d_np_table: dict):
         d_np_table[s_name] = [float(np_chisq), ]
     return
 
+
 def procedure_generate_hkl(s_line: str, d_np_table: dict):
     s_name = s_line.strip().split()
     if s_name[0].lower() == "sthovl":
@@ -468,6 +500,7 @@ def procedure_generate_hkl(s_line: str, d_np_table: dict):
         d_np_table[" table_commands"].append("")
         d_np_table["2Theta"] = np_tth 
     return
+
 
 def procedure_column(s_line: str, d_np_table: dict):
     s_name = s_line.strip().split()
