@@ -29,7 +29,7 @@ L_ITEM_CLS = L_ITEM_CLASS
 from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
-from cryspy_editor.widgets.w_texedit import WTextEdit
+from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib import Graph
 from cryspy_editor.widgets.cryspy_objects import \
     cryspy_procedures_to_dictionary, \
