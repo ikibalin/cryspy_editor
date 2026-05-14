@@ -100,6 +100,8 @@ class WTextEdit(QtWidgets.QTextEdit):
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Return and event.modifiers() == QtCore.Qt.ControlModifier:
+            S_INTRO = take_intro()
+            self.setPlaceholderText(S_INTRO)
             self.convert_to_np_table()
         elif self.completer.popup().isVisible() and event.key() == QtCore.Qt.Key_Tab:
             completion = self.completer.currentCompletion()
