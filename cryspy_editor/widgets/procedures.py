@@ -751,7 +751,7 @@ def procedure_convert_to_int_format(s_line: str, d_np_table: dict):
     np_hkl = numpy.stack(
         [d_np_table["H"], d_np_table["K"], d_np_table["L"]], axis=0
     )
-    np_q = numpy.mod(np_hkl, 1)
+    np_q = np_hkl - numpy.round(np_hkl, 0)
     np_hkl_int = numpy.round(np_hkl - np_q).astype(int)
     np_q_unique, np_inverse = numpy.unique(np_q, axis=1, return_inverse=True)
     flag_nucl = numpy.all(np_q_unique == 0.0)
