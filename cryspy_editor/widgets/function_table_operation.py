@@ -1,27 +1,64 @@
 import numpy
 from cryspy_editor.widgets.function_basis import remove_all_items
-from cryspy_editor.widgets.procedures import procedure_equiv_hkl, \
-    procedure_column_del, L_OPERATION, estimate_expression, procedure_column_sort, \
-    procedure_column_general, procedure_calc, \
-    procedure_group_hkl, procedure_aver_hkl, procedure_column_mark, procedure_generate_hkl, \
-    procedure_print, take_val, procedure_copy_to_clipboard, procedure_column, procedure_columns_int, \
-    procedure_columns_round
+from cryspy_editor.widgets.procedures import (
+    procedure_equiv_hkl,
+    procedure_column_del,
+    L_OPERATION,
+    estimate_expression,
+    procedure_column_sort,
+    procedure_column_general,
+    procedure_calc,
+    procedure_group_hkl,
+    procedure_aver_hkl,
+    procedure_column_mark,
+    procedure_generate_hkl,
+    procedure_print,
+    take_val,
+    procedure_copy_to_clipboard,
+    procedure_column,
+    procedure_columns_int,
+    procedure_columns_round,
+    procedure_convert_to_int_format,
+)
 
 from cryspy_editor.widgets.cod import load_cif_from_cod_by_formula
 from PyQt5 import QtWidgets
 import cryspy_editor.widgets.ui_setting as ui_setting
+
 L_ACTION_NAME = [
-    "mean", "std", "sort", "del", "group_hkl", 
-    "equiv_hkl", "mean_hkl", "calc", "stat", "fit", 
-    "aver_hkl", "generate_hkl", "mark", "print", "sum", "min", "max", "copy_to_clipboard",
-    "column", "load_cif", "int", "round",
-    ]
+    "mean",
+    "std",
+    "sort",
+    "del",
+    "group_hkl",
+    "equiv_hkl",
+    "mean_hkl",
+    "calc",
+    "stat",
+    "fit",
+    "aver_hkl",
+    "generate_hkl",
+    "mark",
+    "print",
+    "sum",
+    "min",
+    "max",
+    "copy_to_clipboard",
+    "column",
+    "load_cif",
+    "int",
+    "round",
+    "convert_to_int_format",
+]
+
 
 def redefine_inline_parameters(d_np_table):
     # tables
     s_name = "Delete"
     if s_name in d_np_table[" table_names"]:
-        remove_all_items(d_np_table[" table_names"], s_name, d_np_table[" table_commands"])
+        remove_all_items(
+            d_np_table[" table_names"], s_name, d_np_table[" table_commands"]
+        )
         if s_name in d_np_table.keys():
             del d_np_table[s_name]
 
@@ -53,83 +90,116 @@ def redefine_inline_parameters(d_np_table):
             except:
                 continue
 
-
     # inline_parameters
     l_inline_name = d_np_table[" inline_names"]
     s_name = "Unit Cell"
     if s_name in l_inline_name:
         val = d_np_table[s_name]
         del d_np_table[s_name]
-        d_np_table[" inline_names"].pop(d_np_table[" inline_names"].index(s_name))
-        l_name = ["a", "b", "c", "alpha", "beta", "gamma",]
+        d_np_table[" inline_names"].pop(
+            d_np_table[" inline_names"].index(s_name)
+        )
+        l_name = [
+            "a",
+            "b",
+            "c",
+            "alpha",
+            "beta",
+            "gamma",
+        ]
         if len(val) == 3:
-            val.extend([90., 90., 90.])
+            val.extend([90.0, 90.0, 90.0])
         if len(val) >= 6:
             for i_name, name in enumerate(l_name):
-                if not(name in d_np_table[" inline_names"]):
+                if not (name in d_np_table[" inline_names"]):
                     d_np_table[" inline_names"].append(name)
-                d_np_table[name] = numpy.array([float(val[i_name]), ], dtype=float)
+                d_np_table[name] = numpy.array(
+                    [
+                        float(val[i_name]),
+                    ],
+                    dtype=float,
+                )
 
     s_name = "UB-matrix"
     if s_name in l_inline_name:
         val = d_np_table[s_name]
         del d_np_table[s_name]
-        d_np_table[" inline_names"].pop(d_np_table[" inline_names"].index(s_name))
-        l_name = ["UB_11", "UB_12", "UB_13", "UB_21", "UB_22", "UB_23", "UB_31", "UB_32", "UB_33"]
+        d_np_table[" inline_names"].pop(
+            d_np_table[" inline_names"].index(s_name)
+        )
+        l_name = [
+            "UB_11",
+            "UB_12",
+            "UB_13",
+            "UB_21",
+            "UB_22",
+            "UB_23",
+            "UB_31",
+            "UB_32",
+            "UB_33",
+        ]
         if len(val) >= 9:
             for i_name, name in enumerate(l_name):
-                if not(name in d_np_table[" inline_names"]):
+                if not (name in d_np_table[" inline_names"]):
                     d_np_table[" inline_names"].append(name)
-                d_np_table[name] = numpy.array([float(val[i_name]), ], dtype=float)
-
+                d_np_table[name] = numpy.array(
+                    [
+                        float(val[i_name]),
+                    ],
+                    dtype=float,
+                )
 
     # operations with defined functions
     for expression_name in d_np_table[" expressions"]:
         s_hh = expression_name.strip().split()[0].lower()
         if s_hh in L_ACTION_NAME:
             s_param = " ".join(expression_name.strip().split()[1:])
-            if L_ACTION_NAME.index(s_hh) ==  0: # mean 
+            if L_ACTION_NAME.index(s_hh) == 0:  # mean
                 procedure_column_general(expression_name, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) ==  1: # std
+            elif L_ACTION_NAME.index(s_hh) == 1:  # std
                 procedure_column_general(expression_name, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 2: # sort
+            elif L_ACTION_NAME.index(s_hh) == 2:  # sort
                 procedure_column_sort(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 3: # del
+            elif L_ACTION_NAME.index(s_hh) == 3:  # del
                 procedure_column_del(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 4: # group_hkl
+            elif L_ACTION_NAME.index(s_hh) == 4:  # group_hkl
                 procedure_group_hkl(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 5: # equiv_hkl
+            elif L_ACTION_NAME.index(s_hh) == 5:  # equiv_hkl
                 procedure_equiv_hkl(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 7: # calc
+            elif L_ACTION_NAME.index(s_hh) == 7:  # calc
                 procedure_calc(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 10: # aver_hkl
+            elif L_ACTION_NAME.index(s_hh) == 10:  # aver_hkl
                 procedure_aver_hkl(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 11: # generate_hkl
+            elif L_ACTION_NAME.index(s_hh) == 11:  # generate_hkl
                 procedure_generate_hkl(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 12: # mark
+            elif L_ACTION_NAME.index(s_hh) == 12:  # mark
                 procedure_column_mark(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 13: # print
+            elif L_ACTION_NAME.index(s_hh) == 13:  # print
                 procedure_print(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 14: # sum
+            elif L_ACTION_NAME.index(s_hh) == 14:  # sum
                 procedure_column_general(expression_name, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 15: # min
+            elif L_ACTION_NAME.index(s_hh) == 15:  # min
                 procedure_column_general(expression_name, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 16: # max
+            elif L_ACTION_NAME.index(s_hh) == 16:  # max
                 procedure_column_general(expression_name, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 17: # copy_to_clipboard
+            elif L_ACTION_NAME.index(s_hh) == 17:  # copy_to_clipboard
                 procedure_copy_to_clipboard(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 18: # column
+            elif L_ACTION_NAME.index(s_hh) == 18:  # column
                 procedure_column(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 19: # load_cif
+            elif L_ACTION_NAME.index(s_hh) == 19:  # load_cif
                 s_res = load_cif_from_cod_by_formula(s_param)
                 clipboard = QtWidgets.QApplication.clipboard()
                 clipboard.setText(s_res)
                 S_COMMENT = ui_setting.get_comment_character()
-                d_np_table[" comments"].append(f"{S_COMMENT:} CIF file for '{s_param}' is copied to clipboard.")
-            elif L_ACTION_NAME.index(s_hh) == 20: # int columns
+                d_np_table[" comments"].append(
+                    f"{S_COMMENT:} CIF file for '{s_param}' is copied to clipboard."
+                )
+            elif L_ACTION_NAME.index(s_hh) == 20:  # int columns
                 procedure_columns_int(s_param, d_np_table)
-            elif L_ACTION_NAME.index(s_hh) == 21: # round columns
+            elif L_ACTION_NAME.index(s_hh) == 21:  # round columns
                 procedure_columns_round(s_param, d_np_table)
+            elif L_ACTION_NAME.index(s_hh) == 22:  # convert_to_int_format
+                procedure_convert_to_int_format(s_param, d_np_table)
 
             continue
         l_hh = expression_name.split("=")
@@ -139,9 +209,11 @@ def redefine_inline_parameters(d_np_table):
         if not flag:
             continue
         l_name_table = d_np_table[" table_names"]
-        l_name_table_lower = [_.lower() for _ in l_name_table] 
+        l_name_table_lower = [_.lower() for _ in l_name_table]
         if s_name_left.lower() in l_name_table_lower:
-            d_np_table[l_name_table[l_name_table_lower.index(s_name_left.lower())]] = val
+            d_np_table[
+                l_name_table[l_name_table_lower.index(s_name_left.lower())]
+            ] = val
         else:
             d_np_table[s_name_left] = val
             d_np_table[" table_names"].append(s_name_left)
@@ -153,9 +225,11 @@ def redefine_inline_parameters(d_np_table):
         try:
             n_row = d_np_table[name].size
             s_name = "Number of Rows in table"
-            if not(s_name in d_np_table.keys()):
+            if not (s_name in d_np_table.keys()):
                 d_np_table[" inline_names"].append(s_name)
-            d_np_table[s_name] = [n_row, ]
+            d_np_table[s_name] = [
+                n_row,
+            ]
         except:
             continue
     return
@@ -163,7 +237,7 @@ def redefine_inline_parameters(d_np_table):
 
 def xy_to_plot(D_NP_TABLE):
     l_name = D_NP_TABLE[" table_names"]
-    
+
     l_commands = D_NP_TABLE[" table_commands"]
     np_y, flag_y, name_y = take_val("y", D_NP_TABLE)
     np_x, flag_x, name_x = take_val("x", D_NP_TABLE)
