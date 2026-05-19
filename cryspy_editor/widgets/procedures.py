@@ -135,13 +135,20 @@ def procedure_columns_round(s_line: str, d_np_table: dict):
         )
 
     l_name = s_line.split()
+    n_round = 0
+    if len(l_name) > 1:
+        if l_name[0].isdigit():
+            n_round = int(l_name[0])
+            l_name = l_name[1:]
     for name in l_name:
         val, flag, name_in_d = take_val(name, d_np_table)
         if not flag:
             raise ValueError(
                 f"The column '{name:}' should be defined in table to make sorting"
             )
-        d_np_table[name] = numpy.round(d_np_table[name]).astype(int)
+        d_np_table[name] = numpy.round(d_np_table[name], n_round)
+        if n_round == 0:
+            d_np_table[name] = d_np_table[name].astype(int)
 
 
 def procedure_column_del(s_line: str, d_np_table: dict):
