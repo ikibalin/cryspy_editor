@@ -1,12 +1,11 @@
-# ASCII-Table widget is the easiest way to work with tables!
+# The ASCII-Table widget is the simplest way to work with tables!
 
-# Quick Guide
+# Here’s a quick guide:
 
 # 1. Press Ctrl + Enter (or Command + Enter on macOS) to execute the example below.
-# 2. You can use either CIF or CFL notation.
-# 3. To delete a column, rename it to "dd" or "Delete".
-# 4. To plot a graph, append (x) and (y) to the column names, for example: "Column-1(x)".
-# 5. To multiply a column by 2, append (*2) to its name, for example: "Column-1(*2)".
-# 6. Popup window try to predict your input — use Tab to accept suggestion.
-
-# Feel free to contact me at: Iurii KIBALIN <iurii.kibalin@ess.eu>
+# 2. Press Ctrl + Z (or Command + Z on macOS) to undo your previous actions.
+# 3. You can use either CIF or CFL notation.
+# 4. To delete a column simply rename it to “dd” or “Delete”.
+# 5. To plot a graph, append “(x)”, “(y)”, “(sy)”, “(y2)” to the column names for example “Column-1(x)”.
+# 6. To multiply a column by 2, append “(*2)” to its name for example “Column-1(*2)”.
+# 7. The popup window will try to predict your input; use Tab to accept suggestions.

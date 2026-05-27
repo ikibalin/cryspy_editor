@@ -108,6 +108,8 @@ class WTextEdit(QtWidgets.QTextEdit):
         S_INTRO = take_intro()
         self.setPlaceholderText(S_INTRO)
 
+        self.l_history = []
+
     def insertCompletion(self, completion):
         cursor = self.textCursor()
         cursor.movePosition(cursor.StartOfWord, cursor.KeepAnchor)
@@ -147,6 +149,11 @@ class WTextEdit(QtWidgets.QTextEdit):
             if completion:
                 self.insertCompletion(completion)
             return
+        elif (
+            event.key() == QtCore.Qt.Key_Z
+            and event.modifiers() == QtCore.Qt.ControlModifier
+        ):
+            self.back_in_history()
         else:
             super().keyPressEvent(event)
         completion_prefix = self.textUnderCursor()
@@ -180,8 +187,20 @@ class WTextEdit(QtWidgets.QTextEdit):
         else:
             super().wheelEvent(e)
 
+    def write_to_history(self):
+        s_text = self.toPlainText()
+        if s_text != "":
+            self.l_history.append(s_text)
+        if len(self.l_history) > 10:
+            self.l_history.pop(0)
+
+    def back_in_history(self):
+        if len(self.l_history) > 0:
+            s_text = self.l_history.pop(-1)
+            self.setPlainText(s_text)
+
     def convert_to_np_table(self):
-        # self.write_to_history()
+        self.write_to_history()
         s_text = self.toPlainText()
         if s_text == "":
             s_text = self.placeholderText()
