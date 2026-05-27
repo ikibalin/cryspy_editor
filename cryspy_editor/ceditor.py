@@ -619,7 +619,7 @@ class CMainWindow(QMainWindow):
             # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
             numpy.save(self.f_setup, self.d_setup)
             self.print_object_info()
-            os.chdir(f_dir)
+            os.chdir(os.path.dirname(file_name))
 
     def take_rcif_object_from_d_setup(self):
         """Load object from d_setup."""
