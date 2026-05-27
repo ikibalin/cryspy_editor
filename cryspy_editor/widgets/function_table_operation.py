@@ -242,13 +242,44 @@ def xy_to_plot(D_NP_TABLE):
     l_name = D_NP_TABLE[" table_names"]
 
     l_commands = D_NP_TABLE[" table_commands"]
-    np_y, flag_y, name_y = take_val("y", D_NP_TABLE)
-    np_x, flag_x, name_x = take_val("x", D_NP_TABLE)
     D_OUT = {"x": [], "y": [], "name_x": "", "name_y": ""}
+
+    np_y, flag_y, name_y = take_val("y", D_NP_TABLE)
+    if not flag_y:
+        np_y, flag_y, name_y = take_val("y1", D_NP_TABLE)
     if not flag_y:
         return D_OUT
+    D_OUT["y"] = np_y
+    D_OUT["name_y"] = name_y
 
+    np_x, flag_x, name_x = take_val("x", D_NP_TABLE)
+    if not flag_x:
+        np_x, flag_x, name_x = take_val("x1", D_NP_TABLE)
     if not flag_x:
         np_x = numpy.linspace(1, np_y.size, num=np_y.size, endpoint=True)
-    D_OUT = {"x": np_x, "y": np_y, "name_x": name_x, "name_y": name_y}
+
+    D_OUT["x"] = np_x
+    D_OUT["name_x"] = name_x
+
+    np_sy, flag_sy, name_sy = take_val("sy", D_NP_TABLE)
+    if not flag_sy:
+        np_sy, flag_sy, name_sy = take_val("sy1", D_NP_TABLE)
+    if flag_sy:
+        D_OUT["sy"] = np_sy
+        D_OUT["name_sy"] = name_sy
+
+    np_y, flag_y, name_y = take_val("y2", D_NP_TABLE)
+    if flag_y:
+        D_OUT["name_y2"] = name_y
+        D_OUT["y2"] = np_y
+    np_x, flag_x, name_x = take_val("x2", D_NP_TABLE)
+    if flag_x:
+        D_OUT["name_x2"] = name_x
+        D_OUT["x2"] = np_x
+
+    np_sy, flag_sy, name_sy = take_val("sy2", D_NP_TABLE)
+    if flag_sy:
+        D_OUT["sy2"] = np_sy
+        D_OUT["name_sy2"] = name_sy
+
     return D_OUT

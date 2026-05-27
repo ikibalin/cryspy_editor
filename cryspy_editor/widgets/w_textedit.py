@@ -1,21 +1,43 @@
-
 from typing import Callable, NoReturn
+import numpy
 from PyQt5 import QtWidgets, QtCore, QtGui
 import cryspy_editor.widgets.ui_setting as ui_setting
 import matplotlib.pyplot as plt
 from cryspy_editor.widgets.colors import L_COLOR, transform_color
-from cryspy_editor.widgets.function_table_to_ascii import transform_d_np_table_to_comments, transform_d_np_table_to_inline, transform_d_np_table_to_table, transform_d_np_table_to_expression
+from cryspy_editor.widgets.function_table_to_ascii import (
+    transform_d_np_table_to_comments,
+    transform_d_np_table_to_inline,
+    transform_d_np_table_to_table,
+    transform_d_np_table_to_expression,
+)
 
-from cryspy_editor.widgets.function_ascii_to_table import transform_lines_to_d_np_table
-from cryspy_editor.widgets.function_dictionary import get_d_names_inline, get_d_names_table, get_d_digit_number
-from cryspy_editor.widgets.function_table_operation import redefine_inline_parameters, xy_to_plot, L_ACTION_NAME
+from cryspy_editor.widgets.function_ascii_to_table import (
+    transform_lines_to_d_np_table,
+)
+from cryspy_editor.widgets.function_dictionary import (
+    get_d_names_inline,
+    get_d_names_table,
+    get_d_digit_number,
+)
+from cryspy_editor.widgets.function_table_operation import (
+    redefine_inline_parameters,
+    xy_to_plot,
+    L_ACTION_NAME,
+)
 import os
 import random
+
 DIR_BASE = os.path.dirname(__file__)
 
 DIR_EXAMPLES = os.path.join(DIR_BASE, "examples")
-WORDS = ["generate_hkl sthovl 0.1 1.", "generate_hkl 2Theta 5 140", "cell : ", "H K L ",
-         "calc sthovl", "calc 2Theta"]
+WORDS = [
+    "generate_hkl sthovl 0.1 1.",
+    "generate_hkl 2Theta 5 140",
+    "cell : ",
+    "H K L ",
+    "calc sthovl",
+    "calc 2Theta",
+]
 WORDS.extend(L_ACTION_NAME)
 
 WORDS.extend([f"{_} : " for _ in get_d_names_inline().keys() if len(_) > 2])
@@ -23,6 +45,7 @@ WORDS.extend([f"{_} " for _ in get_d_names_table().keys() if len(_) > 2])
 WORDS = set(WORDS)
 
 S_COMMENT = ui_setting.get_comment_character()
+
 
 def take_intro():
     S_INTRO = ""
@@ -36,17 +59,26 @@ def take_intro():
     #     s_time = "Under development"
 
     if os.path.isfile(f_intro):
-        with open(f_intro, 'r') as fid:
+        with open(f_intro, "r") as fid:
             l_content = fid.readlines()
         # l_content.insert(1, f"{S_COMMENT:}                         ({s_time:}) \n")
         S_INTRO = "".join([line.replace("#", S_COMMENT) for line in l_content])
         l_file = os.listdir(DIR_EXAMPLES)
-        file = os.path.join(DIR_EXAMPLES, l_file[random.randint(0, len(l_file) - 1)])
+        file = os.path.join(
+            DIR_EXAMPLES, l_file[random.randint(0, len(l_file) - 1)]
+        )
         if os.path.isfile(file):
-            S_INTRO += "\n\n" + S_COMMENT + " EXAMPLE: " + os.path.basename(file) + "\n\n"
-            with open(file, 'r') as fid:
+            S_INTRO += (
+                "\n\n"
+                + S_COMMENT
+                + " EXAMPLE: "
+                + os.path.basename(file)
+                + "\n\n"
+            )
+            with open(file, "r") as fid:
                 S_INTRO += fid.read()
     return S_INTRO
+
 
 class WTextEdit(QtWidgets.QTextEdit):
     """WFunction class."""
@@ -56,12 +88,14 @@ class WTextEdit(QtWidgets.QTextEdit):
 
         self.setAcceptRichText(True)
         self.setSizePolicy(
-                QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                      QtWidgets.QSizePolicy.Expanding))
+            QtWidgets.QSizePolicy(
+                QtWidgets.QSizePolicy.Expanding,
+                QtWidgets.QSizePolicy.Expanding,
+            )
+        )
         font_size = ui_setting.get_font_size()
         self.setFont(QtGui.QFont("Courier", font_size, QtGui.QFont.Normal))
         self.setAlignment(QtCore.Qt.AlignTop)
-
 
         self.completer = QtWidgets.QCompleter(WORDS, self)
         self.completer.setWidget(self)
@@ -70,7 +104,7 @@ class WTextEdit(QtWidgets.QTextEdit):
         self.completer.activated.connect(self.insertCompletion)
 
         # self.setStyleSheet("background-color:white;")
-    
+
         S_INTRO = take_intro()
         self.setPlaceholderText(S_INTRO)
 
@@ -80,12 +114,11 @@ class WTextEdit(QtWidgets.QTextEdit):
         cursor.insertText(completion)
         self.setTextCursor(cursor)
 
-
     def textUnderCursor(self):
         cursor = self.textCursor()
         cursor.select(cursor.WordUnderCursor)
         return cursor.selectedText()
-    
+
     def show_replace_dialog(self):
         cursor = self.te_table.textCursor()
         s_val = cursor.selectedText().split("\u2029")[0].strip()
@@ -99,24 +132,32 @@ class WTextEdit(QtWidgets.QTextEdit):
         self.setFont(current_font)
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Return and event.modifiers() == QtCore.Qt.ControlModifier:
+        if (
+            event.key() == QtCore.Qt.Key_Return
+            and event.modifiers() == QtCore.Qt.ControlModifier
+        ):
             S_INTRO = take_intro()
             self.setPlaceholderText(S_INTRO)
             self.convert_to_np_table()
-        elif self.completer.popup().isVisible() and event.key() == QtCore.Qt.Key_Tab:
+        elif (
+            self.completer.popup().isVisible()
+            and event.key() == QtCore.Qt.Key_Tab
+        ):
             completion = self.completer.currentCompletion()
             if completion:
                 self.insertCompletion(completion)
             return
         else:
-            super().keyPressEvent(event)      
+            super().keyPressEvent(event)
         completion_prefix = self.textUnderCursor()
         if len(completion_prefix) < 1:
             self.completer.popup().hide()
             return
 
         self.completer.setCompletionPrefix(completion_prefix)
-        self.completer.popup().setCurrentIndex(self.completer.completionModel().index(0, 0))
+        self.completer.popup().setCurrentIndex(
+            self.completer.completionModel().index(0, 0)
+        )
         self.completer.complete()
 
     def wheelEvent(self, e):
@@ -140,7 +181,7 @@ class WTextEdit(QtWidgets.QTextEdit):
             super().wheelEvent(e)
 
     def convert_to_np_table(self):
-        #self.write_to_history()
+        # self.write_to_history()
         s_text = self.toPlainText()
         if s_text == "":
             s_text = self.placeholderText()
@@ -157,7 +198,7 @@ class WTextEdit(QtWidgets.QTextEdit):
             msgbox.setText("Error during converting text to table\n" + str(e))
             msgbox.exec()
             return
-        
+
         self.D_NP_TABLE = D_NP_Table
 
         try:
@@ -168,14 +209,16 @@ class WTextEdit(QtWidgets.QTextEdit):
         except Exception as e:
             msgbox = QtWidgets.QMessageBox(self)
             msgbox.setWindowTitle("ASCII-Table")
-            msgbox.setText("Error during converting table to text\n\n" + str(e))
+            msgbox.setText(
+                "Error during converting table to text\n\n" + str(e)
+            )
             msgbox.exec()
-            return 
-        
+            return
+
         self.clear()
         self.setTextBackgroundColor(transform_color(L_COLOR[0]))
         self.setTextColor(transform_color(L_COLOR[-1]))
-        
+
         S_COMMENT = ui_setting.get_comment_character()
         # comments
         q_color = transform_color(L_COLOR[0])
@@ -188,7 +231,7 @@ class WTextEdit(QtWidgets.QTextEdit):
         if len(l_inline) > 0:
             self.append(S_COMMENT + " PARAMETERS\n")
         bold_format = QtGui.QTextCharFormat()
-        
+
         normal_format = QtGui.QTextCharFormat()
         for line in l_inline:
             l_hh = line.split(":")
@@ -197,8 +240,7 @@ class WTextEdit(QtWidgets.QTextEdit):
             bold_format.setFontWeight(QtGui.QFont.Bold)
             cursor.insertText(l_hh[0].strip().rjust(15) + " : ", bold_format)
             bold_format.setFontWeight(3)
-            cursor.insertText(l_hh[1].strip()+"\n", bold_format)
-            
+            cursor.insertText(l_hh[1].strip() + "\n", bold_format)
 
         # expressions
         q_color = transform_color(L_COLOR[0])
@@ -209,18 +251,22 @@ class WTextEdit(QtWidgets.QTextEdit):
         for line in l_expression:
             cursor = self.textCursor()
             bold_format.setFontWeight(QtGui.QFont.Bold)
-            l_hh = line.strip().split() 
+            l_hh = line.strip().split()
             if l_hh[0].lower() in L_ACTION_NAME:
                 cursor.insertText(l_hh[0].strip().rjust(15) + " ", bold_format)
                 bold_format.setFontWeight(3)
-                cursor.insertText(" ".join(l_hh[1:]).strip()+"\n", bold_format)
+                cursor.insertText(
+                    " ".join(l_hh[1:]).strip() + "\n", bold_format
+                )
                 continue
 
             l_hh = line.split("=")
             if len(l_hh) == 2:
-                cursor.insertText(l_hh[0].strip().rjust(15) + " = ", bold_format)
+                cursor.insertText(
+                    l_hh[0].strip().rjust(15) + " = ", bold_format
+                )
                 bold_format.setFontWeight(3)
-                cursor.insertText(l_hh[1].strip()+"\n", bold_format)
+                cursor.insertText(l_hh[1].strip() + "\n", bold_format)
 
         # table
         if len(l_table) == 0:
@@ -231,16 +277,24 @@ class WTextEdit(QtWidgets.QTextEdit):
 
         l_table_colors = self.D_NP_TABLE[" table_colors"]
         if len(l_table[1:]) != len(l_table_colors):
-            self.D_NP_TABLE[" table_colors"] = [transform_color(L_COLOR[0]) for _ in l_table[1:]]
+            self.D_NP_TABLE[" table_colors"] = [
+                transform_color(L_COLOR[0]) for _ in l_table[1:]
+            ]
             l_table_colors = self.D_NP_TABLE[" table_colors"]
         if len(l_table) == 1:
-            return 
+            return
         for line, q_color in zip(l_table[1:], l_table_colors):
             self.setTextBackgroundColor(q_color)
             self.append(line)
         self.moveCursor(QtGui.QTextCursor.Start)
-
-        self.plot()
+        try:
+            self.plot()
+        except Exception as e:
+            msgbox = QtWidgets.QMessageBox(self)
+            msgbox.setWindowTitle("Plotting function")
+            msgbox.setText("Error during plotting figure\n\n" + str(e))
+            msgbox.exec()
+            return
 
     def plot(self):
         d_val = xy_to_plot(self.D_NP_TABLE)
@@ -248,29 +302,64 @@ class WTextEdit(QtWidgets.QTextEdit):
             return
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(d_val["x"], d_val["y"], "ok")
+        np_x = d_val["x"]
+        np_y = d_val["y"]
+        s_fmt = "ok"
+        if numpy.all(np_x[:-1] <= np_x[1:]):
+            s_fmt = "-k"
+        if "sy" in d_val.keys():
+            ax.errorbar(
+                np_x,
+                np_y,
+                yerr=d_val["sy"],
+                fmt=s_fmt,
+                label=d_val["name_y"],
+                alpha=0.5,
+            )
+        else:
+            ax.plot(np_x, np_y, s_fmt, label=d_val["name_y"], alpha=0.5)
         ax.set_xlabel(d_val["name_x"])
         ax.set_ylabel(d_val["name_y"])
-        fig.show()    
 
+        if "y2" in d_val.keys():
+            np_y2 = d_val["y2"]
+            np_x2 = d_val.get("x2", d_val["x"])
+            s_fmt = "or"
+            if numpy.all(np_x2[:-1] <= np_x2[1:]):
+                s_fmt = "-r"
+
+            if "sy2" in d_val.keys():
+                ax.errorbar(
+                    np_x2,
+                    np_y2,
+                    yerr=d_val["sy2"],
+                    fmt=s_fmt,
+                    alpha=0.5,
+                    label=d_val["name_y2"],
+                )
+            else:
+                ax.plot(np_x2, np_y2, s_fmt, label=d_val["name_y2"], alpha=0.5)
+            ax.set_ylabel(d_val["name_y"] + ", " + d_val["name_y2"])
+            ax.legend()
+        fig.show()
 
 
 class ReplaceDialog(QtWidgets.QDialog):
-    def __init__(self, text_edit, s_replce:str=""):
+    def __init__(self, text_edit, s_replce: str = ""):
         super().__init__()
         self.text_edit = text_edit
         self.init_ui(s_replce=s_replce)
 
-    def init_ui(self, s_replce:str=""):
-        self.setWindowTitle('Replace Text')
+    def init_ui(self, s_replce: str = ""):
+        self.setWindowTitle("Replace Text")
         layout = QtWidgets.QVBoxLayout()
 
-        self.find_label = QtWidgets.QLabel('Find:')
+        self.find_label = QtWidgets.QLabel("Find:")
         self.find_input = QtWidgets.QLineEdit()
         self.find_input.setText(s_replce)
-        self.replace_label = QtWidgets.QLabel('Replace with:')
+        self.replace_label = QtWidgets.QLabel("Replace with:")
         self.replace_input = QtWidgets.QLineEdit()
-        self.replace_button = QtWidgets.QPushButton('Replace')
+        self.replace_button = QtWidgets.QPushButton("Replace")
 
         layout.addWidget(self.find_label)
         layout.addWidget(self.find_input)
@@ -287,7 +376,7 @@ class ReplaceDialog(QtWidgets.QDialog):
         replace_text = self.replace_input.text()
         text = self.text_edit.toPlainText()
         new_text = text.replace(find_text, replace_text)
-        
+
         self.text_edit.setTextBackgroundColor(transform_color(L_COLOR[0]))
         self.text_edit.setTextColor(transform_color(L_COLOR[-1]))
         self.text_edit.setPlainText(new_text)
