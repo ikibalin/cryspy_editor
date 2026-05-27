@@ -112,10 +112,10 @@ def procedure_column_sort(s_line: str, d_np_table: dict):
     ] * len(np_arg_sort)
 
 
-def procedure_columns_int(s_line: str, d_np_table: dict):
+def procedure_action_for_columns(s_action: str, s_line: str, d_np_table: dict):
     if len(s_line.split()) < 1:
         raise ValueError(
-            "For function 'sort' the sorting column should be defined"
+            f"For function '{s_action:}' the sorting column should be defined"
         )
 
     l_name = s_line.split()
@@ -123,9 +123,12 @@ def procedure_columns_int(s_line: str, d_np_table: dict):
         val, flag, name_in_d = take_val(name, d_np_table)
         if not flag:
             raise ValueError(
-                f"The column '{name:}' should be defined in table to make sorting"
+                f"The column '{name:}' should be defined in table to make {s_action:}"
             )
-        d_np_table[name] = d_np_table[name].astype(int)
+        if s_action == "int":
+            d_np_table[name] = d_np_table[name].astype(int)
+        elif s_action == "abs":
+            d_np_table[name] = numpy.abs(d_np_table[name])
 
 
 def procedure_columns_round(s_line: str, d_np_table: dict):

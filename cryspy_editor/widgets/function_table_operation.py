@@ -16,7 +16,7 @@ from cryspy_editor.widgets.procedures import (
     take_val,
     procedure_copy_to_clipboard,
     procedure_column,
-    procedure_columns_int,
+    procedure_action_for_columns,
     procedure_columns_round,
     procedure_convert_to_int_format,
 )
@@ -49,6 +49,7 @@ L_ACTION_NAME = [
     "int",
     "round",
     "convert_to_int_format",
+    "abs",
 ]
 
 
@@ -195,11 +196,13 @@ def redefine_inline_parameters(d_np_table):
                     f"{S_COMMENT:} CIF file for '{s_param}' is copied to clipboard."
                 )
             elif L_ACTION_NAME.index(s_hh) == 20:  # int columns
-                procedure_columns_int(s_param, d_np_table)
+                procedure_action_for_columns(s_hh, s_param, d_np_table)
             elif L_ACTION_NAME.index(s_hh) == 21:  # round columns
                 procedure_columns_round(s_param, d_np_table)
             elif L_ACTION_NAME.index(s_hh) == 22:  # convert_to_int_format
                 procedure_convert_to_int_format(s_param, d_np_table)
+            elif L_ACTION_NAME.index(s_hh) == 23:  # abs
+                procedure_action_for_columns(s_hh, s_param, d_np_table)
 
             continue
         l_hh = expression_name.split("=")
