@@ -1,24 +1,24 @@
 #!/usr/bin/env python
 
-# Copyright (c) 2018-2026 Iurii Kibalin   
-# https://github.com/ikibalin/cryspy  
+# Copyright (c) 2018-2026 Iurii Kibalin
+# https://github.com/ikibalin/cryspy
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
 # met:
-# 
+#
 # * Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
-# 
+#
 # * Redistributions in binary form must reproduce the above copyright
 #   notice, this list of conditions and the following disclaimer in the
 #   documentation and/or other materials provided with the distribution.
-# 
+#
 # * Neither the name "CrysPy" nor the names of its contributors may
 #   be used to endorse or promote products derived from this software
 #   without specific prior written permission.
-# 
+#
 # This software is provided by the copyright holders and contributors "as
 # is" and any express or implied warranties, including, but not limited
 # to, the implied warranties of merchantability and fitness for a
@@ -35,21 +35,21 @@ import os
 import os.path
 from setuptools import setup, find_packages
 
-#f_name = os.path.join(os.path.dirname(__file__), "readme.rst")
-#with open(f_name, 'r') as f:
+# f_name = os.path.join(os.path.dirname(__file__), "readme.rst")
+# with open(f_name, 'r') as f:
 #    long_description = f.read()
 long_description = ""
 
 setup(
-    name='cryspy_editor',
-    version='1.9.3',
-    description='Editor of CRYSPY files',
-    long_description = long_description,
-    author='Iurii Kibalin',
-    author_email='yurikibalin@outlook.com',
-    url = ' ',
-    license          = 'MIT License',
-    keywords         = 'STAR, CrysPy, RhoChi, MEM',
+    name="cryspy_editor",
+    version="1.9.4",
+    description="Editor of CRYSPY files",
+    long_description=long_description,
+    author="Iurii Kibalin",
+    author_email="yurikibalin@outlook.com",
+    url=" ",
+    license="MIT License",
+    keywords="STAR, CrysPy, RhoChi, MEM",
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.5",
@@ -59,12 +59,12 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "Operating System :: OS Independent",
-    ],    
+    ],
     include_package_data=True,
-    packages=find_packages(),  #same as name
-    install_requires=[
-        'cryspy >= 0.10.0',
-        "pyqt5"
-    ]
+    packages=find_packages(),  # same as name
+    install_requires=["cryspy >= 0.10.0", "pyqt5"],
 )
