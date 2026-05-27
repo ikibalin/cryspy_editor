@@ -59,7 +59,7 @@ def take_intro():
     #     s_time = "Under development"
 
     if os.path.isfile(f_intro):
-        with open(f_intro, "r") as fid:
+        with open(f_intro, "r", encoding="utf-8") as fid:
             l_content = fid.readlines()
         # l_content.insert(1, f"{S_COMMENT:}                         ({s_time:}) \n")
         S_INTRO = "".join([line.replace("#", S_COMMENT) for line in l_content])
@@ -75,7 +75,7 @@ def take_intro():
                 + os.path.basename(file)
                 + "\n\n"
             )
-            with open(file, "r") as fid:
+            with open(file, "r", encoding="utf-8") as fid:
                 S_INTRO += fid.read()
     return S_INTRO
 
