@@ -1,0 +1,4 @@
+# To load CIF data to clipboard use function load_cif with chemical formula in Hill notation
+# Use context menu of left widget to paste CIF from clipboard to CrysPy Editor 
+
+load_cif fe3 o4

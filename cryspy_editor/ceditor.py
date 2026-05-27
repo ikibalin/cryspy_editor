@@ -1,7 +1,9 @@
 import os
 import sys
-import numpy
+import random
+import string
 
+import numpy
 from typing import Union, NoReturn
 from types import FunctionType
 
@@ -15,9 +17,21 @@ from PyQt5.QtGui import QIcon
 import matplotlib.pyplot as plt
 
 from importlib import import_module
-
-from cryspy import load_file, GlobalN, DataN, LoopN, ItemN, Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus
+from cryspy_editor.widgets.ui_setting import is_dark_mode
+from cryspy import (
+    load_file,
+    GlobalN,
+    DataN,
+    LoopN,
+    ItemN,
+    Pd2dMeas,
+    Pd2dProc,
+    ChannelAni,
+    ChannelCol,
+    str_to_globaln,
+)
 from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
+
 L_GLOBAL_CLS = L_GLOBAL_CLASS
 L_DATA_CLS = L_DATA_CLASS
 L_LOOP_CLS = L_LOOP_CLASS
@@ -27,13 +41,15 @@ L_ITEM_CLS = L_ITEM_CLASS
 from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
+from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib import Graph
-from cryspy_editor.widgets.cryspy_objects import \
-    cryspy_procedures_to_dictionary, \
-    check_function_to_auto_run, \
-    check_function_for_procedure, \
-    get_plot_functions_for_data_loop_item, \
-    check_function_reserved_for_cryspy_editor
+from cryspy_editor.widgets.cryspy_objects import (
+    cryspy_procedures_to_dictionary,
+    check_function_to_auto_run,
+    check_function_for_procedure,
+    get_plot_functions_for_data_loop_item,
+    check_function_reserved_for_cryspy_editor,
+)
 
 from cryspy_editor.cl_thread import CThread
 
@@ -42,6 +58,7 @@ from cryspy_editor import __version__ as cryspy_editor_version
 
 
 import os, sys, subprocess
+
 
 def open_file_wm(filename):
     if sys.platform == "win32":
@@ -62,13 +79,25 @@ def get_external_functions(l_f_name_external: list):
                 sys.path.append(module_way)
                 module = import_module(module_name)
                 for obj_name in dir(module):
-                    if not((obj_name.startswith("__") or (obj_name in ["Callable", ]))):
+                    if not (
+                        (
+                            obj_name.startswith("__")
+                            or (
+                                obj_name
+                                in [
+                                    "Callable",
+                                ]
+                            )
+                        )
+                    ):
                         obj = getattr(module, obj_name)
 
                         if hasattr(obj, "__call__"):
-                            if check_function_for_procedure(obj): # 
+                            if check_function_for_procedure(obj):  #
                                 l_func_external.append(obj)
-                            elif check_function_reserved_for_cryspy_editor(obj):
+                            elif check_function_reserved_for_cryspy_editor(
+                                obj
+                            ):
                                 l_func_external.append(obj)
                     else:
                         pass
@@ -80,7 +109,7 @@ def get_external_functions(l_f_name_external: list):
 
 def take_item(rcif_object: Union[GlobalN, DataN, LoopN, ItemN], way: tuple):
     if len(way) > 0:
-        way_1 = way[0]        
+        way_1 = way[0]
         if rcif_object.is_attribute(way_1):
             item_object = getattr(rcif_object, way_1)
             item = take_item(item_object, way[1:])
@@ -96,9 +125,9 @@ def form_way(tree_widget_item: QtWidgets.QTreeWidgetItem):
     parent_tree_widget_item = tree_widget_item.parent()
     if isinstance(parent_tree_widget_item, QtWidgets.QTreeWidgetItem):
         way = form_way(parent_tree_widget_item)
-        way_full = way + (name_item, ) 
+        way_full = way + (name_item,)
     else:
-        return (name_item, )
+        return (name_item,)
     return way_full
 
 
@@ -137,7 +166,6 @@ class OptionsWindow(QMainWindow):
         self.parent = parent
         widget_main = QtWidgets.QWidget(self)
 
-
         lay_hor = QtWidgets.QHBoxLayout()
         self.q_list = QtWidgets.QListWidget(widget_main)
         self.q_list.itemClicked.connect(self.item_clicked)
@@ -155,7 +183,7 @@ class OptionsWindow(QMainWindow):
         lay_buttons.addWidget(button_delete)
         lay_buttons.addStretch(1)
         lay_buttons.addWidget(button_template)
-        
+
         lay_hor.addLayout(lay_buttons)
 
         widget_main.setLayout(lay_hor)
@@ -163,15 +191,17 @@ class OptionsWindow(QMainWindow):
         self.setCentralWidget(widget_main)
 
         self.form_q_list()
-    
+
     def item_clicked(self, item: QtWidgets.QListWidgetItem):
         s_text = item.text()
         dir_name = os.path.dirname(s_text)
         if os.path.isdir(dir_name):
-             open_file_wm(dir_name)
+            open_file_wm(dir_name)
 
     def form_q_list(self):
-        l_names = sorted(self.parent.d_setup["file_names_for_external_functions"].split(";"))
+        l_names = sorted(
+            self.parent.d_setup["file_names_for_external_functions"].split(";")
+        )
         self.q_list.addItems(l_names)
 
     def add_function(self):
@@ -180,19 +210,36 @@ class OptionsWindow(QMainWindow):
             f_dir = self.parent.d_setup["data_dir_name"]
         else:
             f_dir = "."
-        
-        QtWidgets.QMessageBox.information(self, "Tips", 
-            "File name must not match any of the Python modules!\nThen reboot 'CrysPy editor' to use the added procedures.")
 
-        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(self,"Open file", f_dir,"Python Files (*.py);; All Files (*)")
+        QtWidgets.QMessageBox.information(
+            self,
+            "Tips",
+            "File name must not match any of the Python modules!\nThen reboot 'CrysPy editor' to use the added procedures.",
+        )
+
+        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Open file", f_dir, "Python Files (*.py);; All Files (*)"
+        )
         if ok:
-            if "file_names_for_external_functions" in self.parent.d_setup.keys():
-                if self.parent.d_setup["file_names_for_external_functions"] == "":
-                    self.parent.d_setup["file_names_for_external_functions"] = file_name
+            if (
+                "file_names_for_external_functions"
+                in self.parent.d_setup.keys()
+            ):
+                if (
+                    self.parent.d_setup["file_names_for_external_functions"]
+                    == ""
+                ):
+                    self.parent.d_setup[
+                        "file_names_for_external_functions"
+                    ] = file_name
                 else:
-                    self.parent.d_setup["file_names_for_external_functions"] += ";" + file_name
+                    self.parent.d_setup[
+                        "file_names_for_external_functions"
+                    ] += (";" + file_name)
             else:
-                self.parent.d_setup["file_names_for_external_functions"] = file_name
+                self.parent.d_setup["file_names_for_external_functions"] = (
+                    file_name
+                )
             self.q_list.addItem(file_name)
             numpy.save(self.parent.f_setup, self.parent.d_setup)
 
@@ -200,10 +247,16 @@ class OptionsWindow(QMainWindow):
         f_item = self.q_list.currentItem()
         try:
             f_delete = f_item.text()
-            l_names = self.parent.d_setup["file_names_for_external_functions"].split(";")
-            l_names_new = sorted([name for name in l_names if not(name.startswith(f_delete))])
+            l_names = self.parent.d_setup[
+                "file_names_for_external_functions"
+            ].split(";")
+            l_names_new = sorted(
+                [name for name in l_names if not (name.startswith(f_delete))]
+            )
             self.q_list.clear()
-            self.parent.d_setup["file_names_for_external_functions"] = ";".join(l_names_new)
+            self.parent.d_setup["file_names_for_external_functions"] = (
+                ";".join(l_names_new)
+            )
             numpy.save(self.parent.f_setup, self.parent.d_setup)
             self.q_list.addItems(l_names_new)
         except:
@@ -226,16 +279,20 @@ class CMainWindow(QMainWindow):
 
         self.dir_prog = os.path.dirname(__file__)
         self.d_setup = {
-            "data_file_name": os.path.join(self.dir_prog, ), "data_dir_name": self.dir_prog,
-            "file_names_for_external_functions": ""}
+            "data_file_name": os.path.join(
+                self.dir_prog,
+            ),
+            "data_dir_name": self.dir_prog,
+            "file_names_for_external_functions": "",
+        }
         self.f_setup = os.path.join(self.dir_prog, "setup.npy")
         if os.path.isfile(self.f_setup):
-            self.d_setup = numpy.load(self.f_setup, allow_pickle='TRUE').item()
+            self.d_setup = numpy.load(self.f_setup, allow_pickle="TRUE").item()
 
         self.functions_plot_data = []
         self.functions_plot_loop = []
         self.functions_plot_item = []
-        # Thread block        
+        # Thread block
         self.cthread = CThread(self)
         self.cthread.signal_start.connect(self.run_calculations)
         self.cthread.signal_end.connect(self.end_calculations)
@@ -244,13 +301,11 @@ class CMainWindow(QMainWindow):
         self.init_user_interface()
 
         self.show()
-        
 
         self.print_welcome()
         if "data_file_name" in self.d_setup.keys():
             self.take_rcif_object_from_d_setup()
             self.print_object_info()
-
 
     def write(self):
         try:
@@ -258,8 +313,11 @@ class CMainWindow(QMainWindow):
             # self.text_edit.setText(text)
 
             text = self.cthread.out_terminal.text_last
-            text_permanent = "\n".join(self.cthread.out_terminal.l_text_permanent)
-            self.text_edit.setText(text_permanent+"\n"+text)
+            text_permanent = "\n".join(
+                self.cthread.out_terminal.l_text_permanent
+            )
+            self.text_edit.setText(text_permanent + "\n" + text)
+            self.text_edit.upload_font_size()
             # if text.endswith("\r"):
             #     self.text_edit.rewrite_undo_last_line = True
             # elif text == "\n":
@@ -276,77 +334,102 @@ class CMainWindow(QMainWindow):
         options_window = OptionsWindow(self)
         options_window.show()
 
-    def run_calculations(self):# d_info: dict = None
+    def run_calculations(self):  # d_info: dict = None
+        current_widget = self.w_item_tabs.currentWidget()
+        if isinstance(current_widget, WEditCif):
+            current_widget.rewrite_item_by_printed_text()
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
-        self.text_edit.setStyleSheet("background-color:yellow;")
+        self.text_edit.upload_font_size()
+        if is_dark_mode():
+            self.text_edit.setStyleSheet("background-color:#521F13;")
+        else:
+            self.text_edit.setStyleSheet("background-color:yellow;")
+
         self.cthread.out_terminal.signal_refresh.connect(self.write)
 
-
-    def end_calculations(self): #output_data
-        self.text_edit.setStyleSheet("background-color:white;")
-        if not(self.cthread.out_terminal.out_terminal.closed):
+    def end_calculations(self):  # output_data
+        if is_dark_mode():
+            self.text_edit.setStyleSheet("background-color:black;")
+        else:
+            self.text_edit.setStyleSheet("background-color:white;")
+        if not (self.cthread.out_terminal.out_terminal.closed):
             self.write()
             self.cthread.out_terminal.close()
         self.renew_w_object_panel()
 
-
     def init_user_interface(self):
         self.location_on_the_screen()
-        dir_prog_icon = os.path.join(self.dir_prog, 'f_icon')
+        dir_prog_icon = os.path.join(self.dir_prog, "f_icon")
 
         self.menu_bar = self.menuBar()
         toolbar_1 = self.addToolBar("Actions")
 
         # Menu file
-        menu_file = self.menu_bar.addMenu('File')
+        menu_file = self.menu_bar.addMenu("File")
 
-        open_action = QAction(QtGui.QIcon(
-            os.path.join(dir_prog_icon, 'open.png')), '&Open', self)
-        open_action.setShortcut('Ctrl+O')
-        open_action.setStatusTip('Open file')
+        open_action = QAction(
+            QtGui.QIcon(os.path.join(dir_prog_icon, "open.png")), "&Open", self
+        )
+        open_action.setShortcut("Ctrl+O")
+        open_action.setStatusTip("Open file")
         open_action.triggered.connect(self.open_file)
         menu_file.addAction(open_action)
         toolbar_1.addAction(open_action)
 
-
-        save_action = QtWidgets.QAction(QtGui.QIcon(
-            os.path.join(dir_prog_icon, 'save.png')), '&Save', self)
-        save_action.setShortcut('Ctrl+S')
-        save_action.setStatusTip('Save')
+        save_action = QtWidgets.QAction(
+            QtGui.QIcon(os.path.join(dir_prog_icon, "save.png")), "&Save", self
+        )
+        save_action.setShortcut("Ctrl+S")
+        save_action.setStatusTip("Save")
         save_action.triggered.connect(self.save_file)
         menu_file.addAction(save_action)
         toolbar_1.addAction(save_action)
 
         save_as_action = QtWidgets.QAction(
-            QtGui.QIcon(os.path.join(dir_prog_icon, 'save_as.png')),
-            'Save &as...', self)
-        save_as_action.setStatusTip('Save as ...')
+            QtGui.QIcon(os.path.join(dir_prog_icon, "save_as.png")),
+            "Save &as...",
+            self,
+        )
+        save_as_action.setStatusTip("Save as ...")
         save_as_action.triggered.connect(self.save_file_as)
         menu_file.addAction(save_as_action)
         toolbar_1.addAction(save_as_action)
 
-        exit_button=QAction(QIcon(os.path.join(dir_prog_icon, 'exit24.png')), 'Exit', self)
-        exit_button.setShortcut('Ctrl+Q')
-        exit_button.setStatusTip('Exit application')
+        exit_button = QAction(
+            QIcon(os.path.join(dir_prog_icon, "exit24.png")), "Exit", self
+        )
+        exit_button.setShortcut("Ctrl+Q")
+        exit_button.setStatusTip("Exit application")
         exit_button.triggered.connect(self.close)
         menu_file.addAction(exit_button)
 
-
-        open_folder = QAction(QIcon(os.path.join(dir_prog_icon, 'open_folder.png')), 'Open folder', self)
-        open_folder.setStatusTip('Open folder')
-        open_folder.triggered.connect(lambda: open_file_wm(self.d_setup["data_dir_name"]))
+        open_folder = QAction(
+            QIcon(os.path.join(dir_prog_icon, "open_folder.png")),
+            "Open folder",
+            self,
+        )
+        open_folder.setStatusTip("Open folder")
+        open_folder.triggered.connect(
+            lambda: open_file_wm(self.d_setup["data_dir_name"])
+        )
         toolbar_1.addAction(open_folder)
 
-        refresh_view = QAction(QIcon(os.path.join(dir_prog_icon, 'refresh.png')), 'Refresh', self)
-        refresh_view.setStatusTip('Refresh')
+        refresh_view = QAction(
+            QIcon(os.path.join(dir_prog_icon, "refresh.png")), "Refresh", self
+        )
+        refresh_view.setStatusTip("Refresh")
         refresh_view.triggered.connect(self.refresh_view)
         toolbar_1.addAction(refresh_view)
 
         # Menu Options
-        menu_options = self.menu_bar.addMenu('Options')
+        menu_options = self.menu_bar.addMenu("Options")
         manual_site = menu_options.addAction("Manual (site)")
-        manual_site.triggered.connect(lambda x: open_file_wm(r"https://sites.google.com/view/cryspy/main"))
+        manual_site.triggered.connect(
+            lambda x: open_file_wm(
+                r"https://sites.google.com/view/cryspy/main"
+            )
+        )
 
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
@@ -358,13 +441,13 @@ class CMainWindow(QMainWindow):
         self.init_menu_cryspy()
 
         self.init_central_widget()
-        
 
     def display_about(self):
         QtWidgets.QMessageBox.information(
-            self, "About CrysPy",
-            f"Versions:\n CrysPy Editor - {cryspy_editor_version:} \n CrysPy library - {cryspy_version:}")
-
+            self,
+            "About CrysPy",
+            f"Versions:\n CrysPy Editor - {cryspy_editor_version:} \n CrysPy library - {cryspy_version:}",
+        )
 
     def refresh_view(self):
         self.text_edit.setText("")
@@ -372,7 +455,6 @@ class CMainWindow(QMainWindow):
         self.w_item_tabs.item_way_in_w_item_tabs = None
         self.renew_w_object_panel()
         self.print_object_info()
-
 
     def print_welcome(self):
         ls_text = ["*************************"]
@@ -384,40 +466,67 @@ class CMainWindow(QMainWindow):
         try:
             rcif_object = self.rcif_object
             variable_names = rcif_object.get_variable_names()
-            ls_text =[f"\nNumber of variables is {len(variable_names):}.\n"]
+            ls_text = [f"\nNumber of variables is {len(variable_names):}.\n"]
             if len(variable_names) > 0:
                 ls_text.append(f"   NAME                 VALUE      ERROR")
             for name in variable_names:
                 value = rcif_object.get_variable_by_name(name)
-                name_sigma = [name[ind] if ind<(len(name)-1) else (name[ind][0]+"_sigma", name[ind][1]) for ind in range(len(name))]
+                name_sigma = [
+                    (
+                        name[ind]
+                        if ind < (len(name) - 1)
+                        else (name[ind][0] + "_sigma", name[ind][1])
+                    )
+                    for ind in range(len(name))
+                ]
                 sigma = rcif_object.get_variable_by_name(name_sigma)
-                ls_text.append(f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}")
+                ls_text.append(
+                    f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}"
+                )
             self.text_edit.append("\n".join(ls_text))
         except:
             pass
 
     def init_menu_cryspy(self):
-        if not("file_names_for_external_functions" in self.d_setup.keys()):
+        if not ("file_names_for_external_functions" in self.d_setup.keys()):
             self.d_setup["file_names_for_external_functions"] = ""
-        l_f_name_external_not_checked = self.d_setup["file_names_for_external_functions"].split(";")
-        l_f_name_external = [f_name for f_name in l_f_name_external_not_checked if os.path.isfile(f_name)]
-        self.d_setup["file_names_for_external_functions"] = ";".join(l_f_name_external)
+        l_f_name_external_not_checked = self.d_setup[
+            "file_names_for_external_functions"
+        ].split(";")
+        l_f_name_external = [
+            f_name
+            for f_name in l_f_name_external_not_checked
+            if os.path.isfile(f_name)
+        ]
+        self.d_setup["file_names_for_external_functions"] = ";".join(
+            l_f_name_external
+        )
         numpy.save(self.f_setup, self.d_setup)
         l_func_external = get_external_functions(l_f_name_external)
 
-        self.functions_plot_data, self.functions_plot_loop, self.functions_plot_item = \
-            get_plot_functions_for_data_loop_item(l_func_external)
+        (
+            self.functions_plot_data,
+            self.functions_plot_loop,
+            self.functions_plot_item,
+        ) = get_plot_functions_for_data_loop_item(l_func_external)
 
         d_procedures = cryspy_procedures_to_dictionary(l_func_external)
-        
+
         for key, functions in sorted(d_procedures.items()):
             menu_cryspy = self.menu_bar.addMenu(key)
             menu_cryspy.setToolTipsVisible(True)
             for func in functions:
                 if key.lower().startswith(func.__name__.split("_")[0].lower()):
-                    func_name =  " ".join(func.__name__.split("_")[1:]).lower().strip().title()
+                    func_name = (
+                        " ".join(func.__name__.split("_")[1:])
+                        .lower()
+                        .strip()
+                        .title()
+                    )
                 else:
-                    func_name = func.__name__.replace("_", " ").lower().strip().title()
+                    func_name = (
+                        func.__name__.replace("_", " ").lower().strip().title()
+                    )
                 if check_function_to_auto_run(func):
                     func_name += " (autorun)"
                 f_action = QtWidgets.QAction(func_name, menu_cryspy)
@@ -425,7 +534,9 @@ class CMainWindow(QMainWindow):
                 if func.__doc__ is not None:
                     f_action.setToolTip(func.__doc__)
                     f_action.setStatusTip(func.__doc__.strip().split("\n")[0])
-                f_action.triggered.connect(lambda: self.object_to_procedure(self.press_procedure))
+                f_action.triggered.connect(
+                    lambda: self.object_to_procedure(self.press_procedure)
+                )
                 menu_cryspy.addAction(f_action)
 
     def object_to_procedure(self, procedure):
@@ -435,24 +546,29 @@ class CMainWindow(QMainWindow):
 
     # procedures which is sended to  local classes to have connection with whole object
     def press_procedure(self, procedure):
-        """Run procedure to performe procedure.
-        """
+        """Run procedure to performe procedure."""
         if check_function_to_auto_run(procedure):
             self.cthread.function = procedure
-            self.cthread.arguments = (self.rcif_object, )
+            self.cthread.arguments = (self.rcif_object,)
             self.cthread.start()
         else:
-            self.w_function.set_function(procedure, self.cthread, globaln=self.rcif_object)
-
+            self.w_function.set_function(
+                procedure, self.cthread, globaln=self.rcif_object
+            )
 
     def location_on_the_screen(self):
         """Location on the screen."""
         screen = QtWidgets.QDesktopWidget().screenGeometry()
-        self.setMinimumSize(int(screen.width() * 1 / 4), int(screen.height() * 1 / 4))
-        self.info_width = int(screen.width() * 8. / 10.)
-        self.info_height = int(screen.height() * 14. / 16.)
+        self.setMinimumSize(
+            int(screen.width() * 1 / 4), int(screen.height() * 1 / 4)
+        )
+        self.info_width = int(screen.width() * 8.0 / 10.0)
+        self.info_height = int(screen.height() * 14.0 / 16.0)
         self.move(int(screen.width() / 10), int(screen.height() / 20))
-        self.resize(int(screen.width() * 8. / 10.), int(screen.height() * 14. / 16.))
+        self.resize(
+            int(screen.width() * 8.0 / 10.0),
+            int(screen.height() * 14.0 / 16.0),
+        )
 
     def save_file(self):
         if "data_file_name" in self.d_setup.keys():
@@ -461,8 +577,9 @@ class CMainWindow(QMainWindow):
 
             with open(file_name, "w") as fid:
                 fid.write(rcif_object.to_cif())
-            numpy.save(self.f_setup, self.d_setup) 
-            
+            numpy.save(self.f_setup, self.d_setup)
+            os.chdir(os.path.dirname(file_name))
+
     def save_file_as(self):
         # Save
         if "data_dir_name" in self.d_setup.keys():
@@ -470,19 +587,30 @@ class CMainWindow(QMainWindow):
         else:
             f_dir = "."
 
-        file_name, ok = QtWidgets.QFileDialog.getSaveFileName(self, "Save file as ...", f_dir, "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)")
+        file_name, ok = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save file as ...",
+            f_dir,
+            "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
+        )
         if ok:
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
             self.save_file()
+            os.chdir(os.path.dirname(file_name))
 
     def open_file(self):
         # Load
         f_dir = self.d_setup["data_dir_name"]
-        if not(os.path.isdir(f_dir)):
+        if not (os.path.isdir(f_dir)):
             f_dir = "."
         # options = QtWidgets.QFileDialog.Options()
-        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(self,"Open file", f_dir,"RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)")
+        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Open file",
+            f_dir,
+            "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
+        )
         if ok:
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
@@ -491,45 +619,47 @@ class CMainWindow(QMainWindow):
             # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
             numpy.save(self.f_setup, self.d_setup)
             self.print_object_info()
-    
+            os.chdir(f_dir)
+
     def take_rcif_object_from_d_setup(self):
-        """Load object from d_setup.
-        """
+        """Load object from d_setup."""
         # self.text_edit.setText("")
         # self.print_welcome()
         # self.renew_file_data_from_d_setup()
         file_name = self.d_setup["data_file_name"]
         ls_out = []
         if os.path.isfile(file_name):
-            ls_out.append(f"Loading data from file '{os.path.basename(file_name)}'...")
+            ls_out.append(
+                f"Loading data from file '{os.path.basename(file_name)}'..."
+            )
             self.text_edit.append("\n".join(ls_out))
             try:
                 rcif_object = load_file(file_name)
                 self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+                os.chdir(os.path.dirname(file_name))
             except Exception as e:
-                ls_out.append(80*"*")
+                ls_out.append(80 * "*")
                 ls_out.append("ERROR during data opening")
                 ls_out.append(str(e))
-                ls_out.append(80*"*")
+                ls_out.append(80 * "*")
                 self.text_edit.append("\n".join(ls_out))
                 return
-            self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
+            self.setWindowTitle(
+                f"CrysPy Editor: {os.path.basename(file_name):}"
+            )
         else:
             rcif_object = GlobalN.make_container((), (), "global")
         self.rcif_object = rcif_object
         self.renew_w_object_panel()
 
-
     def renew_w_object_panel(self):
-        """Renew object_presentation.
-        """
+        """Renew object_presentation."""
         rcif_object = self.rcif_object
         dict_tree = form_dict_tree_for_rcif_object(rcif_object)
         self.w_object_panel.set_dict_tree(dict_tree)
 
         way_item = self.w_item_tabs.item_way_in_w_item_tabs
         self.renew_w_item_tabs(way_item)
-
 
     def renew_w_item_tabs(self, way_item):
         # print("id(self.rcif_object): ", id(self.rcif_object))
@@ -543,7 +673,7 @@ class CMainWindow(QMainWindow):
             if w_item_tabs.count() != 0:
                 tab_text = str(w_item_tabs.tabText(w_item_tabs.currentIndex()))
 
-            for ind_item in range(w_item_tabs.count()-1, -1, -1):
+            for ind_item in range(w_item_tabs.count() - 1, -1, -1):
                 w_item_tabs.removeTab(ind_item)
             plt.close()
             plt.close()
@@ -558,23 +688,55 @@ class CMainWindow(QMainWindow):
             print(f"Cannot find item for way {way_item:}")
             return
         # RCIF tab
-        if (isinstance(item, (LoopN, ItemN)) and not(isinstance(item, (Pd2dMeas, Pd2dProc, ChannelChi, ChannelPlusMinus)))):
+        if isinstance(item, (LoopN, ItemN)) and not (
+            isinstance(item, (Pd2dMeas, Pd2dProc, ChannelAni, ChannelCol))
+        ):
+            l_hh = []
+            s_info = ""
             if isinstance(item, ItemN):
                 s_item = item.to_cif(separator="_", flag_all_attributes=True)
+                try:
+                    prefix = item.PREFIX
+                    l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
+                    s_info = item.__doc__
+                except:
+                    pass
             else:
                 s_item = str(item)
-            w_edit_cif = WEditCif(s_item, self.rewrite_item_in_edit_cif, parent=w_item_tabs)
+                try:
+                    item_class = item.ITEM_CLASS
+                    if item_class == ItemN:
+                        l_hh = []
+                    else:
+                        prefix = item_class.PREFIX
+                        l_hh = [
+                            "loop_",
+                        ] + [f"_{prefix:}_{hh:}" for hh in item_class.ATTR_CIF]
+                    s_info = item.__doc__
+                except:
+                    pass
+            text_placeholder = "\n".join(l_hh)
+
+            w_edit_cif = WEditCif(
+                s_item,
+                self.rewrite_item_in_edit_cif,
+                parent=w_item_tabs,
+                text_placeholder=text_placeholder,
+                s_info=s_info,
+            )
             # w_edit_cif.setToolTip(item.__doc__)
-            w_item_tabs.addTab(w_edit_cif, "RCIF format") 
+            w_item_tabs.addTab(w_edit_cif, "RCIF format")
 
         # if isinstance(object_, LoopN):
         #     w_loop_items = WLoopItems(None, self.thread, self)
         #     w_loop_items.set_object(object_)
-        #     self.addTab(w_loop_items, "Items") 
+        #     self.addTab(w_loop_items, "Items")
 
         # Figure tab
         try:
-            l_fig_ax = ([fig_ax for fig_ax in item.plots() if fig_ax is not None])
+            l_fig_ax = [
+                fig_ax for fig_ax in item.plots() if fig_ax is not None
+            ]
         except Exception as e:
             l_fig_ax = []
             print("ERROR in obj.plots")
@@ -628,7 +790,7 @@ class CMainWindow(QMainWindow):
                 if len(s_text) > 20:
                     s_text = s_text[:20] + "..."
                 w_item_tabs.addTab(widget, s_text)
-            
+
         # Report tab
         try:
             report_html = item.report_html()
@@ -641,21 +803,30 @@ class CMainWindow(QMainWindow):
             w_plain_text = QtWidgets.QLabel(w_item_tabs)
             w_plain_text.setText(report_html)
             w_plain_text.setSizePolicy(
-                QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                      QtWidgets.QSizePolicy.Expanding))
+                QtWidgets.QSizePolicy(
+                    QtWidgets.QSizePolicy.Expanding,
+                    QtWidgets.QSizePolicy.Expanding,
+                )
+            )
             w_plain_text.setAlignment(QtCore.Qt.AlignTop)
             w_plain_text.setWordWrap(True)
-            w_plain_text.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            w_item_tabs.addTab(w_plain_text, "View") 
+            w_plain_text.setTextInteractionFlags(
+                QtCore.Qt.TextSelectableByMouse
+            )
+            w_item_tabs.addTab(w_plain_text, "View")
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
-                f"No graphs or other information for '{item.get_name():}'.")
+                f"No graphs or other information for '{item.get_name():}'."
+            )
+            # f"{item.__doc__:}")
             q_label.setSizePolicy(
-                QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                      QtWidgets.QSizePolicy.Expanding))
+                QtWidgets.QSizePolicy(
+                    QtWidgets.QSizePolicy.Expanding,
+                    QtWidgets.QSizePolicy.Expanding,
+                )
+            )
             w_item_tabs.addTab(q_label, "")
-
 
         # if tab_text == "Notes":
         #     self.setCurrentIndex(0)
@@ -682,22 +853,27 @@ class CMainWindow(QMainWindow):
         w_splitter = QtWidgets.QSplitter(widget_main)
 
         # Panel from left site
-        self.w_object_panel = WObjectPanel(self.item_clicked_on_w_object_panel, self.display_item_menu, self.item_to_rcif, parent=w_splitter)
+        self.w_object_panel = WObjectPanel(
+            self.item_clicked_on_w_object_panel,
+            self.display_item_menu,
+            self.item_to_rcif,
+            parent=w_splitter,
+        )
         w_splitter.addWidget(self.w_object_panel)
 
         self.w_item_tabs = QtWidgets.QTabWidget(w_splitter)
         self.w_item_tabs.item_way_in_w_item_tabs = None
         w_splitter.addWidget(self.w_item_tabs)
 
-        self.text_edit = QtWidgets.QTextEdit(w_splitter)
-        self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
-        self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
-        self.text_edit.setLineWrapColumnOrWidth(648)
+        self.text_edit = WTextEdit(w_splitter)  # QtWidgets.QTextEdit
+        # self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
+        # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
+        # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
         w_splitter.addWidget(self.text_edit)
 
-        width_m_1 = int(1 * self.info_width / 6.)
-        width_m_2 = int(3 * self.info_width / 6.)
+        width_m_1 = int(1 * self.info_width / 6.0)
+        width_m_2 = int(3 * self.info_width / 6.0)
         width_m_3 = int(self.info_width - (width_m_1 + width_m_2))
         w_splitter.setSizes([width_m_1, width_m_2, width_m_3])
 
@@ -716,34 +892,30 @@ class CMainWindow(QMainWindow):
         else:
             self.renew_w_object_panel()
 
-
-    def rewrite_item_in_edit_cif(self, text:str):
+    def rewrite_item_in_edit_cif(self, text: str):
         rcif_object = self.rcif_object
         way_item = self.w_item_tabs.item_way_in_w_item_tabs
         if way_item is not None:
             item = take_item(rcif_object, way_item)
             try:
-                
                 item_2 = item.from_cif(text)
-                if (item_2 is not None):
+                if item_2 is not None:
                     item.copy_from(item_2)
             except Exception as e:
-                # print("text: ", text)
-                # print("item: ", item, type(item))
-                # print(way_item)
-                # print(rcif_object.crystal_re2ti2o7.atom_berk)
                 ls_out = ["Item defined incorrectly: "]
                 ls_out.append(str(e))
                 self.text_edit.append("\n".join(ls_out))
         else:
             self.renew_w_object_panel()
 
-    @QtCore.pyqtSlot(QtCore.QPoint,)
+    @QtCore.pyqtSlot(
+        QtCore.QPoint,
+    )
     def display_item_menu(self, *argv):
         w_object_panel = self.sender()
         position = argv[0]
         tree_widget_item = w_object_panel.itemAt(position)
-        
+
         if tree_widget_item is None:
             way_item = ()
             item = self.rcif_object
@@ -754,68 +926,83 @@ class CMainWindow(QMainWindow):
             item = take_item(rcif_object, way_item)
             if item is None:
                 item = self.rcif_object
-        
-        menu = QtWidgets.QMenu(w_object_panel)
 
-        if ((type(item) is GlobalN) | (type(item) is DataN)):
+        menu = QtWidgets.QMenu(w_object_panel)
+        menu.setToolTipsVisible(True)
+
+        if (type(item) is GlobalN) | (type(item) is DataN):
 
             if type(item) is GlobalN:
                 menu_data = menu.addMenu("Add data block")
+                menu_data.setToolTipsVisible(True)
 
                 for cls_item in L_DATA_CLS:
                     prefix = cls_item.PREFIX
-                    add_item = QtWidgets.QAction(f'{prefix :}', menu_data)
+                    add_item = QtWidgets.QAction(f"{prefix :}", menu_data)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_data.addAction(add_item)
 
             menu_loop = menu.addMenu("Add loop block")
+            menu_loop.setToolTipsVisible(True)
             for cls_item in L_LOOP_CLS:
                 prefix = cls_item.ITEM_CLASS.PREFIX
-                add_item = QtWidgets.QAction(f'{prefix :}', menu_loop)
+                add_item = QtWidgets.QAction(f"{prefix :}", menu_loop)
                 add_item.cls_item = cls_item
                 add_item.way_item = way_item
+                add_item.setToolTip(cls_item.__doc__)
                 add_item.triggered.connect(self.add_item)
                 menu_loop.addAction(add_item)
 
             menu_item = menu.addMenu("Add item")
+            menu_item.setToolTipsVisible(True)
             for cls_item in L_ITEM_CLS:
                 prefix = cls_item.PREFIX
-                add_item = QtWidgets.QAction(f'{prefix :}', menu_item)
+                add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
                 add_item.cls_item = cls_item
                 add_item.way_item = way_item
+                add_item.setToolTip(cls_item.__doc__)
                 add_item.triggered.connect(self.add_item)
                 menu_item.addAction(add_item)
-            
+
         elif isinstance(item, (GlobalN, DataN)):
             menu_item = menu.addMenu("Add")
+            menu_item.setToolTipsVisible(True)
             for cls_item in item.CLASSES_MANDATORY:
-                if ((cls_item is not DataN) & (cls_item is not LoopN) &
-                    (cls_item is not ItemN)):
+                if (
+                    (cls_item is not DataN)
+                    & (cls_item is not LoopN)
+                    & (cls_item is not ItemN)
+                ):
                     if "PREFIX" in cls_item.__dict__.keys():
                         prefix = cls_item.PREFIX
                     else:
                         prefix = cls_item.ITEM_CLASS.PREFIX
-                    add_item = QtWidgets.QAction(f'{prefix:}', menu_item)
+                    add_item = QtWidgets.QAction(f"{prefix:}", menu_item)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
             menu_item.addSeparator()
             for cls_item in item.CLASSES_OPTIONAL:
-                if ((cls_item is not DataN) & (cls_item is not LoopN) &
-                        (cls_item is not ItemN)):
+                if (
+                    (cls_item is not DataN)
+                    & (cls_item is not LoopN)
+                    & (cls_item is not ItemN)
+                ):
                     if "PREFIX" in cls_item.__dict__.keys():
                         prefix = cls_item.PREFIX
                     else:
                         prefix = cls_item.ITEM_CLASS.PREFIX
-                    add_item = QtWidgets.QAction(f'{prefix :}', menu_item)
+                    add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
                     add_item.cls_item = cls_item
                     add_item.way_item = way_item
+                    add_item.setToolTip(cls_item.__doc__)
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
-
 
         if isinstance(item, (GlobalN, DataN, LoopN)):
             act_rename = QtWidgets.QAction("Rename", menu)
@@ -824,22 +1011,43 @@ class CMainWindow(QMainWindow):
             menu.addAction(act_rename)
 
         if isinstance(item, (DataN, LoopN, ItemN)):
-            del_item = QtWidgets.QAction('Delete', menu)
+            del_item = QtWidgets.QAction("Delete", menu)
             del_item.way_item = way_item
             del_item.triggered.connect(self.do_function)
             menu.addAction(del_item)
 
+        if isinstance(item, (GlobalN, DataN, LoopN, ItemN)):
+            act_copy_to_clipboard = QtWidgets.QAction(
+                "Copy to clipboard", menu
+            )
+            act_copy_to_clipboard.way_item = way_item
+            act_copy_to_clipboard.triggered.connect(self.do_function)
+            menu.addAction(act_copy_to_clipboard)
 
-        method_names = [_1 for _1, _2 in type(item).__dict__.items()
-                     if ((type(_2) == FunctionType) &
-                         (not(_1.startswith("_"))))]
+            act_paste_from_clipboard = QtWidgets.QAction(
+                "Paste from clipboard", menu
+            )
+            act_paste_from_clipboard.way_item = way_item
+            act_paste_from_clipboard.triggered.connect(self.do_function)
+            menu.addAction(act_paste_from_clipboard)
 
-        if len(method_names)!= 0:
+        method_names = [
+            _1
+            for _1, _2 in type(item).__dict__.items()
+            if ((type(_2) == FunctionType) & (not (_1.startswith("_"))))
+        ]
+
+        if len(method_names) != 0:
             menu_methods = menu.addMenu("Methods")
             for name in method_names:
                 func = getattr(item, name)
-                l_param = [_ for _ in func.__code__.co_varnames[
-                    :func.__code__.co_argcount] if _ != "self"]
+                l_param = [
+                    _
+                    for _ in func.__code__.co_varnames[
+                        : func.__code__.co_argcount
+                    ]
+                    if _ != "self"
+                ]
                 s_par = ""
                 if len(l_param) > 0:
                     s_par = ", ".join(l_param)
@@ -859,9 +1067,16 @@ class CMainWindow(QMainWindow):
         qaction.triggered.connect(self.do_function)
         menu.addAction(qaction)
 
+        act_info = QtWidgets.QAction("Info", menu)
+        act_info.way_item = way_item
+        act_info.triggered.connect(self.do_function)
+        menu.addAction(act_info)
+
         menu.exec_(w_object_panel.viewport().mapToGlobal(position))
 
-    @QtCore.pyqtSlot(bool,)
+    @QtCore.pyqtSlot(
+        bool,
+    )
     def do_function(self, *argv):
         sender = self.sender()
         name = sender.text()
@@ -870,7 +1085,14 @@ class CMainWindow(QMainWindow):
             name = "refine_all_variables"
         elif name == "Fix all variables":
             name = "fix_variables"
-        elif (name in ["Delete", "Rename"]):
+        elif name == "Info":
+            flag_do = False
+        elif name in [
+            "Delete",
+            "Rename",
+            "Copy to clipboard",
+            "Paste from clipboard",
+        ]:
             flag_do = False
 
         if flag_do:
@@ -892,8 +1114,10 @@ class CMainWindow(QMainWindow):
                     if way_parent_item == ():
                         parent_item = self.rcif_object
                     else:
-                        parent_item = take_item(self.rcif_object, way_parent_item)
-                    if ((parent_item is not None) and (item is not None)):
+                        parent_item = take_item(
+                            self.rcif_object, way_parent_item
+                        )
+                    if (parent_item is not None) and (item is not None):
                         if "items" in dir(parent_item):
                             if item in parent_item.items:
                                 parent_item.items.remove(item)
@@ -907,7 +1131,10 @@ class CMainWindow(QMainWindow):
 
                 if item is not None:
                     text, ok = QtWidgets.QInputDialog.getText(
-                        self, f"Input dialog {item.get_name():}", "Enter the new name")
+                        self,
+                        f"Input dialog {item.get_name():}",
+                        "Enter the new name",
+                    )
                     if ok:
                         new_name = "".join(text.split())
                         if isinstance(item, GlobalN):
@@ -917,16 +1144,54 @@ class CMainWindow(QMainWindow):
                         elif isinstance(item, LoopN):
                             item.loop_name = new_name
                         self.renew_w_object_panel()
+            elif name == "Info":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if item is not None:
+                    info_text = (
+                        type(item).__doc__
+                        or "No documentation available for this item class."
+                    )
+                    self.text_edit.setText(info_text)
+            elif name == "Copy to clipboard":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if not item is None:
+                    s_text = item.to_cif()
+
+                    cb = QtWidgets.QApplication.clipboard()
+                    cb.clear(mode=cb.Clipboard)
+                    cb.setText(s_text, mode=cb.Clipboard)
+            elif name == "Paste from clipboard":
+                way_item = sender.way_item
+                if way_item == ():
+                    item = self.rcif_object
+                else:
+                    item = take_item(self.rcif_object, way_item)
+                if not item is None:
+                    cb = QtWidgets.QApplication.clipboard()
+                    s_text = cb.text()
+                    globaln = str_to_globaln(s_text)
+                    self.rcif_object.add_items(globaln.items)
+                    self.renew_w_object_panel()
 
     def item_to_rcif(self, tree_widget_item: QtWidgets.QTreeWidgetItem):
         rcif_object = self.rcif_object
+        if tree_widget_item is None:
+            return ""
         way_item = form_way(tree_widget_item)
         item = take_item(rcif_object, way_item)
         return item.to_cif()
 
-
-
-    @QtCore.pyqtSlot(bool,)
+    @QtCore.pyqtSlot(
+        bool,
+    )
     def add_item(self, *argv) -> NoReturn:
         """Add object."""
         sender = self.sender()
@@ -934,15 +1199,20 @@ class CMainWindow(QMainWindow):
         if way_item == ():
             item = self.rcif_object
         else:
-            item = take_item(self.rcif_object, way_item)        
+            item = take_item(self.rcif_object, way_item)
         if item is not None:
             new_item = sender.cls_item()
-        
-            if ((type(item) is DataN) | (type(item) is GlobalN)):
+            if isinstance(new_item, DataN):
+                s_name = "".join(
+                    random.choices(string.ascii_letters, k=4)
+                ).lower()
+                new_item.data_name = s_name
+            if (type(item) is DataN) | (type(item) is GlobalN):
                 item_cls = set([type(item) for item in item.items])
                 if type(new_item) not in item_cls:
-                    item.CLASSES_OPTIONAL = tuple(list(item.CLASSES_OPTIONAL) +
-                                                 [type(new_item)])
+                    item.CLASSES_OPTIONAL = tuple(
+                        list(item.CLASSES_OPTIONAL) + [type(new_item)]
+                    )
                     item.CLASSES = tuple(list(item.CLASSES) + [type(new_item)])
             item.add_items([new_item])
             self.renew_w_object_panel()
