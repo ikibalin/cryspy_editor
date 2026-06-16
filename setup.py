@@ -67,5 +67,10 @@ setup(
     ],
     include_package_data=True,
     packages=find_packages(),  # same as name
-    install_requires=["cryspy >= 0.10.0", "pyqt5"],
+    install_requires=["cryspy >= 0.10.0", "pyqt5>=5.15"],
+    entry_points={
+        "console_scripts": [
+        "cryspy-editor = cryspy_editor.__main__:main",
+        ]
+        }
 )
