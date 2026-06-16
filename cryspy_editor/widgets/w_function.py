@@ -153,7 +153,7 @@ class WFunction(QtWidgets.QFrame):
             if isinstance(w_arg, DropLabel):
                 s_text = w_arg.text()
                 try:
-                    float(s_text)
+                    numpy.array(eval(s_text), dtype=float)
                     w_arg.convert_to_object()
                 except:
                     pass
