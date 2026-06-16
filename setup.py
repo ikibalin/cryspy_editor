@@ -34,6 +34,7 @@
 import os
 import os.path
 from setuptools import setup, find_packages
+from cryspy_editor.__version__ import __version__
 
 # f_name = os.path.join(os.path.dirname(__file__), "readme.rst")
 # with open(f_name, 'r') as f:
@@ -42,7 +43,7 @@ long_description = ""
 
 setup(
     name="cryspy_editor",
-    version="1.9.5",
+    version=__version__,
     description="Editor of CRYSPY files",
     long_description=long_description,
     author="Iurii Kibalin",

@@ -3,9 +3,9 @@ CrysPyEditor
 ======
 
 """
-
+from .__version__ import __version__
 name = "cryspy_editor"
-__version__ = "1.9.5"
+
 
 from cryspy_editor.__main__ import main
 
