@@ -129,15 +129,15 @@ def redefine_inline_parameters(d_np_table):
             d_np_table[" inline_names"].index(s_name)
         )
         l_name = [
-            "UB_11",
-            "UB_12",
-            "UB_13",
-            "UB_21",
-            "UB_22",
-            "UB_23",
-            "UB_31",
-            "UB_32",
-            "UB_33",
+            "_diffrn_orient_matrix_ub_11",
+            "_diffrn_orient_matrix_ub_12",
+            "_diffrn_orient_matrix_ub_13",
+            "_diffrn_orient_matrix_ub_21",
+            "_diffrn_orient_matrix_ub_22",
+            "_diffrn_orient_matrix_ub_23",
+            "_diffrn_orient_matrix_ub_31",
+            "_diffrn_orient_matrix_ub_32",
+            "_diffrn_orient_matrix_ub_33",
         ]
         if len(val) >= 9:
             for i_name, name in enumerate(l_name):

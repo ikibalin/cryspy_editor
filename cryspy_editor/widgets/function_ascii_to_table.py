@@ -50,6 +50,7 @@ def take_comment_inline_table_lines(l_line: list[str]):
     l_comment = []
     l_inline = []
     l_expression = []
+    ll_table = []
     l_table = []
     ind_miss_until = -1
     S_COMMENT = ui_setting.get_comment_character()
@@ -63,7 +64,11 @@ def take_comment_inline_table_lines(l_line: list[str]):
             l_comment.append(S_COMMENT + S_COMMENT.join(l_h_line[1:]))
         h_line = l_h_line[0]#.replace("==", "=") #.replace("=",":")
 
-        if h_line == '':
+        if h_line == '' and len(l_table) != 0:
+            ll_table.append(l_table)
+            l_table = []
+            continue
+        elif  h_line == '':
             continue
 
 
@@ -100,8 +105,12 @@ def take_comment_inline_table_lines(l_line: list[str]):
             l_inline.append(h_line)
         elif flag_table:
             l_table.append(h_line)
-        
-    return l_comment, l_inline, l_expression, l_table
+
+        if i_line == len(l_line)-1 and len(l_table)!=0:
+            ll_table.append(l_table)
+            l_table = []
+
+    return l_comment, l_inline, l_expression, ll_table
 
 def upload_d_np_table_by_l_inline(d_np_table: dict, l_inline: list[str]):
     d_np_table[" inline_names"] = []
@@ -131,13 +140,20 @@ def transform_table_head_to_names_commands(l_table_head: list[str]):
     return l_table_name, l_table_commands
         
 
-def upload_d_np_table_by_l_table(d_np_table: dict, l_table: list[str]):
+def upload_d_np_table_by_ll_table(d_np_table: dict, ll_table: list[list[str]]):
     d_np_table[" table_names"] = []
     d_np_table[" table_commands"] = []
     d_np_table[" table_colors"] = []
 
+    if len(ll_table) == 0:
+        return
+    l_table = ll_table[0]
+    for h_table in ll_table[1:]:
+        l_table = [f"{hh1:} {hh2:}" for hh1, hh2 in zip(l_table, h_table)]
+    
     if len(l_table) == 0:
         return
+        
     # head of the table
     l_val = transform_string_to_vals(l_table[0])
     n_table = len(l_val)
@@ -184,6 +200,14 @@ def upload_d_np_table_by_l_table(d_np_table: dict, l_table: list[str]):
 
     for val_head, l_val, dtype  in zip(l_table_name, ll_val, l_common_type):
         d_np_table[val_head] = numpy.array(l_val, dtype=dtype)
+    l_remove_ind = []
+    for i_table_name, name in enumerate(d_np_table[' table_names']):
+        if name in  d_np_table[' table_names'][i_table_name+1:]:
+            l_remove_ind.append(i_table_name)
+    l_remove_ind.reverse()
+    for index in l_remove_ind:
+        d_np_table[' table_names'].pop(index)
+        d_np_table[' table_commands'].pop(index)
     return
 
 def guess_l_table_name(l_type, file:str=""):
@@ -205,7 +229,7 @@ def guess_l_table_name(l_type, file:str=""):
 
 def transform_lines_to_d_np_table(l_line: list[str]) -> dict:
 
-    l_comment, l_inline, l_expression, l_table = take_comment_inline_table_lines(l_line)
+    l_comment, l_inline, l_expression, ll_table = take_comment_inline_table_lines(l_line)
 
     D_NP_TABLE = {" comments": l_comment}
 
@@ -213,6 +237,6 @@ def transform_lines_to_d_np_table(l_line: list[str]) -> dict:
 
     upload_d_np_table_by_l_expression(D_NP_TABLE, l_expression)
 
-    upload_d_np_table_by_l_table(D_NP_TABLE, l_table)
+    upload_d_np_table_by_ll_table(D_NP_TABLE, ll_table)
     
     return D_NP_TABLE

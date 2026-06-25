@@ -828,15 +828,15 @@ def procedure_convert_to_int_format(s_line: str, d_np_table: dict):
 def calc_unit_cell_by_ub(d_np_table):
     l_necessary_inline = ["a", "b", "c", "alpha", "beta", "gamma"]
     l_necessary_inline_2 = [
-        "UB_11",
-        "UB_12",
-        "UB_13",
-        "UB_21",
-        "UB_22",
-        "UB_23",
-        "UB_31",
-        "UB_32",
-        "UB_33",
+        "_diffrn_orient_matrix_ub_11",
+        "_diffrn_orient_matrix_ub_12",
+        "_diffrn_orient_matrix_ub_13",
+        "_diffrn_orient_matrix_ub_21",
+        "_diffrn_orient_matrix_ub_22",
+        "_diffrn_orient_matrix_ub_23",
+        "_diffrn_orient_matrix_ub_31",
+        "_diffrn_orient_matrix_ub_32",
+        "_diffrn_orient_matrix_ub_33",
     ]
     flag_inline_2 = all(
         [name in d_np_table[" inline_names"] for name in l_necessary_inline_2]
@@ -848,7 +848,7 @@ def calc_unit_cell_by_ub(d_np_table):
         )
     else:
         m_ub = numpy.array(
-            [float(d_np_table[name]) for name in l_necessary_inline_2],
+            [float(numpy.array(d_np_table[name],dtype=float).squeeze()) for name in l_necessary_inline_2],
             dtype=float,
         )
         unit_cell_parameters, m_u = calc_unit_cell_parameters_and_u_by_ub(m_ub)
@@ -859,7 +859,7 @@ def calc_unit_cell_by_ub(d_np_table):
         ]
         if i_name in [3, 4, 5]:
             d_np_table[name] = [
-                float(numpy.degrees(d_np_table[name])),
+                float(numpy.degrees(numpy.array(d_np_table[name],dtype=float).squeeze())),
             ]
     return
 
