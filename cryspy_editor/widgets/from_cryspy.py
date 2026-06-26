@@ -44,9 +44,9 @@ def calc_inv_d_by_unit_cell_parameters(index_hkl, unit_cell_parameters):
 
 def calc_index_hkl_in_range(sthovl_min, sthovl_max, unit_cell_parameters):
     a, b, c = unit_cell_parameters[0], unit_cell_parameters[1], unit_cell_parameters[2]
-    h_max = int(2.*a*sthovl_max)
-    k_max = int(2.*b*sthovl_max)
-    l_max = int(2.*c*sthovl_max)
+    h_max = int((2.*a*sthovl_max).squeeze())
+    k_max = int((2.*b*sthovl_max).squeeze())
+    l_max = int((2.*c*sthovl_max).squeeze())
     
     index_h = numpy.arange(-h_max, h_max+1, 1, dtype=int)
     index_k = numpy.arange(-k_max, k_max+1, 1, dtype=int)
