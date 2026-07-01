@@ -148,6 +148,11 @@ class WTextEdit(QtWidgets.QTextEdit):
             completion = self.completer.currentCompletion()
             if completion:
                 self.insertCompletion(completion)
+            self.completer.popup().hide()
+            self.completer.popup().close()
+            self.completer.setCompletionPrefix("")
+            self.completer.popup().setCurrentIndex(QtCore.QModelIndex())
+            event.accept()
             return
         elif (
             event.key() == QtCore.Qt.Key_Z
