@@ -37,6 +37,11 @@ WORDS = [
     "H K L ",
     "calc sthovl",
     "calc 2Theta",
+     "Asym = (fr -1)/(fr+1)",
+     "Asym_sigma = fr_sigma / (fr+1) * sqrt(1+Asym**2)",
+     "Asym_calc = (fr_calc -1)/(fr_calc+1)",
+     "chi_sq_per_n = mean(((y_exp-y_mod)/sy)**2)",
+     "r_factor = 100*sum(abs(y_exp-y_mod))/sum(y_exp)",
 ]
 WORDS.extend(L_ACTION_NAME)
 
