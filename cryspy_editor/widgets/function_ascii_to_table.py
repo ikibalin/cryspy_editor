@@ -140,19 +140,112 @@ def transform_table_head_to_names_commands(l_table_head: list[str]):
     return l_table_name, l_table_commands
         
 
-def upload_d_np_table_by_ll_table(d_np_table: dict, ll_table: list[list[str]]):
-    d_np_table[" table_names"] = []
-    d_np_table[" table_commands"] = []
-    d_np_table[" table_colors"] = []
 
-    if len(ll_table) == 0:
-        return
-    l_table = ll_table[0]
-    for h_table in ll_table[1:]:
-        l_table = [f"{hh1:} {hh2:}" for hh1, hh2 in zip(l_table, h_table)]
-    
+def reduce_bool_matrix(A):
+    A = numpy.asarray(A, dtype=bool)
+    n_rows, n_cols = A.shape
+
+    # Step 1: one True per row
+    B = numpy.zeros_like(A)
+    for i in range(n_rows):
+        row = A[i]
+        true_positions = numpy.where(row)[0]
+        if len(true_positions) > 0:
+            ind = numpy.argmin(numpy.square(true_positions-i))
+            j = true_positions[ind]   # pick closest to i
+            B[i, j] = True
+
+    # Step 2: enforce one True per column
+    for j in range(n_cols):
+        col = numpy.where(B[:, j])[0]
+        if len(col) > 1:
+            ind = numpy.argmin(numpy.square(col-j))
+            # keep only the first True
+            B[col, j] = False
+            B[col[ind], j] = True
+
+    return B
+
+def merge_dicts(d1: dict, d2: dict):
+    l_special_key = [' table_names', ' table_commands', ' table_colors']
+    table_names_1 = d1.pop(l_special_key[0])
+    table_commands_1 = d1.pop(l_special_key[1])
+    table_colors_1 = d1.pop(l_special_key[2])
+
+    table_names_2 = d2.pop(l_special_key[0])
+    table_commands_2 = d2.pop(l_special_key[1])
+    table_colors_2 = d2.pop(l_special_key[2])
+
+    merged = {}
+
+    keys1 = set(d1.keys())
+    keys2 = set(d2.keys())
+
+    common_keys = keys1 & keys2
+    unique_keys_1 = keys1 - keys2
+    unique_keys_2 = keys2 - keys1
+
+    # Lengths of dictionaries
+    n1 = len(next(iter(d1.values())))
+    n2 = len(next(iter(d2.values())))
+    L = min(n1, n2)  # overlap length
+
+    # Case 1: There are common keys
+    if common_keys:
+        # Start with mask of all True over overlap region
+        mask_2d = numpy.ones(shape=(n1,n2), dtype=bool)
+        # mask = numpy.ones(L, dtype=bool)
+
+        # Build combined mask from all common keys
+        for key in common_keys:
+            arr1 = numpy.asarray(d1[key])
+            arr2 = numpy.asarray(d2[key])
+            mask_2d &= (numpy.expand_dims(arr1,axis=1) == numpy.expand_dims(arr2, axis=0))
+        mask_2d = reduce_bool_matrix(mask_2d)
+        
+        # mask_n1 = numpy.any(mask_2d,axis=1)
+        ind_1, ind_2 = numpy.where(mask_2d)
+        # mask_n2 = numpy.any(mask_2d,axis=0)
+
+        # Apply mask to common keys
+        for key in common_keys:
+            merged[key] = numpy.asarray(d1[key])[ind_1]
+
+        # Apply mask to unique keys from d1
+        for key in unique_keys_1:
+            merged[key] = numpy.asarray(d1[key])[ind_1]
+
+        # Apply mask to unique keys from d2
+        for key in unique_keys_2:
+            merged[key] = numpy.asarray(d2[key])[ind_2]
+        merged[l_special_key[0]] = list(common_keys) + list(unique_keys_1)+ list(unique_keys_2)
+        merged[l_special_key[1]] = ["",]*len(merged[l_special_key[0]])
+        if len(table_colors_1) != 0:
+            merged[l_special_key[2]] = table_colors_1
+        elif len(table_colors_2) != 0:
+            merged[l_special_key[2]] = table_colors_1
+        else:
+            merged[l_special_key[2]] = []
+
+    else:
+        # Case 2: No common keys → truncate all arrays to overlap length
+        for key in keys1:
+            merged[key] = numpy.asarray(d1[key])[:L]
+        for key in keys2:
+            merged[key] = numpy.asarray(d2[key])[:L]
+        merged[l_special_key[0]] = table_names_1+table_names_2
+        merged[l_special_key[1]] = table_commands_1+table_commands_2
+        if len(table_colors_1)!=0:
+            merged[l_special_key[2]] = table_colors_1
+        else:
+            merged[l_special_key[2]] = table_colors_2
+    return merged
+
+
+def transform_l_table_to_dict(l_table: list[str]):
+    d_np_table = {" table_names":[], " table_commands":[]}
     if len(l_table) == 0:
-        return
+        return d_np_table
         
     # head of the table
     l_val = transform_string_to_vals(l_table[0])
@@ -169,9 +262,11 @@ def upload_d_np_table_by_ll_table(d_np_table: dict, ll_table: list[list[str]]):
     l_table_name = [transform_name_to_table_name(val) for val in l_table_name]
     d_np_table[" table_names"] = l_table_name
     d_np_table[" table_commands"] = l_table_commands
+    d_np_table[" table_colors"] = []
 
     for table_name in l_table_name:
         d_np_table[table_name] = numpy.array([], dtype=float)
+    
     num_head = len(l_table_name)
     index_first_data = int(flag_head)
 
@@ -208,6 +303,22 @@ def upload_d_np_table_by_ll_table(d_np_table: dict, ll_table: list[list[str]]):
     for index in l_remove_ind:
         d_np_table[' table_names'].pop(index)
         d_np_table[' table_commands'].pop(index)
+    return d_np_table
+
+def upload_d_np_table_by_ll_table(d_np_table: dict, ll_table: list[list[str]]):
+    d_np_table[" table_names"] = []
+    d_np_table[" table_commands"] = []
+    d_np_table[" table_colors"] = []
+
+    if len(ll_table) == 0:
+        return
+    l_table = ll_table[0]
+    d1 = transform_l_table_to_dict(l_table)
+    for h_table in ll_table[1:]:
+        d2 = transform_l_table_to_dict(h_table)
+        d1 = merge_dicts(d1, d2)
+        # l_table = [f"{hh1:} {hh2:}" for hh1, hh2 in zip(l_table, h_table)]
+    d_np_table.update(d1)    
     return
 
 def guess_l_table_name(l_type, file:str=""):
