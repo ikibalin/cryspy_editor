@@ -1012,6 +1012,28 @@ def check_cubic(np_hkl_1, np_hkl_2):
     return (np_hkl_1[0], np_hkl_1[1], np_hkl_1[2]) in l_hkl
 
 
+def evaluate_expression(expr: str, values: dict):
+    """
+    Evaluate an expression like 'a=(y1-1)/(y2+1)' using variables from `values`.
+    Returns ('a', computed_value).
+    """
+    # Split into variable name and expression
+    var_name, rhs = expr.split("=", 1)
+    var_name = var_name.strip()
+    rhs = rhs.strip()
+
+    # Safe evaluation environment
+    allowed_names = dict(values)  # y1, y2, etc.
+    
+    # Add math functions if needed
+    import numpy
+    allowed_names.update({k: getattr(numpy, k) for k in dir(numpy) if not k.startswith("_")})
+
+    # Evaluate the expression
+    value = eval(rhs, {"__builtins__": {}}, allowed_names)
+
+    return var_name, value
+
 def estimate_expression(s_expression: str, d_np_table: dict):
     flag = True
     l_val_sum = []

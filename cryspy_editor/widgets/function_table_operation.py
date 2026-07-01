@@ -5,6 +5,7 @@ from cryspy_editor.widgets.procedures import (
     procedure_column_del,
     L_OPERATION,
     estimate_expression,
+    evaluate_expression,
     procedure_column_sort,
     procedure_column_general,
     procedure_calc,
@@ -207,20 +208,29 @@ def redefine_inline_parameters(d_np_table):
             continue
         l_hh = expression_name.split("=")
         s_name_left = l_hh[0].strip()
-        s_func_right = l_hh[1].strip()
-        val, flag = estimate_expression(s_func_right, d_np_table)
-        if not flag:
-            continue
-        l_name_table = d_np_table[" table_names"]
-        l_name_table_lower = [_.lower() for _ in l_name_table]
-        if s_name_left.lower() in l_name_table_lower:
+        s_name_left, val = evaluate_expression(expression_name, d_np_table)
+        flag_iter = False
+        if hasattr(val, '__iter__'):
+            l_name = d_np_table[" table_names"]
+        
+            flag_iter = True
+        else:
+            l_name = d_np_table[" inline_names"]
+        if not flag_iter:
+            val = [val,]
+        l_name_lower = [_.lower() for _ in l_name]
+            
+        if s_name_left.lower() in l_name_lower:
             d_np_table[
-                l_name_table[l_name_table_lower.index(s_name_left.lower())]
+                l_name[l_name.index(s_name_left.lower())]
             ] = val
         else:
             d_np_table[s_name_left] = val
-            d_np_table[" table_names"].append(s_name_left)
-            d_np_table[" table_commands"].append("")
+            if flag_iter:
+                d_np_table[" table_names"].append(s_name_left)
+                d_np_table[" table_commands"].append("")
+            else:
+                d_np_table[" inline_names"].append(s_name_left)
 
     # operations with defined functions
     n_row = 0
