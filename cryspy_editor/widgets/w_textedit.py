@@ -121,6 +121,15 @@ class WTextEdit(QtWidgets.QTextEdit):
         cursor.select(cursor.WordUnderCursor)
         return cursor.selectedText()
 
+    def has_symbol_after_cursor(self):
+        cursor = self.textCursor()
+        pos = cursor.position()
+        if pos >= self.document().characterCount():
+            return False
+
+        ch = self.document().characterAt(pos)
+        return bool(ch) and not ch.isspace()
+
     def show_replace_dialog(self):
         cursor = self.te_table.textCursor()
         s_val = cursor.selectedText().split("\u2029")[0].strip()
@@ -161,6 +170,12 @@ class WTextEdit(QtWidgets.QTextEdit):
             self.back_in_history()
         else:
             super().keyPressEvent(event)
+
+        if self.has_symbol_after_cursor():
+            self.completer.setCompletionPrefix("")
+            self.completer.popup().hide()
+            return
+
         completion_prefix = self.textUnderCursor()
         if len(completion_prefix) < 1:
             self.completer.popup().hide()
