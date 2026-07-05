@@ -42,7 +42,7 @@ from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
 from cryspy_editor.widgets.w_textedit import WTextEdit
-from cryspy_editor.widgets.matplotlib import Graph
+from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
     cryspy_procedures_to_dictionary,
     check_function_to_auto_run,
@@ -50,6 +50,11 @@ from cryspy_editor.widgets.cryspy_objects import (
     get_plot_functions_for_data_loop_item,
     check_function_reserved_for_cryspy_editor,
 )
+try:
+    from cryspy_editor.widgets.llm_panel import LLMPanel
+    flag_llm = True
+except:
+    flag_llm = False
 
 from cryspy_editor.cl_thread import CThread
 
@@ -870,7 +875,16 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
-        w_splitter.addWidget(self.text_edit)
+        if flag_llm:
+            self.llm_panel = LLMPanel(take_cryspy_obj=self.take_rcif_object, model_path=f"../llm_models/Llama-3-8B-Instruct-GGUF-Q4_K_M.gguf", output_text_editor=self.text_edit, parent=self)
+            layout_right_side = QtWidgets.QVBoxLayout()
+            layout_right_side.addWidget(self.text_edit)
+            layout_right_side.addWidget(self.llm_panel)
+            widget_right_side = QtWidgets.QWidget(self)
+            widget_right_side.setLayout(layout_right_side)
+            w_splitter.addWidget(widget_right_side)
+        else:
+            w_splitter.addWidget(self.text_edit)
 
         width_m_1 = int(1 * self.info_width / 6.0)
         width_m_2 = int(3 * self.info_width / 6.0)
@@ -880,6 +894,9 @@ class CMainWindow(QMainWindow):
         layout_main.addWidget(w_splitter)
         widget_main.setLayout(layout_main)
         self.setCentralWidget(widget_main)
+
+    def take_rcif_object(self):
+        return self.rcif_object
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
     def item_clicked_on_w_object_panel(self, *argv):
