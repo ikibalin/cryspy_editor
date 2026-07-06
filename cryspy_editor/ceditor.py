@@ -875,8 +875,10 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
-        if flag_llm:
-            self.llm_panel = LLMPanel(take_cryspy_obj=self.take_rcif_object, model_path=f"../llm_models/Llama-3-8B-Instruct-GGUF-Q4_K_M.gguf", output_text_editor=self.text_edit, parent=self)
+
+        model_path = os.path.join(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),'llm_models'), "Llama-3-8B-Instruct-GGUF-Q4_K_M.gguf")
+        if flag_llm and os.path.isfile(model_path):
+            self.llm_panel = LLMPanel(take_cryspy_obj=self.take_rcif_object, model_path=model_path, output_text_editor=self.text_edit, parent=self)
             layout_right_side = QtWidgets.QVBoxLayout()
             layout_right_side.addWidget(self.text_edit)
             layout_right_side.addWidget(self.llm_panel)
