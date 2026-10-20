@@ -19,10 +19,16 @@ moved there at the first start.
 
 ## AI assistant (optional)
 
-CrysPy Editor can use a local language model to answer questions and run
-simple actions on the opened file (refine, calculate, fix all parameters,
-show refined parameters, show the model). The model runs on your computer;
-nothing is sent to the internet.
+CrysPy Editor can use a local language model to answer questions and work
+on the opened file. The model runs on your computer; nothing is sent to the
+internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
+lookup, list / refine / fix / set parameters by their paths, calculate,
+refine, show the model, add an atom, run CrysPy procedures. Questions such as
+"how to describe multipoles?" or "what should be used for thermal
+vibrations?" are answered from the help pages of CrysPy, which are shown in
+the answer. The same help is in **Options → CrysPy help...** (F1) without a
+model. The tools and the help need a CrysPy version that has
+`cryspy.call_assistant_tool`.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`
    (or `pip install llama-cpp-python`).

@@ -64,46 +64,99 @@ def test_take_json_object():
     assert take_json_object("no json") is None
 
 
-def test_answer_without_action():
-    llm = make_llm([json.dumps({"action": "none", "answer": "Bragg law"})])
+def reply(tool="none", answer="", **arguments):
+    return json.dumps({"tool": tool, "arguments": arguments, "answer": answer})
+
+
+def test_answer_without_tool():
+    llm = make_llm([reply(answer="Bragg law")])
     result = llm.answer("What is Bragg law?", None)
     assert result["text"] == "Bragg law"
     assert result["flag_object_changed"] is False
     assert len(llm.history) == 2
 
 
-def test_unknown_action_is_none():
-    llm = make_llm([json.dumps({"action": "rm -rf", "answer": "no"})])
-    assert llm.answer("delete", None)["action"] == "none"
-
-
 def test_invalid_json_is_answer():
     llm = make_llm(["plain text"])
     result = llm.answer("hello", None)
-    assert result["action"] == "none"
+    assert result["tools"] == []
     assert result["text"] == "plain text"
 
 
-def test_action_without_object():
-    llm = make_llm([json.dumps({"action": "show_model", "answer": ""})])
-    assert "Open a file first" in llm.answer("show", None)["text"]
+def test_old_action_key_is_accepted():
+    llm = make_llm([json.dumps({"action": "none", "answer": "ok"})])
+    assert llm.answer("hi", None)["text"] == "ok"
 
 
-def test_show_and_fix_parameters():
+needs_tools = pytest.mark.skipif(
+    not llm_local.flag_cryspy_tools,
+    reason="installed CrysPy has no assistant tools")
+
+
+@needs_tools
+def test_unknown_tool_is_reported_to_model():
+    llm = make_llm([reply("rm_rf"), reply(answer="Sorry.")])
+    result = llm.answer("delete", None)
+    assert "unknown tool" in result["text"]
+    # the error went back to the model as the result of the call
+    assert "unknown tool" in llm.llm.l_messages[-1][-1]["content"]
+
+
+@needs_tools
+def test_tool_without_object():
+    llm = make_llm([reply("show_model"), reply(answer="Open a file.")])
+    assert "no CrysPy object" in llm.answer("show", None)["text"]
+
+
+@needs_tools
+def test_help_from_cryspy():
+    llm = make_llm([reply("get_help", query="multipoles"),
+                    reply(answer="Use atom_rho_multipole.")])
+    l_called = []
+    result = llm.answer("как описать мультиполи?", None,
+                        callback_action=l_called.append)
+    assert l_called == ["get_help"]
+    # the help page itself is shown to the user, then the answer
+    assert "_atom_rho_multipole" in result["text"] or \
+        "atom_rho_multipole" in result["text"]
+    assert result["text"].endswith("Use atom_rho_multipole.")
+    assert result["flag_object_changed"] is False
+
+
+@needs_tools
+def test_refine_parameters_and_fix():
     obj = cryspy.str_to_globaln(RCIF)
     llm = make_llm([
-        json.dumps({"action": "show_refined_parameters", "answer": ""}),
-        json.dumps({"action": "fix_all_parameters", "answer": "Done."}),
-        json.dumps({"action": "show_refined_parameters", "answer": ""}),
+        reply("list_parameters", refined_only=True),
+        reply(answer="length_a is refined."),
+        reply("fix_parameters"),
+        reply(answer="Done."),
+        reply("refine_parameters", pattern="cell.length_b"),
+        reply(answer="ok"),
     ])
     text = llm.answer("which parameters are refined?", obj)["text"]
-    assert "length_a" in text
+    assert "cell.length_a" in text
     result = llm.answer("fix everything", obj)
     assert result["flag_object_changed"] is True
     assert len(obj.get_variable_names()) == 0
-    assert "No parameters" in llm.answer("and now?", obj)["text"]
+    llm.answer("refine b", obj)
+    assert len(obj.get_variable_names()) == 1
     # history is sent back to the model
-    assert len(llm.llm.l_messages[-1]) == 1 + 4 + 1
+    assert len(llm.llm.l_messages[-2]) == 1 + 4 + 1
+
+
+@needs_tools
+def test_number_of_tool_calls_is_limited():
+    obj = cryspy.str_to_globaln(RCIF)
+    llm = make_llm([reply("summarize_object")] * 10)
+    result = llm.answer("loop", obj)
+    assert result["tools"] == ["summarize_object"] * llm_local.MAX_TOOL_CALLS
+
+
+def test_old_cryspy_is_reported(monkeypatch):
+    monkeypatch.setattr(llm_local, "flag_cryspy_tools", False)
+    llm = make_llm([reply("summarize_object")])
+    assert "pip install --upgrade cryspy" in llm.answer("x", None)["text"]
 
 
 def test_missing_llama_cpp(monkeypatch, tmp_path):
@@ -132,7 +185,7 @@ def test_total_memory():
 
 
 def test_settings_reach_model():
-    llm = make_llm([json.dumps({"action": "none", "answer": "ok"})])
+    llm = make_llm([reply(answer="ok")])
     llm.settings = llm_local.take_settings({"max_tokens": 100, "temperature": 0.5})
     llm.answer("hi", None)
     # FakeLlama ignores kwargs; check them by wrapping
@@ -145,15 +198,16 @@ def test_settings_reach_model():
 
 
 def test_long_result_fits_context():
-    """A refinement result much longer than the context is cut, not sent whole."""
+    """A message much longer than the context is cut, not sent whole."""
     llm = make_llm(["The fit is good."])
     llm.settings = llm_local.take_settings({"max_tokens": 512})
     long_result = "chi_sq = 1.2\n" + "x" * 40000
-    assert llm.comment_result("refine and analyse", "refine", long_result) == \
+    assert llm.chat([{"role": "system", "content": "s"},
+                     {"role": "user", "content": long_result}]) == \
         "The fit is good."
     sent = llm.llm.l_messages[-1]
     assert "[...cut...]" in sent[-1]["content"]
-    assert sent[-1]["content"].startswith("Request: refine and analyse")
+    assert sent[-1]["content"].startswith("chi_sq = 1.2")
 
 
 def test_long_history_is_dropped():
@@ -171,35 +225,3 @@ def test_answer_length_larger_than_context():
     llm.settings = llm_local.take_settings({"max_tokens": 5000})
     with pytest.raises(ValueError, match="Increase the context"):
         llm.chat([{"role": "user", "content": "hi"}])
-
-
-def test_format_refinement_result():
-    obj = cryspy.str_to_globaln(RCIF.replace("_cell_length_b 5.0", "_cell_length_b 5.0()"))
-    names = obj.get_variable_names()
-    # RhoChi result names come from the dictionary pipeline
-    names = [("cell_cell", "unit_cell_parameters", (0,)),
-             ("cell_cell", "unit_cell_parameters", (1,))]
-    result = {"chi_sq": 1.23456, "parameter_name": names,
-              "correlation_matrix": [[1.0, 0.95], [0.95, 1.0]]}
-    text = llm_local.format_refinement_result(result, obj)
-    assert "chi_sq = 1.2346" in text
-    assert "cell.length_a = 5.00000" in text
-    assert "cell_cell.unit_cell_parameters[0] - " \
-        "cell_cell.unit_cell_parameters[1]: 0.95" in text
-    result["correlation_matrix"] = [[1.0, 0.1], [0.1, 1.0]]
-    assert "No correlations" in llm_local.format_refinement_result(result, obj)
-
-
-@pytest.mark.parametrize("name, text", [
-    ((("global", ""), ("crystal", "ho2ti2o7"), ("atom_site_susceptibility", ""),
-      ("chi_11", 0)), "crystal_ho2ti2o7.atom_site_susceptibility.chi_11[0]"),
-    ((("global", ""), ("diffrn", "d"), ("extinction", None), ("radius", None)),
-     "diffrn_d.extinction.radius"),
-    ((("crystal", "x"), ("cell", None), ("length_a", ())), "crystal_x.cell.length_a"),
-    ((("pd", "p"), ("background", ""), ("intensity", (1, 2))),
-     "pd_p.background.intensity[1, 2]"),
-    (("crystal_x", "atom_para_susceptibility", (3, 0)),
-     "crystal_x.atom_para_susceptibility[3, 0]"),
-])
-def test_format_parameter_name(name, text):
-    assert llm_local.format_parameter_name(name) == text
