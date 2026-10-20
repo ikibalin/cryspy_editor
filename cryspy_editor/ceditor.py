@@ -50,9 +50,11 @@ from cryspy_editor.widgets.cryspy_objects import (
     get_plot_functions_for_data_loop_item,
     check_function_reserved_for_cryspy_editor,
 )
-from cryspy_editor.widgets.llm_panel import LLMPanel
+from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
+from cryspy_editor.settings import (
+    take_settings, save_settings, add_recent_file)
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
@@ -69,7 +71,8 @@ def open_file_wm(filename):
         subprocess.call([opener, filename])
 
 
-def get_external_functions(l_f_name_external: list):
+def get_external_functions(l_f_name_external: list, l_error: list = None):
+    """Procedures from user scripts; reading errors are added to l_error."""
     l_func_external = []
     for f_name in l_f_name_external:
         try:
@@ -103,8 +106,10 @@ def get_external_functions(l_f_name_external: list):
                     else:
                         pass
         except Exception as e:
-            print(f"Error at reading external module '{f_name:}'\n", e)
-            pass
+            if l_error is not None:
+                l_error.append(
+                    f"User script '{f_name:}' is not loaded: "
+                    f"{type(e).__name__}: {e}")
     return l_func_external
 
 
@@ -242,7 +247,7 @@ class OptionsWindow(QMainWindow):
                     file_name
                 )
             self.q_list.addItem(file_name)
-            numpy.save(self.parent.f_setup, self.parent.d_setup)
+            save_settings()
 
     def delete_function(self):
         f_item = self.q_list.currentItem()
@@ -258,9 +263,9 @@ class OptionsWindow(QMainWindow):
             self.parent.d_setup["file_names_for_external_functions"] = (
                 ";".join(l_names_new)
             )
-            numpy.save(self.parent.f_setup, self.parent.d_setup)
+            save_settings()
             self.q_list.addItems(l_names_new)
-        except:
+        except AttributeError:  # nothing is selected
             pass
 
     def show_template(self):
@@ -275,20 +280,14 @@ def user_script_name(cryspy_object: cryspy.GlobalN):
 
 
 class CMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, file_name: str = None):
+        """Main window; file_name is opened instead of the last used file."""
         super(CMainWindow, self).__init__()
 
         self.dir_prog = os.path.dirname(__file__)
-        self.d_setup = {
-            "data_file_name": os.path.join(
-                self.dir_prog,
-            ),
-            "data_dir_name": self.dir_prog,
-            "file_names_for_external_functions": "",
-        }
-        self.f_setup = os.path.join(self.dir_prog, "setup.npy")
-        if os.path.isfile(self.f_setup):
-            self.d_setup = numpy.load(self.f_setup, allow_pickle="TRUE").item()
+        self.d_setup = take_settings()
+        if file_name is not None:
+            self.d_setup["data_file_name"] = os.path.abspath(file_name)
 
         self.functions_plot_data = []
         self.functions_plot_loop = []
@@ -304,37 +303,72 @@ class CMainWindow(QMainWindow):
         self.show()
 
         self.print_welcome()
-        if "data_file_name" in self.d_setup.keys():
-            self.take_rcif_object_from_d_setup()
-            self.print_object_info()
-        self.llm_autoload_model()
+        for message in self.l_startup_error:
+            self.text_edit.append(f"ERROR: {message}")
+        self.take_rcif_object_from_d_setup()
+        self.print_object_info()
+        self.assistant_controller.autoload_model()
 
     def write(self):
-        try:
-            # text = self.cthread.out_terminal.getvalue()
-            # self.text_edit.setText(text)
-
-            text = self.cthread.out_terminal.text_last
-            text_permanent = "\n".join(
-                self.cthread.out_terminal.l_text_permanent
-            )
-            self.text_edit.setText(text_permanent + "\n" + text)
-            self.text_edit.upload_font_size()
-            # if text.endswith("\r"):
-            #     self.text_edit.rewrite_undo_last_line = True
-            # elif text == "\n":
-            #     pass
-            # else:
-            #     if self.text_edit.rewrite_undo_last_line:
-            #         self.text_edit.undo()
-            #         self.text_edit.rewrite_undo_last_line = False
-            #     self.text_edit.append(text.rstrip())
-        except:
-            pass
+        out_terminal = getattr(self.cthread, "out_terminal", None)
+        if out_terminal is None:
+            return
+        text = out_terminal.text_last
+        text_permanent = "\n".join(out_terminal.l_text_permanent)
+        self.text_edit.setText(text_permanent + "\n" + text)
+        self.text_edit.upload_font_size()
+        self.label_progress.setText(text.strip()[:120])
 
     def user_scripts(self):
         options_window = OptionsWindow(self)
         options_window.show()
+
+    def show_error(self, title: str, error: Exception):
+        """Error of an external function in the output window, not in print."""
+        self.text_edit.append(
+            f"ERROR: {title}: {type(error).__name__}: {error}")
+
+    def init_status_bar(self):
+        """Progress of a running procedure and the button to stop it."""
+        status_bar = self.statusBar()
+        # A slim bar of one text line. QStatusBar takes its height from the
+        # size hints of all its widgets, hidden ones too, so a native
+        # QPushButton (tall bezel on macOS) made a thick empty bar.
+        status_bar.setSizeGripEnabled(False)
+        status_bar.setContentsMargins(4, 0, 4, 0)
+        bar_height = status_bar.fontMetrics().height() + 6
+        status_bar.setFixedHeight(bar_height)
+        self.label_progress = QtWidgets.QLabel("", status_bar)
+        self.progress_bar = QtWidgets.QProgressBar(status_bar)
+        self.progress_bar.setRange(0, 0)  # busy indicator, length is unknown
+        self.progress_bar.setMaximumWidth(150)
+        self.progress_bar.setFixedHeight(max(bar_height - 10, 6))
+        self.progress_bar.setTextVisible(False)
+        self.button_stop = QtWidgets.QToolButton(status_bar)
+        self.button_stop.setText("Stop")
+        self.button_stop.setAutoRaise(True)
+        self.button_stop.setFixedHeight(bar_height - 2)
+        self.button_stop.setToolTip(
+            "Stop the calculation at its next message; "
+            "the object keeps the values it had before the run.")
+        self.button_stop.clicked.connect(self.stop_calculations)
+        status_bar.addPermanentWidget(self.label_progress, 1)
+        status_bar.addPermanentWidget(self.progress_bar)
+        status_bar.addPermanentWidget(self.button_stop)
+        self.show_progress(False)
+
+    def show_progress(self, flag: bool):
+        self.label_progress.setVisible(flag)
+        self.progress_bar.setVisible(flag)
+        self.button_stop.setVisible(flag)
+        self.button_stop.setEnabled(flag)
+        if not flag:
+            self.label_progress.setText("")
+
+    def stop_calculations(self):
+        self.cthread.request_stop()
+        self.button_stop.setEnabled(False)
+        self.label_progress.setText("Stopping...")
 
     def run_calculations(self):  # d_info: dict = None
         current_widget = self.w_item_tabs.currentWidget()
@@ -349,8 +383,10 @@ class CMainWindow(QMainWindow):
             self.text_edit.setStyleSheet("background-color:yellow;")
 
         self.cthread.out_terminal.signal_refresh.connect(self.write)
+        self.show_progress(True)
 
     def end_calculations(self):  # output_data
+        self.show_progress(False)
         if is_dark_mode():
             self.text_edit.setStyleSheet("background-color:black;")
         else:
@@ -398,6 +434,9 @@ class CMainWindow(QMainWindow):
         menu_file.addAction(save_as_action)
         toolbar_1.addAction(save_as_action)
 
+        self.menu_recent = menu_file.addMenu("Open recent")
+        self.update_menu_recent()
+
         exit_button = QAction(
             QIcon(os.path.join(dir_prog_icon, "exit24.png")), "Exit", self
         )
@@ -433,6 +472,10 @@ class CMainWindow(QMainWindow):
             )
         )
 
+        cryspy_help = menu_options.addAction("CrysPy help...")
+        cryspy_help.setShortcut("F1")
+        cryspy_help.triggered.connect(self.show_cryspy_help)
+
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
 
@@ -442,10 +485,19 @@ class CMainWindow(QMainWindow):
         # Menu CrysPy
         self.init_menu_cryspy()
 
-        # Menu AI assistant (optional local LLM)
-        self.init_menu_ai()
+        # Menu AI assistant (optional local LLM, in a window of its own)
+        self.assistant_controller = AssistantController(
+            self, self.d_setup, save_settings, self.take_rcif_object,
+            self.assistant_object_changed)
+        self.assistant_controller.init_menu(self.menu_bar)
 
         self.init_central_widget()
+        self.init_status_bar()
+
+    def show_cryspy_help(self):
+        from cryspy_editor.widgets.help_dialog import HelpDialog
+        dialog = HelpDialog(self)
+        dialog.show()
 
     def display_about(self):
         QtWidgets.QMessageBox.information(
@@ -489,8 +541,8 @@ class CMainWindow(QMainWindow):
                     f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}"
                 )
             self.text_edit.append("\n".join(ls_text))
-        except:
-            pass
+        except Exception as e:
+            self.show_error("Variables of the object are not shown", e)
 
     def init_menu_cryspy(self):
         if not ("file_names_for_external_functions" in self.d_setup.keys()):
@@ -506,8 +558,9 @@ class CMainWindow(QMainWindow):
         self.d_setup["file_names_for_external_functions"] = ";".join(
             l_f_name_external
         )
-        numpy.save(self.f_setup, self.d_setup)
-        l_func_external = get_external_functions(l_f_name_external)
+        l_error = []
+        l_func_external = get_external_functions(l_f_name_external, l_error)
+        self.l_startup_error = l_error
 
         (
             self.functions_plot_data,
@@ -576,83 +629,96 @@ class CMainWindow(QMainWindow):
         )
 
     def save_file(self):
-        if "data_file_name" in self.d_setup.keys():
-            file_name = self.d_setup["data_file_name"]
-            rcif_object = self.rcif_object
-
+        file_name = self.d_setup.get("data_file_name", "")
+        if file_name == "" or os.path.isdir(file_name):
+            self.save_file_as()
+            return
+        try:
             with open(file_name, "w") as fid:
-                fid.write(rcif_object.to_cif())
-            numpy.save(self.f_setup, self.d_setup)
-            os.chdir(os.path.dirname(file_name))
+                fid.write(self.rcif_object.to_cif())
+        except OSError as error:
+            QtWidgets.QMessageBox.warning(
+                self, "Save", f"File '{file_name}' is not saved:\n{error}")
+            return
+        add_recent_file(file_name)
+        self.update_menu_recent()
+        save_settings()
 
     def save_file_as(self):
-        # Save
-        if "data_dir_name" in self.d_setup.keys():
-            f_dir = self.d_setup["data_dir_name"]
-        else:
-            f_dir = "."
-
+        f_dir = self.d_setup.get("data_dir_name", "")
+        if not os.path.isdir(f_dir):
+            f_dir = os.path.expanduser("~")
         file_name, ok = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Save file as ...",
             f_dir,
             "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
         )
-        if ok:
+        if ok and file_name != "":
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+            self.cthread.work_dir = os.path.dirname(file_name)
+            self.setWindowTitle(
+                f"CrysPy Editor: {os.path.basename(file_name):}")
             self.save_file()
-            os.chdir(os.path.dirname(file_name))
 
     def open_file(self):
-        # Load
-        f_dir = self.d_setup["data_dir_name"]
-        if not (os.path.isdir(f_dir)):
-            f_dir = "."
-        # options = QtWidgets.QFileDialog.Options()
+        f_dir = self.d_setup.get("data_dir_name", "")
+        if not os.path.isdir(f_dir):
+            f_dir = os.path.expanduser("~")
         file_name, ok = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Open file",
             f_dir,
             "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
         )
-        if ok:
-            self.d_setup["data_file_name"] = file_name
-            self.d_setup["data_dir_name"] = os.path.dirname(file_name)
-            self.take_rcif_object_from_d_setup()
+        if ok and file_name != "":
+            self.open_file_name(file_name)
 
-            # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
-            numpy.save(self.f_setup, self.d_setup)
-            self.print_object_info()
-            os.chdir(os.path.dirname(file_name))
+    def open_file_name(self, file_name: str):
+        """Open the file given by name (dialog, recent files, command line)."""
+        self.d_setup["data_file_name"] = os.path.abspath(file_name)
+        self.take_rcif_object_from_d_setup()
+        self.print_object_info()
+
+    def update_menu_recent(self):
+        self.menu_recent.clear()
+        l_recent = [file_name for file_name in self.d_setup["recent_files"]
+                    if os.path.isfile(file_name)]
+        for file_name in l_recent:
+            action = self.menu_recent.addAction(file_name)
+            action.triggered.connect(
+                lambda checked, f_name=file_name: self.open_file_name(f_name))
+        self.menu_recent.setEnabled(len(l_recent) > 0)
 
     def take_rcif_object_from_d_setup(self):
         """Load object from d_setup."""
-        # self.text_edit.setText("")
-        # self.print_welcome()
-        # self.renew_file_data_from_d_setup()
-        file_name = self.d_setup["data_file_name"]
-        ls_out = []
+        file_name = self.d_setup.get("data_file_name", "")
         if os.path.isfile(file_name):
-            ls_out.append(
-                f"Loading data from file '{os.path.basename(file_name)}'..."
-            )
-            self.text_edit.append("\n".join(ls_out))
+            self.text_edit.append(
+                f"Loading data from file '{os.path.basename(file_name)}'...")
             try:
                 rcif_object = load_file(file_name)
-                self.d_setup["data_dir_name"] = os.path.dirname(file_name)
-                os.chdir(os.path.dirname(file_name))
             except Exception as e:
-                ls_out.append(80 * "*")
-                ls_out.append("ERROR during data opening")
-                ls_out.append(str(e))
-                ls_out.append(80 * "*")
+                ls_out = [80 * "*", "ERROR during data opening", str(e),
+                          80 * "*"]
                 self.text_edit.append("\n".join(ls_out))
+                if not hasattr(self, "rcif_object"):
+                    self.rcif_object = GlobalN.make_container((), (), "global")
+                    self.renew_w_object_panel()
                 return
+            self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+            # procedures write output files (.den, sections) next to the data
+            self.cthread.work_dir = os.path.dirname(file_name)
             self.setWindowTitle(
                 f"CrysPy Editor: {os.path.basename(file_name):}"
             )
+            add_recent_file(file_name)
+            self.update_menu_recent()
+            save_settings()
         else:
+            if file_name != "":
+                self.text_edit.append(f"File '{file_name}' is not found.")
             rcif_object = GlobalN.make_container((), (), "global")
         self.rcif_object = rcif_object
         self.renew_w_object_panel()
@@ -689,8 +755,8 @@ class CMainWindow(QMainWindow):
                     item = self.rcif_object
             else:
                 item = self.rcif_object
-        except:
-            print(f"Cannot find item for way {way_item:}")
+        except Exception as e:
+            self.show_error(f"Item {way_item} is not found", e)
             return
         # RCIF tab
         if isinstance(item, (LoopN, ItemN)) and not (
@@ -704,7 +770,7 @@ class CMainWindow(QMainWindow):
                     prefix = item.PREFIX
                     l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
                     s_info = item.__doc__
-                except:
+                except AttributeError:  # ItemN without PREFIX
                     pass
             else:
                 s_item = str(item)
@@ -718,7 +784,7 @@ class CMainWindow(QMainWindow):
                             "loop_",
                         ] + [f"_{prefix:}_{hh:}" for hh in item_class.ATTR_CIF]
                     s_info = item.__doc__
-                except:
+                except AttributeError:  # LoopN without ITEM_CLASS
                     pass
             text_placeholder = "\n".join(l_hh)
 
@@ -744,8 +810,7 @@ class CMainWindow(QMainWindow):
             ]
         except Exception as e:
             l_fig_ax = []
-            print("ERROR in obj.plots")
-            print(e)
+            self.show_error(f"Plots of '{item.get_name()}' are not made", e)
 
         for fig, ax in l_fig_ax:
             widget = QtWidgets.QWidget(w_item_tabs)
@@ -801,8 +866,7 @@ class CMainWindow(QMainWindow):
             report_html = item.report_html()
         except Exception as e:
             report_html = ""
-            print("ERROR in object_.report_html")
-            print(e)
+            self.show_error(f"Report of '{item.get_name()}' is not made", e)
 
         if report_html != "":
             w_plain_text = QtWidgets.QLabel(w_item_tabs)
@@ -876,16 +940,7 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
 
-        # AI assistant below the output; shown when a local model is loaded
-        w_splitter_right = QtWidgets.QSplitter(QtCore.Qt.Vertical, w_splitter)
-        w_splitter_right.addWidget(self.text_edit)
-        self.llm_panel = LLMPanel(
-            take_cryspy_obj=self.take_rcif_object, parent=w_splitter_right)
-        self.llm_panel.signal_object_changed.connect(self.llm_object_changed)
-        self.llm_panel.signal_model_loaded.connect(self.llm_model_loaded)
-        self.llm_panel.setVisible(False)
-        w_splitter_right.addWidget(self.llm_panel)
-        w_splitter.addWidget(w_splitter_right)
+        w_splitter.addWidget(self.text_edit)
 
         width_m_1 = int(1 * self.info_width / 6.0)
         width_m_2 = int(3 * self.info_width / 6.0)
@@ -899,63 +954,14 @@ class CMainWindow(QMainWindow):
     def take_rcif_object(self):
         return getattr(self, "rcif_object", None)
 
-    def init_menu_ai(self):
-        menu_ai = self.menu_bar.addMenu("AI assistant")
-        load_action = menu_ai.addAction("Load local model (*.gguf)...")
-        load_action.setStatusTip(
-            "Choose a GGUF chat model and its settings; it runs on this computer.")
-        load_action.triggered.connect(self.llm_choose_model)
-        unload_action = menu_ai.addAction("Unload model")
-        unload_action.triggered.connect(self.llm_unload_model)
-
-    def llm_choose_model(self):
-        from cryspy_editor.widgets.llm_local import flag_llama_cpp, INSTALL_HINT
-        from cryspy_editor.widgets.llm_settings import LLMSettingsDialog
-        if not flag_llama_cpp:
-            QtWidgets.QMessageBox.information(self, "AI assistant", INSTALL_HINT)
-            return
-        if self.llm_panel.is_busy():
-            QtWidgets.QMessageBox.information(
-                self, "AI assistant", "The assistant is busy, try again later.")
-            return
-        dialog = LLMSettingsDialog(
-            model_path=self.d_setup.get("llm_model_path", ""),
-            settings=self.d_setup.get("llm_settings", None), parent=self)
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
-            self.d_setup["llm_settings"] = dialog.settings()
-            self.llm_load_model(dialog.model_path())
-
-    def llm_load_model(self, model_path: str):
-        self.llm_panel.setVisible(True)
-        self.llm_panel.load_model(
-            model_path, self.d_setup.get("llm_settings", None))
-
-    def llm_autoload_model(self):
-        """Load the model used last time, if llama-cpp-python is installed."""
-        from cryspy_editor.widgets.llm_local import flag_llama_cpp
-        model_path = self.d_setup.get("llm_model_path", "")
-        flag_autoload = self.d_setup.get("llm_autoload", False)
-        if flag_llama_cpp and flag_autoload and os.path.isfile(model_path):
-            self.llm_load_model(model_path)
-
-    def llm_unload_model(self):
-        if self.llm_panel.is_busy():
-            return
-        self.llm_panel.unload_model()
-        self.llm_panel.setVisible(False)
-        # keep the path and settings for the dialog, but do not load at start
-        self.d_setup["llm_autoload"] = False
-        numpy.save(self.f_setup, self.d_setup)
-
-    def llm_model_loaded(self, model_path: str):
-        if model_path != "":
-            self.d_setup["llm_model_path"] = model_path
-        self.d_setup["llm_autoload"] = model_path != ""
-        numpy.save(self.f_setup, self.d_setup)
-
-    def llm_object_changed(self):
+    def assistant_object_changed(self):
         self.renew_w_object_panel()
         self.print_object_info()
+
+    def closeEvent(self, event):
+        self.assistant_controller.save_window_state()
+        save_settings()
+        super().closeEvent(event)
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
     def item_clicked_on_w_object_panel(self, *argv):

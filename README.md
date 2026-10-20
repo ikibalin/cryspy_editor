@@ -1,12 +1,40 @@
 # cryspy_editor
  Editor for CrysPy library
 
+## Start
+
+```
+cryspy-editor                  # opens the last used file
+cryspy-editor path/file.rcif   # opens the given file
+python -m cryspy_editor path/file.rcif
+```
+
+Other programs (for example PyColl5) can open a file in CrysPy Editor the
+same way. Recent files are in **File → Open recent**.
+
+Settings are kept in `settings.json` in the user's folder:
+`%APPDATA%\CrysPyEditor` on Windows, `~/Library/Application Support/CrysPyEditor`
+on macOS, `~/.config/cryspy_editor` on Linux. Settings of older versions are
+moved there at the first start.
+
 ## AI assistant (optional)
 
-CrysPy Editor can use a local language model to answer questions and run
-simple actions on the opened file (refine, calculate, fix all parameters,
-show refined parameters, show the model). The model runs on your computer;
-nothing is sent to the internet.
+CrysPy Editor can use a local language model to answer questions and work
+on the opened file. The model runs on your computer; nothing is sent to the
+internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
+lookup, list / refine / fix / set parameters by their paths, calculate,
+refine, show the model, add an atom, run CrysPy procedures. Questions such as
+"how to describe multipoles?" or "what should be used for thermal
+vibrations?" are answered from the help pages of CrysPy, which are shown in
+the answer. The same help is in **Options → CrysPy help...** (F1) without a
+model.
+
+The assistant works in its own window, **AI Assistant / CrysPy Editor**,
+opened by **AI assistant → Show assistant**. One request may hold several
+actions (e.g. "fix everything, refine the cell and run the refinement"); a
+call with wrong arguments goes back to the model to be corrected, and
+questions are answered from the results of the actions. The window and the
+logic are the same as in the assistant of PyColl5; only the actions differ.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`
    (or `pip install llama-cpp-python`).
@@ -24,4 +52,16 @@ nothing is sent to the internet.
    pick the file and, if needed, the threads, GPU layers, context size,
    answer length and temperature. The same table is shown there, with the row
    for your computer in bold. The model is loaded in the background and is
-   loaded again at the next start, until **Unload model**.
+   loaded again at the next start, until **Unload model**; the window opens
+   again at the next start if it was open when the program was closed.
+
+## Development
+
+- `main` holds releases, `develop` is the integration branch. Branch off
+  `develop` and open pull requests into `develop`.
+- Every pull request needs one label: `[scope] bug`, `[scope] enhancement`,
+  `[scope] documentation`, `[scope] maintenance` or `[scope] significant`.
+  The label decides the next version in the release draft.
+- The version comes from git tags (plain, e.g. `1.9.10`) via versioningit.
+- Tests: `pip install -e .[dev]`, then `python -m pytest`. Qt runs without a
+  display in tests (`QT_QPA_PLATFORM=offscreen`).

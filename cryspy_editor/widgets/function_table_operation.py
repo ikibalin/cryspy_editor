@@ -89,7 +89,7 @@ def redefine_inline_parameters(d_np_table):
                 elif ind_operation == 4:
                     d_np_table[name_var] = val_name**coeff
                 d_np_table[" table_commands"][i_name] = ""
-            except:
+            except (ArithmeticError, TypeError, ValueError, KeyError):
                 continue
 
     # inline_parameters
@@ -243,7 +243,7 @@ def redefine_inline_parameters(d_np_table):
             d_np_table[s_name] = [
                 n_row,
             ]
-        except:
+        except (AttributeError, KeyError):  # not an array
             continue
     return
 
