@@ -71,7 +71,8 @@ def open_file_wm(filename):
         subprocess.call([opener, filename])
 
 
-def get_external_functions(l_f_name_external: list):
+def get_external_functions(l_f_name_external: list, l_error: list = None):
+    """Procedures from user scripts; reading errors are added to l_error."""
     l_func_external = []
     for f_name in l_f_name_external:
         try:
@@ -105,8 +106,10 @@ def get_external_functions(l_f_name_external: list):
                     else:
                         pass
         except Exception as e:
-            print(f"Error at reading external module '{f_name:}'\n", e)
-            pass
+            if l_error is not None:
+                l_error.append(
+                    f"User script '{f_name:}' is not loaded: "
+                    f"{type(e).__name__}: {e}")
     return l_func_external
 
 
@@ -262,7 +265,7 @@ class OptionsWindow(QMainWindow):
             )
             save_settings()
             self.q_list.addItems(l_names_new)
-        except:
+        except AttributeError:  # nothing is selected
             pass
 
     def show_template(self):
@@ -300,36 +303,60 @@ class CMainWindow(QMainWindow):
         self.show()
 
         self.print_welcome()
+        for message in self.l_startup_error:
+            self.text_edit.append(f"ERROR: {message}")
         self.take_rcif_object_from_d_setup()
         self.print_object_info()
         self.llm_autoload_model()
 
     def write(self):
-        try:
-            # text = self.cthread.out_terminal.getvalue()
-            # self.text_edit.setText(text)
-
-            text = self.cthread.out_terminal.text_last
-            text_permanent = "\n".join(
-                self.cthread.out_terminal.l_text_permanent
-            )
-            self.text_edit.setText(text_permanent + "\n" + text)
-            self.text_edit.upload_font_size()
-            # if text.endswith("\r"):
-            #     self.text_edit.rewrite_undo_last_line = True
-            # elif text == "\n":
-            #     pass
-            # else:
-            #     if self.text_edit.rewrite_undo_last_line:
-            #         self.text_edit.undo()
-            #         self.text_edit.rewrite_undo_last_line = False
-            #     self.text_edit.append(text.rstrip())
-        except:
-            pass
+        out_terminal = getattr(self.cthread, "out_terminal", None)
+        if out_terminal is None:
+            return
+        text = out_terminal.text_last
+        text_permanent = "\n".join(out_terminal.l_text_permanent)
+        self.text_edit.setText(text_permanent + "\n" + text)
+        self.text_edit.upload_font_size()
+        self.label_progress.setText(text.strip()[:120])
 
     def user_scripts(self):
         options_window = OptionsWindow(self)
         options_window.show()
+
+    def show_error(self, title: str, error: Exception):
+        """Error of an external function in the output window, not in print."""
+        self.text_edit.append(
+            f"ERROR: {title}: {type(error).__name__}: {error}")
+
+    def init_status_bar(self):
+        """Progress of a running procedure and the button to stop it."""
+        status_bar = self.statusBar()
+        self.label_progress = QtWidgets.QLabel("", status_bar)
+        self.progress_bar = QtWidgets.QProgressBar(status_bar)
+        self.progress_bar.setRange(0, 0)  # busy indicator, length is unknown
+        self.progress_bar.setMaximumWidth(150)
+        self.button_stop = QtWidgets.QPushButton("Stop", status_bar)
+        self.button_stop.setToolTip(
+            "Stop the calculation at its next message; "
+            "the object keeps the values it had before the run.")
+        self.button_stop.clicked.connect(self.stop_calculations)
+        status_bar.addPermanentWidget(self.label_progress, 1)
+        status_bar.addPermanentWidget(self.progress_bar)
+        status_bar.addPermanentWidget(self.button_stop)
+        self.show_progress(False)
+
+    def show_progress(self, flag: bool):
+        self.label_progress.setVisible(flag)
+        self.progress_bar.setVisible(flag)
+        self.button_stop.setVisible(flag)
+        self.button_stop.setEnabled(flag)
+        if not flag:
+            self.label_progress.setText("")
+
+    def stop_calculations(self):
+        self.cthread.request_stop()
+        self.button_stop.setEnabled(False)
+        self.label_progress.setText("Stopping...")
 
     def run_calculations(self):  # d_info: dict = None
         current_widget = self.w_item_tabs.currentWidget()
@@ -344,8 +371,10 @@ class CMainWindow(QMainWindow):
             self.text_edit.setStyleSheet("background-color:yellow;")
 
         self.cthread.out_terminal.signal_refresh.connect(self.write)
+        self.show_progress(True)
 
     def end_calculations(self):  # output_data
+        self.show_progress(False)
         if is_dark_mode():
             self.text_edit.setStyleSheet("background-color:black;")
         else:
@@ -444,6 +473,7 @@ class CMainWindow(QMainWindow):
         self.init_menu_ai()
 
         self.init_central_widget()
+        self.init_status_bar()
 
     def display_about(self):
         QtWidgets.QMessageBox.information(
@@ -487,8 +517,8 @@ class CMainWindow(QMainWindow):
                     f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}"
                 )
             self.text_edit.append("\n".join(ls_text))
-        except:
-            pass
+        except Exception as e:
+            self.show_error("Variables of the object are not shown", e)
 
     def init_menu_cryspy(self):
         if not ("file_names_for_external_functions" in self.d_setup.keys()):
@@ -504,7 +534,9 @@ class CMainWindow(QMainWindow):
         self.d_setup["file_names_for_external_functions"] = ";".join(
             l_f_name_external
         )
-        l_func_external = get_external_functions(l_f_name_external)
+        l_error = []
+        l_func_external = get_external_functions(l_f_name_external, l_error)
+        self.l_startup_error = l_error
 
         (
             self.functions_plot_data,
@@ -699,8 +731,8 @@ class CMainWindow(QMainWindow):
                     item = self.rcif_object
             else:
                 item = self.rcif_object
-        except:
-            print(f"Cannot find item for way {way_item:}")
+        except Exception as e:
+            self.show_error(f"Item {way_item} is not found", e)
             return
         # RCIF tab
         if isinstance(item, (LoopN, ItemN)) and not (
@@ -714,7 +746,7 @@ class CMainWindow(QMainWindow):
                     prefix = item.PREFIX
                     l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
                     s_info = item.__doc__
-                except:
+                except AttributeError:  # ItemN without PREFIX
                     pass
             else:
                 s_item = str(item)
@@ -728,7 +760,7 @@ class CMainWindow(QMainWindow):
                             "loop_",
                         ] + [f"_{prefix:}_{hh:}" for hh in item_class.ATTR_CIF]
                     s_info = item.__doc__
-                except:
+                except AttributeError:  # LoopN without ITEM_CLASS
                     pass
             text_placeholder = "\n".join(l_hh)
 
@@ -754,8 +786,7 @@ class CMainWindow(QMainWindow):
             ]
         except Exception as e:
             l_fig_ax = []
-            print("ERROR in obj.plots")
-            print(e)
+            self.show_error(f"Plots of '{item.get_name()}' are not made", e)
 
         for fig, ax in l_fig_ax:
             widget = QtWidgets.QWidget(w_item_tabs)
@@ -811,8 +842,7 @@ class CMainWindow(QMainWindow):
             report_html = item.report_html()
         except Exception as e:
             report_html = ""
-            print("ERROR in object_.report_html")
-            print(e)
+            self.show_error(f"Report of '{item.get_name()}' is not made", e)
 
         if report_html != "":
             w_plain_text = QtWidgets.QLabel(w_item_tabs)
