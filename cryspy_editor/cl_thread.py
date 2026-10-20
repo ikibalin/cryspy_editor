@@ -1,5 +1,6 @@
 
 import io
+import os
 from contextlib import redirect_stdout
 
 
@@ -105,6 +106,9 @@ class CThread(QtCore.QThread):
         self.output = None
         
         self.d_info = None
+        # folder of the opened file: CrysPy procedures write their output
+        # files (.den, sections, ...) to relative paths
+        self.work_dir = None
         self.function_run_calculations = None
         self.function_end_calculations = None
 
@@ -121,14 +125,19 @@ class CThread(QtCore.QThread):
         if len(arg) >= 1:
             if not(isinstance(arg[0], cryspy.GlobalN)):
                 flag_out = True
+        cwd = os.getcwd()
         try:
             flag_out = True
+            if self.work_dir is not None and os.path.isdir(self.work_dir):
+                os.chdir(self.work_dir)
             with redirect_stdout(self.out_terminal):
                 out = func(*arg)
         except Exception:
             flag_out = True
             out = "ERROR DURING PROGRAM EXECUTION\n\n" + \
                 str(traceback.format_exc())
+        finally:
+            os.chdir(cwd)
         self.out_terminal.write(45*"*"+"\n")
         self.out_terminal.write("Calculations are completed.\n")
         self.out_terminal.write(45*"*"+"\n")

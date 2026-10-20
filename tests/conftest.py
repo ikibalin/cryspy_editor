@@ -7,6 +7,20 @@ import pytest
 from PyQt5 import QtWidgets
 
 
+@pytest.fixture(autouse=True)
+def settings_dir(tmp_path, monkeypatch):
+    """Each test has its own empty settings folder."""
+    from cryspy_editor import settings
+    dir_settings = tmp_path / "settings"
+    monkeypatch.setenv("CRYSPY_EDITOR_CONFIG_DIR", str(dir_settings))
+    monkeypatch.setattr(settings, "F_OLD_SETUP_NPY", str(tmp_path / "no.npy"))
+    monkeypatch.setattr(settings, "F_OLD_SETUP_INTERNAL",
+                        str(tmp_path / "no.internal"))
+    settings.reload_settings()
+    yield dir_settings
+    settings.reload_settings()
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QtWidgets.QApplication.instance()

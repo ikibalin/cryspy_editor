@@ -1,6 +1,22 @@
 # cryspy_editor
  Editor for CrysPy library
 
+## Start
+
+```
+cryspy-editor                  # opens the last used file
+cryspy-editor path/file.rcif   # opens the given file
+python -m cryspy_editor path/file.rcif
+```
+
+Other programs (for example PyColl5) can open a file in CrysPy Editor the
+same way. Recent files are in **File → Open recent**.
+
+Settings are kept in `settings.json` in the user's folder:
+`%APPDATA%\CrysPyEditor` on Windows, `~/Library/Application Support/CrysPyEditor`
+on macOS, `~/.config/cryspy_editor` on Linux. Settings of older versions are
+moved there at the first start.
+
 ## AI assistant (optional)
 
 CrysPy Editor can use a local language model to answer questions and run
