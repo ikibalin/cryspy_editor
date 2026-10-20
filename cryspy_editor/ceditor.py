@@ -331,11 +331,23 @@ class CMainWindow(QMainWindow):
     def init_status_bar(self):
         """Progress of a running procedure and the button to stop it."""
         status_bar = self.statusBar()
+        # A slim bar of one text line. QStatusBar takes its height from the
+        # size hints of all its widgets, hidden ones too, so a native
+        # QPushButton (tall bezel on macOS) made a thick empty bar.
+        status_bar.setSizeGripEnabled(False)
+        status_bar.setContentsMargins(4, 0, 4, 0)
+        bar_height = status_bar.fontMetrics().height() + 6
+        status_bar.setFixedHeight(bar_height)
         self.label_progress = QtWidgets.QLabel("", status_bar)
         self.progress_bar = QtWidgets.QProgressBar(status_bar)
         self.progress_bar.setRange(0, 0)  # busy indicator, length is unknown
         self.progress_bar.setMaximumWidth(150)
-        self.button_stop = QtWidgets.QPushButton("Stop", status_bar)
+        self.progress_bar.setFixedHeight(max(bar_height - 10, 6))
+        self.progress_bar.setTextVisible(False)
+        self.button_stop = QtWidgets.QToolButton(status_bar)
+        self.button_stop.setText("Stop")
+        self.button_stop.setAutoRaise(True)
+        self.button_stop.setFixedHeight(bar_height - 2)
         self.button_stop.setToolTip(
             "Stop the calculation at its next message; "
             "the object keeps the values it had before the run.")
