@@ -25,3 +25,14 @@ nothing is sent to the internet.
    answer length and temperature. The same table is shown there, with the row
    for your computer in bold. The model is loaded in the background and is
    loaded again at the next start, until **Unload model**.
+
+## Development
+
+- `main` holds releases, `develop` is the integration branch. Branch off
+  `develop` and open pull requests into `develop`.
+- Every pull request needs one label: `[scope] bug`, `[scope] enhancement`,
+  `[scope] documentation`, `[scope] maintenance` or `[scope] significant`.
+  The label decides the next version in the release draft.
+- The version comes from git tags (plain, e.g. `1.9.10`) via versioningit.
+- Tests: `pip install -e .[dev]`, then `python -m pytest`. Qt runs without a
+  display in tests (`QT_QPA_PLATFORM=offscreen`).

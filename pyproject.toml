@@ -1,0 +1,69 @@
+[project]
+name = 'cryspy_editor'
+dynamic = ['version']
+description = 'Graphical editor for CrysPy: rcif files, refinement and MEM'
+readme = 'README.md'
+license = 'MIT'
+authors = [{ name = 'Iurii Kibalin', email = 'yurikibalin@outlook.com' }]
+keywords = ['CrysPy', 'RhoChi', 'MEM', 'neutron diffraction', 'rcif']
+requires-python = '>=3.9'
+classifiers = [
+  'Operating System :: OS Independent',
+  'Programming Language :: Python :: 3 :: Only',
+  'Programming Language :: Python :: 3.9',
+  'Programming Language :: Python :: 3.10',
+  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: 3.12',
+  'Programming Language :: Python :: 3.13',
+  'Programming Language :: Python :: 3.14',
+]
+dependencies = [
+  'cryspy>=0.10.0',
+  'pyqt5>=5.15',
+  'matplotlib',
+  'numpy',
+]
+
+[project.optional-dependencies]
+# local AI assistant: pip install cryspy_editor[ai]
+ai = ['llama-cpp-python']
+dev = [
+  'pytest',
+  'build',
+  'versioningit',
+]
+
+[project.scripts]
+cryspy-editor = 'cryspy_editor.__main__:main'
+
+[project.urls]
+Homepage = 'https://github.com/ikibalin/cryspy_editor'
+'Source Code' = 'https://github.com/ikibalin/cryspy_editor'
+'Issue Tracker' = 'https://github.com/ikibalin/cryspy_editor/issues'
+CrysPy = 'https://github.com/ikibalin/cryspy'
+
+[build-system]
+build-backend = 'hatchling.build'
+requires = ['hatchling', 'versioningit']
+
+[tool.hatch.version]
+source = 'versioningit'
+
+[tool.hatch.build.targets.wheel]
+packages = ['cryspy_editor']
+
+[tool.hatch.build.targets.sdist]
+include = ['cryspy_editor', 'README.md', 'LICENSE']
+
+# The version comes from git tags (plain, e.g. 1.9.10), as in CrysPy.
+[tool.versioningit.vcs]
+method = 'git'
+default-tag = '1.9.10'
+
+[tool.versioningit.format]
+distance = '{base_version}+dev{distance}'
+dirty = '{base_version}+dirty{distance}'
+distance-dirty = '{base_version}+devdirty{distance}'
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
