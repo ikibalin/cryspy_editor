@@ -12,12 +12,26 @@ from cryspy_editor.widgets.llm_local import LLMLocal, take_json_object
 class FakeLlama:
     """Returns prepared replies instead of running a model."""
 
-    def __init__(self, replies):
+    def __init__(self, replies, n_ctx=4096):
         self.replies = list(replies)
         self.l_messages = []
+        self._n_ctx = n_ctx
 
-    def create_chat_completion(self, messages, **kwargs):
+    def n_ctx(self):
+        return self._n_ctx
+
+    def tokenize(self, text: bytes, add_bos=True):
+        # about 4 characters per token, as for real models on English text
+        return list(range((len(text) + 3) // 4))
+
+    def create_chat_completion(self, messages, max_tokens=512, **kwargs):
         self.l_messages.append(messages)
+        n_prompt = sum(len(self.tokenize(m["content"].encode())) + 8
+                       for m in messages)
+        if n_prompt + max_tokens > self._n_ctx:
+            raise ValueError(
+                f"Requested tokens ({n_prompt + max_tokens}) exceed context "
+                f"window of {self._n_ctx}")
         return {"choices": [{"message": {"content": self.replies.pop(0)}}]}
 
 
@@ -128,3 +142,64 @@ def test_settings_reach_model():
     llm.answer("hi", None)
     assert calls[0]["max_tokens"] == 100
     assert calls[0]["temperature"] == 0.5
+
+
+def test_long_result_fits_context():
+    """A refinement result much longer than the context is cut, not sent whole."""
+    llm = make_llm(["The fit is good."])
+    llm.settings = llm_local.take_settings({"max_tokens": 512})
+    long_result = "chi_sq = 1.2\n" + "x" * 40000
+    assert llm.comment_result("refine and analyse", "refine", long_result) == \
+        "The fit is good."
+    sent = llm.llm.l_messages[-1]
+    assert "[...cut...]" in sent[-1]["content"]
+    assert sent[-1]["content"].startswith("Request: refine and analyse")
+
+
+def test_long_history_is_dropped():
+    llm = make_llm([json.dumps({"action": "none", "answer": "ok"})])
+    llm.history = [{"role": "user", "content": "y" * 3000},
+                   {"role": "assistant", "content": "z" * 3000}] * 5
+    assert llm.answer("hi", None)["text"] == "ok"
+    sent = llm.llm.l_messages[-1]
+    assert sent[0]["role"] == "system"
+    assert sent[-1]["content"] == "hi"
+
+
+def test_answer_length_larger_than_context():
+    llm = make_llm(["unused"])
+    llm.settings = llm_local.take_settings({"max_tokens": 5000})
+    with pytest.raises(ValueError, match="Increase the context"):
+        llm.chat([{"role": "user", "content": "hi"}])
+
+
+def test_format_refinement_result():
+    obj = cryspy.str_to_globaln(RCIF.replace("_cell_length_b 5.0", "_cell_length_b 5.0()"))
+    names = obj.get_variable_names()
+    # RhoChi result names come from the dictionary pipeline
+    names = [("cell_cell", "unit_cell_parameters", (0,)),
+             ("cell_cell", "unit_cell_parameters", (1,))]
+    result = {"chi_sq": 1.23456, "parameter_name": names,
+              "correlation_matrix": [[1.0, 0.95], [0.95, 1.0]]}
+    text = llm_local.format_refinement_result(result, obj)
+    assert "chi_sq = 1.2346" in text
+    assert "cell.length_a = 5.00000" in text
+    assert "cell_cell.unit_cell_parameters[0] - " \
+        "cell_cell.unit_cell_parameters[1]: 0.95" in text
+    result["correlation_matrix"] = [[1.0, 0.1], [0.1, 1.0]]
+    assert "No correlations" in llm_local.format_refinement_result(result, obj)
+
+
+@pytest.mark.parametrize("name, text", [
+    ((("global", ""), ("crystal", "ho2ti2o7"), ("atom_site_susceptibility", ""),
+      ("chi_11", 0)), "crystal_ho2ti2o7.atom_site_susceptibility.chi_11[0]"),
+    ((("global", ""), ("diffrn", "d"), ("extinction", None), ("radius", None)),
+     "diffrn_d.extinction.radius"),
+    ((("crystal", "x"), ("cell", None), ("length_a", ())), "crystal_x.cell.length_a"),
+    ((("pd", "p"), ("background", ""), ("intensity", (1, 2))),
+     "pd_p.background.intensity[1, 2]"),
+    (("crystal_x", "atom_para_susceptibility", (3, 0)),
+     "crystal_x.atom_para_susceptibility[3, 0]"),
+])
+def test_format_parameter_name(name, text):
+    assert llm_local.format_parameter_name(name) == text
