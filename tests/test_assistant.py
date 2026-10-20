@@ -299,3 +299,20 @@ def test_assistant_is_a_window_of_its_own(qapp):
     finally:
         controller.window.close()
         main_window.close()
+
+
+@pytest.mark.parametrize("answer", ["The cell parameters are refined.", "Done.", "Готово, параметры уточнены.",
+                                    "Refinement completed for all parameters."])
+def test_answer_without_action_never_reports_a_change(answer):
+    """Small models answer "refined" with no action: the user is told that
+    nothing is done (as in PyColl5)."""
+    result = make_assistant([reply(answer=answer)]).ask("refine the cell", None)
+    assert result["text"] == assistant_module.NOTHING_DONE
+
+
+def test_answer_from_the_results_not_from_the_chat():
+    assistant = make_assistant([reply(("summarize_object", {}), answer="It is refined."), reply(answer="")])
+    result = assistant.ask("what is loaded?", cryspy.str_to_globaln(RCIF))
+    assert "only from these results" in assistant.model.llm.l_messages[1][-1]["content"]
+    assert "refined" not in result["text"]
+    assert "never write that something is done" in assistant_module.form_system_prompt()
