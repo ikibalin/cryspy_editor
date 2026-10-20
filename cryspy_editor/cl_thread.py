@@ -11,6 +11,10 @@ from PyQt5 import QtCore
 import cryspy
 
 
+class CalculationStopped(Exception):
+    """Raised in the calculation thread when the user presses Stop."""
+
+
 class COutputLogget(QtCore.QObject):
     signal_refresh = QtCore.pyqtSignal()
     def __init__(self):
@@ -18,9 +22,15 @@ class COutputLogget(QtCore.QObject):
         self.out_terminal = io.StringIO()
         self.l_text_permanent = []
         self.text_last = ""
+        self.flag_stop = False
 
     def write(self,*arg):
-        try:
+        # Python code cannot be interrupted from another thread; procedures
+        # print their progress, so the next print ends the calculation
+        if self.flag_stop:
+            self.flag_stop = False
+            raise CalculationStopped("Calculation is stopped by the user.")
+        if len(arg) > 0:
             text = str(arg[0])
             if "\r" in text:
                 pass
@@ -32,8 +42,6 @@ class COutputLogget(QtCore.QObject):
                 self.text_last = text
             else:
                 self.text_last = text
-        except:
-            pass
         self.signal_refresh.emit()
         return self.out_terminal.write(*arg)
 
@@ -112,6 +120,12 @@ class CThread(QtCore.QThread):
         self.function_run_calculations = None
         self.function_end_calculations = None
 
+    def request_stop(self):
+        """Stop the running calculation at its next printed message."""
+        out_terminal = getattr(self, "out_terminal", None)
+        if out_terminal is not None and self.isRunning():
+            out_terminal.flag_stop = True
+
     def run(self):
         """Run."""
         func = self.function
@@ -120,6 +134,7 @@ class CThread(QtCore.QThread):
         l_var_name = func.__code__.co_varnames[:n_row_need]
         
         self.out_terminal = COutputLogget()
+        self.flag_stopped = False
         self.signal_start.emit()
         flag_out = False
         if len(arg) >= 1:
@@ -132,6 +147,9 @@ class CThread(QtCore.QThread):
                 os.chdir(self.work_dir)
             with redirect_stdout(self.out_terminal):
                 out = func(*arg)
+        except CalculationStopped as e:
+            self.flag_stopped = True
+            out = str(e)
         except Exception:
             flag_out = True
             out = "ERROR DURING PROGRAM EXECUTION\n\n" + \

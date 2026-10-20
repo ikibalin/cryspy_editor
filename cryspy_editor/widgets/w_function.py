@@ -155,7 +155,7 @@ class WFunction(QtWidgets.QFrame):
                 try:
                     numpy.array(eval(s_text), dtype=float)
                     w_arg.convert_to_object()
-                except:
+                except Exception:  # not a number: keep the text
                     pass
         self.push_button.setEnabled(False)
         l_x = [_.attached_object for _ in l_w_arg]
@@ -167,8 +167,9 @@ class WFunction(QtWidgets.QFrame):
         if thread is None:
             try:
                 func(*t_x)
-            except Exception:
-                pass
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(
+                    self, "Error", f"{func.__name__}: {type(e).__name__}: {e}")
             self.calculation_finished()
         else:
             thread.function = func
