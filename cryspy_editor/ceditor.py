@@ -42,7 +42,7 @@ from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif
 from cryspy_editor.widgets.w_textedit import WTextEdit
-from cryspy_editor.widgets.matplotlib import Graph
+from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
     cryspy_procedures_to_dictionary,
     check_function_to_auto_run,
@@ -50,6 +50,7 @@ from cryspy_editor.widgets.cryspy_objects import (
     get_plot_functions_for_data_loop_item,
     check_function_reserved_for_cryspy_editor,
 )
+from cryspy_editor.widgets.llm_panel import LLMPanel
 
 from cryspy_editor.cl_thread import CThread
 
@@ -306,6 +307,7 @@ class CMainWindow(QMainWindow):
         if "data_file_name" in self.d_setup.keys():
             self.take_rcif_object_from_d_setup()
             self.print_object_info()
+        self.llm_autoload_model()
 
     def write(self):
         try:
@@ -439,6 +441,9 @@ class CMainWindow(QMainWindow):
 
         # Menu CrysPy
         self.init_menu_cryspy()
+
+        # Menu AI assistant (optional local LLM)
+        self.init_menu_ai()
 
         self.init_central_widget()
 
@@ -870,7 +875,17 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         # self.text_edit.setLineWrapColumnOrWidth(648)
         self.text_edit.rewrite_undo_last_line = False
-        w_splitter.addWidget(self.text_edit)
+
+        # AI assistant below the output; shown when a local model is loaded
+        w_splitter_right = QtWidgets.QSplitter(QtCore.Qt.Vertical, w_splitter)
+        w_splitter_right.addWidget(self.text_edit)
+        self.llm_panel = LLMPanel(
+            take_cryspy_obj=self.take_rcif_object, parent=w_splitter_right)
+        self.llm_panel.signal_object_changed.connect(self.llm_object_changed)
+        self.llm_panel.signal_model_loaded.connect(self.llm_model_loaded)
+        self.llm_panel.setVisible(False)
+        w_splitter_right.addWidget(self.llm_panel)
+        w_splitter.addWidget(w_splitter_right)
 
         width_m_1 = int(1 * self.info_width / 6.0)
         width_m_2 = int(3 * self.info_width / 6.0)
@@ -880,6 +895,67 @@ class CMainWindow(QMainWindow):
         layout_main.addWidget(w_splitter)
         widget_main.setLayout(layout_main)
         self.setCentralWidget(widget_main)
+
+    def take_rcif_object(self):
+        return getattr(self, "rcif_object", None)
+
+    def init_menu_ai(self):
+        menu_ai = self.menu_bar.addMenu("AI assistant")
+        load_action = menu_ai.addAction("Load local model (*.gguf)...")
+        load_action.setStatusTip(
+            "Choose a GGUF chat model and its settings; it runs on this computer.")
+        load_action.triggered.connect(self.llm_choose_model)
+        unload_action = menu_ai.addAction("Unload model")
+        unload_action.triggered.connect(self.llm_unload_model)
+
+    def llm_choose_model(self):
+        from cryspy_editor.widgets.llm_local import flag_llama_cpp, INSTALL_HINT
+        from cryspy_editor.widgets.llm_settings import LLMSettingsDialog
+        if not flag_llama_cpp:
+            QtWidgets.QMessageBox.information(self, "AI assistant", INSTALL_HINT)
+            return
+        if self.llm_panel.is_busy():
+            QtWidgets.QMessageBox.information(
+                self, "AI assistant", "The assistant is busy, try again later.")
+            return
+        dialog = LLMSettingsDialog(
+            model_path=self.d_setup.get("llm_model_path", ""),
+            settings=self.d_setup.get("llm_settings", None), parent=self)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            self.d_setup["llm_settings"] = dialog.settings()
+            self.llm_load_model(dialog.model_path())
+
+    def llm_load_model(self, model_path: str):
+        self.llm_panel.setVisible(True)
+        self.llm_panel.load_model(
+            model_path, self.d_setup.get("llm_settings", None))
+
+    def llm_autoload_model(self):
+        """Load the model used last time, if llama-cpp-python is installed."""
+        from cryspy_editor.widgets.llm_local import flag_llama_cpp
+        model_path = self.d_setup.get("llm_model_path", "")
+        flag_autoload = self.d_setup.get("llm_autoload", False)
+        if flag_llama_cpp and flag_autoload and os.path.isfile(model_path):
+            self.llm_load_model(model_path)
+
+    def llm_unload_model(self):
+        if self.llm_panel.is_busy():
+            return
+        self.llm_panel.unload_model()
+        self.llm_panel.setVisible(False)
+        # keep the path and settings for the dialog, but do not load at start
+        self.d_setup["llm_autoload"] = False
+        numpy.save(self.f_setup, self.d_setup)
+
+    def llm_model_loaded(self, model_path: str):
+        if model_path != "":
+            self.d_setup["llm_model_path"] = model_path
+        self.d_setup["llm_autoload"] = model_path != ""
+        numpy.save(self.f_setup, self.d_setup)
+
+    def llm_object_changed(self):
+        self.renew_w_object_panel()
+        self.print_object_info()
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
     def item_clicked_on_w_object_panel(self, *argv):
