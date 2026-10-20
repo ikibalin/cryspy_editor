@@ -11,6 +11,7 @@ Assistant asks it for actions in JSON and runs them; only the tools differ
 """
 import json
 import os
+import re
 from typing import Callable, Dict, List, Optional
 
 from cryspy_editor.widgets.assistant_tools import (
@@ -41,6 +42,20 @@ MAX_RETRIES = 2  # the model corrects the actions with an error in their argumen
 N_MAX_RESULT = 3000  # characters of a result of a tool given to the model
 N_MAX_HISTORY = 2000  # characters of a reply kept in the chat history
 ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply of the model
+NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
+                "or do it in the window of CrysPy Editor.")
+# an answer that reports a change (English, Russian, French, German): without
+# an action that made it, it is not shown (claims_done)
+RE_DONE = re.compile(
+    r"\b(is|are|was|were|has been|have been|has|have|I've|I have|we have)\s+(now\s+|been\s+|successfully\s+)*"
+    r"(applied|set|changed|updated|done|refined|reduced|saved|exported|coloured|colored|tagged|selected|"
+    r"removed|created|made|corrected|replaced|integrated|opened|started|finished|completed)\b"
+    r"|\b(applied|updated|refined|completed|done)\s+(to|for|in|on)\s+(all|the|\d)"
+    r"|^\s*(done|applied|completed)\b"
+    r"|применен|применён|установлен|изменен|изменён|сделан|выполнен|уточнен|уточнён|сохранен|сохранён"
+    r"|выделен|окрашен|удален|удалён|обновлен|обновлён|заменен|заменён|готово"
+    r"|\b(appliqu|modifi|effectu|termin|enregistr)é|\b(angewendet|gesetzt|geändert|erledigt)\b",
+    re.IGNORECASE)
 
 # n_threads = 0 means all cores but one; n_gpu_layers = -1 means all layers
 # on GPU (Metal on Apple Silicon, CUDA if llama-cpp-python is built with it)
@@ -144,9 +159,14 @@ A request of several parts (e.g. refine the cell and then refine) has one
 action for each part. A greeting or a question about scientific things needs
 no action. When the user asks how to describe something in rcif or what a
 category means (thermal vibrations, multipoles, extinction, twins, ...), use
-the action "get_help" and answer from its text only. In the answers name the
-menus and windows of CrysPy Editor, never the actions. Answer in the language
-of the user. Never invent results: use the actions.
+the action "get_help" and answer from its text only. A question about the
+opened file (parameters, cell, chi-square, structure) is answered by an
+action, never from the chat: the values in the chat may be old or wrong. In
+the answers name the menus and windows of CrysPy Editor, never the actions.
+Answer in the language of the user. Never invent results: use the actions.
+Nothing is changed without an action: when no action does what the user
+asks, give no action and say that you cannot do it (and where in CrysPy
+Editor it is done); never write that something is done, applied or set.
 
 Respond ONLY with a JSON object:
 {{"actions": [{{"action": "<one of: {', '.join(D_TOOLS)}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
@@ -223,6 +243,13 @@ def take_decision(raw: str) -> dict:
     l_action = [step for step in (take_step(step) for step in l_step if isinstance(step, dict)) if step]
     answer = next((decision[key] for key in ANSWER_KEYS if key in decision), "")
     return {"actions": l_action, "answer": "" if answer is None else str(answer)}
+
+
+def claims_done(answer: str) -> bool:
+    """The answer reports a change (applied, set, done...): shown only when
+    an action made it (small models write "parameters refined" with no
+    action)."""
+    return bool(RE_DONE.search(answer or ""))
 
 
 class LocalModel:
@@ -331,15 +358,19 @@ class Assistant:
         # the answer was written before the results: not when an action failed
         if any(result.startswith("Error") for _, _, result in l_action):
             answer = ""
+        # a change is never reported without an action that made it
+        if not l_action and claims_done(answer):
+            answer = NOTHING_DONE
         # the answer to a question is made from the results (no more actions)
         if any(is_answer_tool(action) for action, _, _ in l_action):
             s_result = "\n\n".join(f"Result of {action}:\n{result[:N_MAX_RESULT]}" for action, _, result in l_action)
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": (
-                f"{s_result}\n\nThe actions are done. Answer the request \"{question}\" from these results: "
-                'respond with {"answer": "<short text for the user>"}.')})
+                f"{s_result}\n\nThe actions are done. Answer the request \"{question}\" only from these results, "
+                "not from the chat (its values may be old); when the results do not answer it, say so. "
+                'Respond with {"answer": "<short text for the user>"}.')})
             reply = take_decision(self.model.chat(messages, flag_json=True))["answer"]
-            answer = reply or answer
+            answer = reply or ("" if claims_done(answer) else answer)
         text = "\n\n".join(f"[{action}] {result}" for action, _, result in l_action)
         if answer:
             text = answer if text == "" else f"{text}\n\n{answer}"
