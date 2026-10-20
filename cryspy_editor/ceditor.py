@@ -903,13 +903,14 @@ class CMainWindow(QMainWindow):
         menu_ai = self.menu_bar.addMenu("AI assistant")
         load_action = menu_ai.addAction("Load local model (*.gguf)...")
         load_action.setStatusTip(
-            "Choose a chat model in GGUF format; it runs on this computer.")
+            "Choose a GGUF chat model and its settings; it runs on this computer.")
         load_action.triggered.connect(self.llm_choose_model)
         unload_action = menu_ai.addAction("Unload model")
         unload_action.triggered.connect(self.llm_unload_model)
 
     def llm_choose_model(self):
         from cryspy_editor.widgets.llm_local import flag_llama_cpp, INSTALL_HINT
+        from cryspy_editor.widgets.llm_settings import LLMSettingsDialog
         if not flag_llama_cpp:
             QtWidgets.QMessageBox.information(self, "AI assistant", INSTALL_HINT)
             return
@@ -917,24 +918,24 @@ class CMainWindow(QMainWindow):
             QtWidgets.QMessageBox.information(
                 self, "AI assistant", "The assistant is busy, try again later.")
             return
-        f_dir = os.path.dirname(self.d_setup.get("llm_model_path", ""))
-        if not os.path.isdir(f_dir):
-            f_dir = os.path.expanduser("~")
-        file_name, ok = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Load local model", f_dir,
-            "GGUF models (*.gguf);; All Files (*)")
-        if ok and file_name:
-            self.llm_load_model(file_name)
+        dialog = LLMSettingsDialog(
+            model_path=self.d_setup.get("llm_model_path", ""),
+            settings=self.d_setup.get("llm_settings", None), parent=self)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            self.d_setup["llm_settings"] = dialog.settings()
+            self.llm_load_model(dialog.model_path())
 
     def llm_load_model(self, model_path: str):
         self.llm_panel.setVisible(True)
-        self.llm_panel.load_model(model_path)
+        self.llm_panel.load_model(
+            model_path, self.d_setup.get("llm_settings", None))
 
     def llm_autoload_model(self):
         """Load the model used last time, if llama-cpp-python is installed."""
         from cryspy_editor.widgets.llm_local import flag_llama_cpp
         model_path = self.d_setup.get("llm_model_path", "")
-        if flag_llama_cpp and model_path != "" and os.path.isfile(model_path):
+        flag_autoload = self.d_setup.get("llm_autoload", False)
+        if flag_llama_cpp and flag_autoload and os.path.isfile(model_path):
             self.llm_load_model(model_path)
 
     def llm_unload_model(self):
@@ -942,11 +943,14 @@ class CMainWindow(QMainWindow):
             return
         self.llm_panel.unload_model()
         self.llm_panel.setVisible(False)
-        self.d_setup["llm_model_path"] = ""
+        # keep the path and settings for the dialog, but do not load at start
+        self.d_setup["llm_autoload"] = False
         numpy.save(self.f_setup, self.d_setup)
 
     def llm_model_loaded(self, model_path: str):
-        self.d_setup["llm_model_path"] = model_path
+        if model_path != "":
+            self.d_setup["llm_model_path"] = model_path
+        self.d_setup["llm_autoload"] = model_path != ""
         numpy.save(self.f_setup, self.d_setup)
 
     def llm_object_changed(self):

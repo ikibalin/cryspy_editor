@@ -63,14 +63,14 @@ class LLMPanel(QtWidgets.QWidget):
         self.thread = None
         self.worker = None
 
-    def load_model(self, model_path: str):
+    def load_model(self, model_path: str, settings: dict = None):
         if self.is_busy():
             return
         self.llm = None
         self.input_line.setEnabled(False)
         self.label_model.setText(f"AI assistant: loading {model_path} ...")
         self._start_thread(
-            LLMLoadWorker(model_path), self.on_model_loaded,
+            LLMLoadWorker(model_path, settings), self.on_model_loaded,
             self.on_model_error)
 
     def unload_model(self):

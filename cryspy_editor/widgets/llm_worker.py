@@ -8,14 +8,15 @@ class LLMLoadWorker(QObject):
     finished = pyqtSignal(object)  # emits LLMLocal
     error = pyqtSignal(str)
 
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, settings: dict = None):
         super().__init__()
         self.model_path = model_path
+        self.settings = settings
 
     def run(self):
         try:
             from cryspy_editor.widgets.llm_local import LLMLocal
-            self.finished.emit(LLMLocal(self.model_path))
+            self.finished.emit(LLMLocal(self.model_path, self.settings))
         except Exception as e:
             self.error.emit(f"{type(e).__name__}: {e}")
 

@@ -26,6 +26,71 @@ INSTALL_HINT = (
 
 MAX_HISTORY_MESSAGES = 10
 
+# n_threads = 0 means all cores but one; n_gpu_layers = -1 means all layers
+# on GPU (Metal on Apple Silicon, CUDA if llama-cpp-python is built with it)
+DEFAULT_SETTINGS = {
+    "n_ctx": 4096,
+    "n_threads": 0,
+    "n_gpu_layers": -1,
+    "max_tokens": 512,
+    "temperature": 0.2,
+}
+
+# (minimal RAM in GB, models, approximate size of the Q4_K_M file)
+L_RECOMMENDED_MODELS = (
+    (0, "Qwen2.5-1.5B-Instruct", "1 GB"),
+    (8, "Qwen2.5-3B-Instruct, Llama-3.2-3B-Instruct", "2 GB"),
+    (16, "Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct", "5 GB"),
+    (32, "Qwen2.5-14B-Instruct", "9 GB"),
+)
+
+
+def take_settings(settings: Optional[dict] = None) -> dict:
+    """Default settings updated by known keys of the given ones."""
+    d_out = dict(DEFAULT_SETTINGS)
+    if isinstance(settings, dict):
+        for key in DEFAULT_SETTINGS:
+            if key in settings:
+                d_out[key] = type(DEFAULT_SETTINGS[key])(settings[key])
+    return d_out
+
+
+def get_total_memory_gb() -> Optional[float]:
+    """Physical memory of the computer in GB, None if unknown."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            status = MemoryStatus()
+            status.dwLength = ctypes.sizeof(MemoryStatus)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+            return status.ullTotalPhys / 1024**3
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
+    except (AttributeError, ValueError, OSError):
+        return None
+
+
+def take_recommended_index(memory_gb: Optional[float]) -> Optional[int]:
+    """Index in L_RECOMMENDED_MODELS for the given memory."""
+    if memory_gb is None:
+        return None
+    index = 0
+    for ind, (min_memory, _, _) in enumerate(L_RECOMMENDED_MODELS):
+        # 8 GB machines report a bit less than 8
+        if memory_gb >= 0.9 * min_memory:
+            index = ind
+    return index
+
 
 def take_json_object(text: str) -> Optional[dict]:
     """Return the first JSON object found in the text, or None."""
@@ -113,17 +178,19 @@ Respond ONLY with a JSON object:
 class LLMLocal:
     """Chat with a local GGUF model and run CrysPy actions it chooses."""
 
-    def __init__(self, model_path: str, n_ctx: int = 4096,
-                 n_threads: Optional[int] = None):
+    def __init__(self, model_path: str, settings: Optional[dict] = None):
         if not flag_llama_cpp:
             raise ImportError(INSTALL_HINT)
         if not os.path.isfile(model_path):
             raise FileNotFoundError(f"Model file '{model_path}' is not found.")
-        if n_threads is None:
+        self.settings = take_settings(settings)
+        n_threads = self.settings["n_threads"]
+        if n_threads <= 0:
             n_threads = max(1, (os.cpu_count() or 2) - 1)
         self.model_path = model_path
         self.llm = Llama(
-            model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
+            model_path=model_path, n_ctx=self.settings["n_ctx"],
+            n_threads=n_threads, n_gpu_layers=self.settings["n_gpu_layers"],
             verbose=False)
         self.history: List[Dict[str, str]] = []
 
@@ -134,14 +201,15 @@ class LLMLocal:
     def clear_history(self):
         self.history = []
 
-    def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512,
+    def chat(self, messages: List[Dict[str, str]],
              flag_json: bool = False) -> str:
         kwargs = {}
         if flag_json:
             kwargs["response_format"] = {"type": "json_object"}
+        settings = getattr(self, "settings", DEFAULT_SETTINGS)
         result = self.llm.create_chat_completion(
-            messages=messages, max_tokens=max_tokens, temperature=0.2,
-            **kwargs)
+            messages=messages, max_tokens=settings["max_tokens"],
+            temperature=settings["temperature"], **kwargs)
         return result["choices"][0]["message"]["content"].strip()
 
     def decide(self, question: str) -> dict:

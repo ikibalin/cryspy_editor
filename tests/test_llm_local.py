@@ -96,3 +96,35 @@ def test_missing_llama_cpp(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_local, "flag_llama_cpp", False)
     with pytest.raises(ImportError):
         LLMLocal(os.path.join(tmp_path, "model.gguf"))
+
+
+def test_take_settings():
+    settings = llm_local.take_settings({"n_ctx": "8192", "unknown": 1})
+    assert settings["n_ctx"] == 8192
+    assert "unknown" not in settings
+    assert settings["n_gpu_layers"] == llm_local.DEFAULT_SETTINGS["n_gpu_layers"]
+    assert llm_local.take_settings(None) == llm_local.DEFAULT_SETTINGS
+
+
+@pytest.mark.parametrize("memory, index", [
+    (None, None), (4, 0), (7.6, 1), (8, 1), (16, 2), (24, 2), (64, 3)])
+def test_take_recommended_index(memory, index):
+    assert llm_local.take_recommended_index(memory) == index
+
+
+def test_total_memory():
+    memory = llm_local.get_total_memory_gb()
+    assert memory is None or memory > 0.1
+
+
+def test_settings_reach_model():
+    llm = make_llm([json.dumps({"action": "none", "answer": "ok"})])
+    llm.settings = llm_local.take_settings({"max_tokens": 100, "temperature": 0.5})
+    llm.answer("hi", None)
+    # FakeLlama ignores kwargs; check them by wrapping
+    calls = []
+    llm.llm.create_chat_completion = lambda messages, **kw: (
+        calls.append(kw) or {"choices": [{"message": {"content": "{}"}}]})
+    llm.answer("hi", None)
+    assert calls[0]["max_tokens"] == 100
+    assert calls[0]["temperature"] == 0.5
