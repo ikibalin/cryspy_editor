@@ -27,8 +27,14 @@ refine, show the model, add an atom, run CrysPy procedures. Questions such as
 "how to describe multipoles?" or "what should be used for thermal
 vibrations?" are answered from the help pages of CrysPy, which are shown in
 the answer. The same help is in **Options → CrysPy help...** (F1) without a
-model. The tools and the help need a CrysPy version that has
-`cryspy.call_assistant_tool`.
+model.
+
+The assistant works in its own window, **AI Assistant / CrysPy Editor**,
+opened by **AI assistant → Show assistant**. One request may hold several
+actions (e.g. "fix everything, refine the cell and run the refinement"); a
+call with wrong arguments goes back to the model to be corrected, and
+questions are answered from the results of the actions. The window and the
+logic are the same as in the assistant of PyColl5; only the actions differ.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`
    (or `pip install llama-cpp-python`).
@@ -46,7 +52,8 @@ model. The tools and the help need a CrysPy version that has
    pick the file and, if needed, the threads, GPU layers, context size,
    answer length and temperature. The same table is shown there, with the row
    for your computer in bold. The model is loaded in the background and is
-   loaded again at the next start, until **Unload model**.
+   loaded again at the next start, until **Unload model**; the window opens
+   again at the next start if it was open when the program was closed.
 
 ## Development
 
