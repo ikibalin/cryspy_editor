@@ -88,12 +88,6 @@ def test_old_action_key_is_accepted():
     assert llm.answer("hi", None)["text"] == "ok"
 
 
-needs_tools = pytest.mark.skipif(
-    not llm_local.flag_cryspy_tools,
-    reason="installed CrysPy has no assistant tools")
-
-
-@needs_tools
 def test_unknown_tool_is_reported_to_model():
     llm = make_llm([reply("rm_rf"), reply(answer="Sorry.")])
     result = llm.answer("delete", None)
@@ -102,13 +96,11 @@ def test_unknown_tool_is_reported_to_model():
     assert "unknown tool" in llm.llm.l_messages[-1][-1]["content"]
 
 
-@needs_tools
 def test_tool_without_object():
     llm = make_llm([reply("show_model"), reply(answer="Open a file.")])
     assert "no CrysPy object" in llm.answer("show", None)["text"]
 
 
-@needs_tools
 def test_help_from_cryspy():
     llm = make_llm([reply("get_help", query="multipoles"),
                     reply(answer="Use atom_rho_multipole.")])
@@ -123,7 +115,6 @@ def test_help_from_cryspy():
     assert result["flag_object_changed"] is False
 
 
-@needs_tools
 def test_refine_parameters_and_fix():
     obj = cryspy.str_to_globaln(RCIF)
     llm = make_llm([
@@ -145,18 +136,11 @@ def test_refine_parameters_and_fix():
     assert len(llm.llm.l_messages[-2]) == 1 + 4 + 1
 
 
-@needs_tools
 def test_number_of_tool_calls_is_limited():
     obj = cryspy.str_to_globaln(RCIF)
     llm = make_llm([reply("summarize_object")] * 10)
     result = llm.answer("loop", obj)
     assert result["tools"] == ["summarize_object"] * llm_local.MAX_TOOL_CALLS
-
-
-def test_old_cryspy_is_reported(monkeypatch):
-    monkeypatch.setattr(llm_local, "flag_cryspy_tools", False)
-    llm = make_llm([reply("summarize_object")])
-    assert "pip install --upgrade cryspy" in llm.answer("x", None)["text"]
 
 
 def test_missing_llama_cpp(monkeypatch, tmp_path):

@@ -1,12 +1,7 @@
 """Window with the help of CrysPy (works without the AI assistant)."""
 from PyQt5 import QtWidgets
 
-try:
-    from cryspy import get_help, help_topics
-    flag_cryspy_help = True
-except ImportError:
-    get_help = help_topics = None
-    flag_cryspy_help = False
+from cryspy import get_help, help_topics
 
 
 class HelpDialog(QtWidgets.QDialog):
@@ -26,16 +21,10 @@ class HelpDialog(QtWidgets.QDialog):
         self.text_help = QtWidgets.QTextBrowser(self)
         self.text_help.setOpenExternalLinks(True)
         layout.addWidget(self.text_help)
-        if flag_cryspy_help:
-            self.text_help.setMarkdown(help_topics().replace("\n", "\n\n"))
-        else:
-            self.line_query.setEnabled(False)
-            self.text_help.setPlainText(
-                "The installed CrysPy has no help pages. Update it:\n"
-                "    pip install --upgrade cryspy")
+        self.text_help.setMarkdown(help_topics().replace("\n", "\n\n"))
 
     def show_help(self):
         query = self.line_query.text().strip()
-        if query == "" or not flag_cryspy_help:
+        if query == "":
             return
         self.text_help.setMarkdown(get_help(query))
