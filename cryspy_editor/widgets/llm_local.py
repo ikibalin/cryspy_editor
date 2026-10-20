@@ -8,13 +8,8 @@ import json
 import os
 from typing import Callable, Dict, List, Optional
 
-try:
-    # tools and help pages are in CrysPy, the editor only talks to the model
-    from cryspy import assistant_tools_as_text, call_assistant_tool
-    flag_cryspy_tools = True
-except ImportError:
-    assistant_tools_as_text = call_assistant_tool = None
-    flag_cryspy_tools = False
+# tools and help pages are in CrysPy, the editor only talks to the model
+from cryspy import assistant_tools_as_text, call_assistant_tool
 
 try:
     from llama_cpp import Llama
@@ -29,10 +24,6 @@ INSTALL_HINT = (
     "Install it with:\n    pip install llama-cpp-python\n"
     "or\n    pip install cryspy_editor[ai]"
 )
-
-CRYSPY_UPDATE_HINT = (
-    "The installed CrysPy has no assistant tools. Update it:\n"
-    "    pip install --upgrade cryspy")
 
 MAX_HISTORY_MESSAGES = 10
 TOKENS_PER_MESSAGE = 8
@@ -123,10 +114,7 @@ def take_json_object(text: str) -> Optional[dict]:
 
 
 def form_system_prompt() -> str:
-    if not flag_cryspy_tools:
-        s_tools = "(no tools: the installed CrysPy is too old)"
-    else:
-        s_tools = assistant_tools_as_text()
+    s_tools = assistant_tools_as_text()
     return f"""You are the assistant of CrysPy Editor, a program for crystallographic
 analysis of neutron and X-ray diffraction data with the CrysPy library.
 The user may have a CrysPy object loaded (crystal structures, experiments, data).
@@ -254,9 +242,6 @@ class LLMLocal:
             decision = self.decide(messages)
             tool, answer = decision["tool"], decision["answer"]
             if tool.lower() == "none" or len(l_tool) >= MAX_TOOL_CALLS:
-                break
-            if not flag_cryspy_tools:
-                answer = CRYSPY_UPDATE_HINT
                 break
             if callback_action is not None:
                 callback_action(tool)

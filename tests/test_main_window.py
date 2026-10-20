@@ -56,9 +56,6 @@ def test_open_example(window, file_name):
 def test_help_dialog(qapp):
     from cryspy_editor.widgets import help_dialog
     dialog = help_dialog.HelpDialog()
-    if not help_dialog.flag_cryspy_help:
-        assert not dialog.line_query.isEnabled()
-        return
     dialog.line_query.setText("thermal vibrations")
     dialog.show_help()
     assert "atom_site_aniso" in dialog.text_help.toPlainText()
