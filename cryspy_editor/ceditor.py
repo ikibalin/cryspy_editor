@@ -53,6 +53,8 @@ from cryspy_editor.widgets.cryspy_objects import (
 from cryspy_editor.widgets.llm_panel import LLMPanel
 
 from cryspy_editor.cl_thread import CThread
+from cryspy_editor.settings import (
+    take_settings, save_settings, add_recent_file)
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
@@ -242,7 +244,7 @@ class OptionsWindow(QMainWindow):
                     file_name
                 )
             self.q_list.addItem(file_name)
-            numpy.save(self.parent.f_setup, self.parent.d_setup)
+            save_settings()
 
     def delete_function(self):
         f_item = self.q_list.currentItem()
@@ -258,7 +260,7 @@ class OptionsWindow(QMainWindow):
             self.parent.d_setup["file_names_for_external_functions"] = (
                 ";".join(l_names_new)
             )
-            numpy.save(self.parent.f_setup, self.parent.d_setup)
+            save_settings()
             self.q_list.addItems(l_names_new)
         except:
             pass
@@ -275,20 +277,14 @@ def user_script_name(cryspy_object: cryspy.GlobalN):
 
 
 class CMainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, file_name: str = None):
+        """Main window; file_name is opened instead of the last used file."""
         super(CMainWindow, self).__init__()
 
         self.dir_prog = os.path.dirname(__file__)
-        self.d_setup = {
-            "data_file_name": os.path.join(
-                self.dir_prog,
-            ),
-            "data_dir_name": self.dir_prog,
-            "file_names_for_external_functions": "",
-        }
-        self.f_setup = os.path.join(self.dir_prog, "setup.npy")
-        if os.path.isfile(self.f_setup):
-            self.d_setup = numpy.load(self.f_setup, allow_pickle="TRUE").item()
+        self.d_setup = take_settings()
+        if file_name is not None:
+            self.d_setup["data_file_name"] = os.path.abspath(file_name)
 
         self.functions_plot_data = []
         self.functions_plot_loop = []
@@ -304,9 +300,8 @@ class CMainWindow(QMainWindow):
         self.show()
 
         self.print_welcome()
-        if "data_file_name" in self.d_setup.keys():
-            self.take_rcif_object_from_d_setup()
-            self.print_object_info()
+        self.take_rcif_object_from_d_setup()
+        self.print_object_info()
         self.llm_autoload_model()
 
     def write(self):
@@ -397,6 +392,9 @@ class CMainWindow(QMainWindow):
         save_as_action.triggered.connect(self.save_file_as)
         menu_file.addAction(save_as_action)
         toolbar_1.addAction(save_as_action)
+
+        self.menu_recent = menu_file.addMenu("Open recent")
+        self.update_menu_recent()
 
         exit_button = QAction(
             QIcon(os.path.join(dir_prog_icon, "exit24.png")), "Exit", self
@@ -506,7 +504,6 @@ class CMainWindow(QMainWindow):
         self.d_setup["file_names_for_external_functions"] = ";".join(
             l_f_name_external
         )
-        numpy.save(self.f_setup, self.d_setup)
         l_func_external = get_external_functions(l_f_name_external)
 
         (
@@ -576,83 +573,96 @@ class CMainWindow(QMainWindow):
         )
 
     def save_file(self):
-        if "data_file_name" in self.d_setup.keys():
-            file_name = self.d_setup["data_file_name"]
-            rcif_object = self.rcif_object
-
+        file_name = self.d_setup.get("data_file_name", "")
+        if file_name == "" or os.path.isdir(file_name):
+            self.save_file_as()
+            return
+        try:
             with open(file_name, "w") as fid:
-                fid.write(rcif_object.to_cif())
-            numpy.save(self.f_setup, self.d_setup)
-            os.chdir(os.path.dirname(file_name))
+                fid.write(self.rcif_object.to_cif())
+        except OSError as error:
+            QtWidgets.QMessageBox.warning(
+                self, "Save", f"File '{file_name}' is not saved:\n{error}")
+            return
+        add_recent_file(file_name)
+        self.update_menu_recent()
+        save_settings()
 
     def save_file_as(self):
-        # Save
-        if "data_dir_name" in self.d_setup.keys():
-            f_dir = self.d_setup["data_dir_name"]
-        else:
-            f_dir = "."
-
+        f_dir = self.d_setup.get("data_dir_name", "")
+        if not os.path.isdir(f_dir):
+            f_dir = os.path.expanduser("~")
         file_name, ok = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Save file as ...",
             f_dir,
             "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
         )
-        if ok:
+        if ok and file_name != "":
             self.d_setup["data_file_name"] = file_name
             self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+            self.cthread.work_dir = os.path.dirname(file_name)
+            self.setWindowTitle(
+                f"CrysPy Editor: {os.path.basename(file_name):}")
             self.save_file()
-            os.chdir(os.path.dirname(file_name))
 
     def open_file(self):
-        # Load
-        f_dir = self.d_setup["data_dir_name"]
-        if not (os.path.isdir(f_dir)):
-            f_dir = "."
-        # options = QtWidgets.QFileDialog.Options()
+        f_dir = self.d_setup.get("data_dir_name", "")
+        if not os.path.isdir(f_dir):
+            f_dir = os.path.expanduser("~")
         file_name, ok = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Open file",
             f_dir,
             "RCIF Files (*.rcif);; CIF Files (*.cif);; All Files (*)",
         )
-        if ok:
-            self.d_setup["data_file_name"] = file_name
-            self.d_setup["data_dir_name"] = os.path.dirname(file_name)
-            self.take_rcif_object_from_d_setup()
+        if ok and file_name != "":
+            self.open_file_name(file_name)
 
-            # self.setWindowTitle(f"CrysPy Editor: {os.path.basename(file_name):}")
-            numpy.save(self.f_setup, self.d_setup)
-            self.print_object_info()
-            os.chdir(os.path.dirname(file_name))
+    def open_file_name(self, file_name: str):
+        """Open the file given by name (dialog, recent files, command line)."""
+        self.d_setup["data_file_name"] = os.path.abspath(file_name)
+        self.take_rcif_object_from_d_setup()
+        self.print_object_info()
+
+    def update_menu_recent(self):
+        self.menu_recent.clear()
+        l_recent = [file_name for file_name in self.d_setup["recent_files"]
+                    if os.path.isfile(file_name)]
+        for file_name in l_recent:
+            action = self.menu_recent.addAction(file_name)
+            action.triggered.connect(
+                lambda checked, f_name=file_name: self.open_file_name(f_name))
+        self.menu_recent.setEnabled(len(l_recent) > 0)
 
     def take_rcif_object_from_d_setup(self):
         """Load object from d_setup."""
-        # self.text_edit.setText("")
-        # self.print_welcome()
-        # self.renew_file_data_from_d_setup()
-        file_name = self.d_setup["data_file_name"]
-        ls_out = []
+        file_name = self.d_setup.get("data_file_name", "")
         if os.path.isfile(file_name):
-            ls_out.append(
-                f"Loading data from file '{os.path.basename(file_name)}'..."
-            )
-            self.text_edit.append("\n".join(ls_out))
+            self.text_edit.append(
+                f"Loading data from file '{os.path.basename(file_name)}'...")
             try:
                 rcif_object = load_file(file_name)
-                self.d_setup["data_dir_name"] = os.path.dirname(file_name)
-                os.chdir(os.path.dirname(file_name))
             except Exception as e:
-                ls_out.append(80 * "*")
-                ls_out.append("ERROR during data opening")
-                ls_out.append(str(e))
-                ls_out.append(80 * "*")
+                ls_out = [80 * "*", "ERROR during data opening", str(e),
+                          80 * "*"]
                 self.text_edit.append("\n".join(ls_out))
+                if not hasattr(self, "rcif_object"):
+                    self.rcif_object = GlobalN.make_container((), (), "global")
+                    self.renew_w_object_panel()
                 return
+            self.d_setup["data_dir_name"] = os.path.dirname(file_name)
+            # procedures write output files (.den, sections) next to the data
+            self.cthread.work_dir = os.path.dirname(file_name)
             self.setWindowTitle(
                 f"CrysPy Editor: {os.path.basename(file_name):}"
             )
+            add_recent_file(file_name)
+            self.update_menu_recent()
+            save_settings()
         else:
+            if file_name != "":
+                self.text_edit.append(f"File '{file_name}' is not found.")
             rcif_object = GlobalN.make_container((), (), "global")
         self.rcif_object = rcif_object
         self.renew_w_object_panel()
@@ -945,13 +955,13 @@ class CMainWindow(QMainWindow):
         self.llm_panel.setVisible(False)
         # keep the path and settings for the dialog, but do not load at start
         self.d_setup["llm_autoload"] = False
-        numpy.save(self.f_setup, self.d_setup)
+        save_settings()
 
     def llm_model_loaded(self, model_path: str):
         if model_path != "":
             self.d_setup["llm_model_path"] = model_path
         self.d_setup["llm_autoload"] = model_path != ""
-        numpy.save(self.f_setup, self.d_setup)
+        save_settings()
 
     def llm_object_changed(self):
         self.renew_w_object_panel()
