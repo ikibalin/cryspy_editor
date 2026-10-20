@@ -68,6 +68,8 @@ setup(
     include_package_data=True,
     packages=find_packages(),  # same as name
     install_requires=["cryspy >= 0.10.0", "pyqt5>=5.15"],
+    # optional local AI assistant: pip install cryspy_editor[ai]
+    extras_require={"ai": ["llama-cpp-python"]},
     entry_points={
         "console_scripts": [
         "cryspy-editor = cryspy_editor.__main__:main",

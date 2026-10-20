@@ -1,149 +1,198 @@
-# local_llm.py
+"""Local LLM assistant for CrysPy Editor.
 
-from llama_cpp import Llama
+The model is any chat model in GGUF format loaded by llama-cpp-python
+(optional dependency: pip install cryspy_editor[ai]). Nothing is sent
+to the internet: the model file is chosen by the user and runs locally.
+"""
 import json
+import os
+from typing import Callable, Dict, List, Optional
+
 import cryspy
-from typing import List, Dict
+
+try:
+    from llama_cpp import Llama
+    flag_llama_cpp = True
+except ImportError:
+    Llama = None
+    flag_llama_cpp = False
 
 
-def substring_from_char(s: str, ch: str) -> str:
-    idx = s.find(ch)
-    if idx == -1:
-        return ""
-    return s[idx:]
+INSTALL_HINT = (
+    "The AI assistant needs the optional package llama-cpp-python.\n"
+    "Install it with:\n    pip install llama-cpp-python\n"
+    "or\n    pip install cryspy_editor[ai]"
+)
 
-def substring_until_char(s: str, ch: str) -> str:
-    idx = s.find(ch)
-    if idx == -1:
-        return s
-    return s[:idx+1]
+MAX_HISTORY_MESSAGES = 10
 
-def get_json_part(s:str) -> str:
-    return substring_until_char(substring_from_char(s, "{"), "}") 
+
+def take_json_object(text: str) -> Optional[dict]:
+    """Return the first JSON object found in the text, or None."""
+    decoder = json.JSONDecoder()
+    idx = text.find("{")
+    while idx != -1:
+        try:
+            obj, _ = decoder.raw_decode(text[idx:])
+            if isinstance(obj, dict):
+                return obj
+        except ValueError:
+            pass
+        idx = text.find("{", idx + 1)
+    return None
+
+
+def action_refine(cryspy_object: cryspy.GlobalN) -> str:
+    if len(cryspy_object.get_variable_names()) == 0:
+        return "No parameters are marked for refinement."
+    result = cryspy.rhochi_rietveld_refinement(cryspy_object)
+    return f"Refinement finished.\n{result}"
+
+
+def action_calculate(cryspy_object: cryspy.GlobalN) -> str:
+    result = cryspy.rhochi_no_refinement(cryspy_object)
+    return f"Calculation finished.\n{result}"
+
+
+def action_fix_all_parameters(cryspy_object: cryspy.GlobalN) -> str:
+    cryspy_object.fix_variables()
+    return "All parameters are fixed."
+
+
+def action_show_refined_parameters(cryspy_object: cryspy.GlobalN) -> str:
+    names = cryspy_object.get_variable_names()
+    if len(names) == 0:
+        return "No parameters are marked for refinement."
+    ls_out = ["| Parameter | Index | Value |", "| --- | --- | --- |"]
+    for name in names:
+        value = cryspy_object.get_variable_by_name(name)
+        param, index = name[-1][0], name[-1][1]
+        ls_out.append(f"| {param} | {index} | {value:.5f} |")
+    return "\n".join(ls_out)
+
+
+def action_show_model(cryspy_object: cryspy.GlobalN) -> str:
+    return cryspy_object.to_cif()
+
+
+# name -> (description for the model, function, flag_object_changed)
+D_ACTIONS: Dict[str, tuple] = {
+    "refine": (
+        "run the refinement of the parameters marked for refinement",
+        action_refine, True),
+    "calculate": (
+        "calculate the model without refinement (chi-square, calculated data)",
+        action_calculate, True),
+    "fix_all_parameters": (
+        "fix all parameters (switch off their refinement)",
+        action_fix_all_parameters, True),
+    "show_refined_parameters": (
+        "list the parameters marked for refinement with their values",
+        action_show_refined_parameters, False),
+    "show_model": (
+        "show the whole current model and data as text",
+        action_show_model, False),
+}
+
+
+def form_system_prompt() -> str:
+    ls_action = [f"- {name}: {desc}" for name, (desc, _, _) in D_ACTIONS.items()]
+    s_actions = "\n".join(ls_action)
+    return f"""You are the assistant of CrysPy Editor, a program for crystallographic
+analysis of neutron and X-ray diffraction data with the CrysPy library.
+The user has a CrysPy object loaded (crystal structures, experiments, data).
+
+If the user asks to do something with the object, choose one action:
+{s_actions}
+Otherwise use the action "none" and answer the question in "answer".
+
+Respond ONLY with a JSON object:
+{{"action": "<one of: {', '.join(D_ACTIONS)}, none>", "answer": "<short text for the user>"}}"""
 
 
 class LLMLocal:
-    def __init__(self, model_path: str, n_ctx: int = 4096, n_threads: int = 4):
+    """Chat with a local GGUF model and run CrysPy actions it chooses."""
+
+    def __init__(self, model_path: str, n_ctx: int = 4096,
+                 n_threads: Optional[int] = None):
+        if not flag_llama_cpp:
+            raise ImportError(INSTALL_HINT)
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(f"Model file '{model_path}' is not found.")
+        if n_threads is None:
+            n_threads = max(1, (os.cpu_count() or 2) - 1)
+        self.model_path = model_path
         self.llm = Llama(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_threads=n_threads,
-            verbose=False
-        )
-        self.history: List[Dict[str, str]] = []  # [{"role": "user"/"assistant", "content": "..."}]
+            model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
+            verbose=False)
+        self.history: List[Dict[str, str]] = []
 
-    def _build_history_prompt(self) -> str:
-        lines = []
-        for turn in self.history[-10:]:  # last 10 turns
-            lines.append(f"{turn['role'].upper()}: {turn['content']}")
-        return "\n".join(lines)
+    @property
+    def model_name(self) -> str:
+        return os.path.basename(self.model_path)
 
-    def ask(self, prompt: str, max_tokens: int = 512) -> str:
-        history_text = self._build_history_prompt()
-        history_text = ""
-        full_prompt = history_text + ("\n" if history_text else "") + f"USER: {prompt}\nASSISTANT:"
-        result = self.llm(
-            full_prompt,
-            max_tokens=max_tokens,
-            stop=["</s>"],
-            echo=False
-        )
-        answer = result["choices"][0]["text"].strip()
-        self.history.append({"role": "user", "content": prompt})
-        self.history.append({"role": "assistant", "content": answer})
-        return answer
+    def clear_history(self):
+        self.history = []
 
-    def decide_if_action_required(self, question: str):
-        system_prompt = """
-You decide whether the user wants to perform an action on a CrysPy object
-or just ask for general information.
+    def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512,
+             flag_json: bool = False) -> str:
+        kwargs = {}
+        if flag_json:
+            kwargs["response_format"] = {"type": "json_object"}
+        result = self.llm.create_chat_completion(
+            messages=messages, max_tokens=max_tokens, temperature=0.2,
+            **kwargs)
+        return result["choices"][0]["message"]["content"].strip()
 
-If the user wants to modify or operate on the crystallographic model,
-set requires_action = true. Also set requires_action = true if the user wants to display or show the crystallographic model or any part of this model. For all situation given in 'Possible actions' list given below set requires_action = true.
+    def decide(self, question: str) -> dict:
+        """Ask the model which action to take; return {'action', 'answer'}."""
+        messages = [{"role": "system", "content": form_system_prompt()}]
+        messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
+        messages.append({"role": "user", "content": question})
+        raw = self.chat(messages, flag_json=True)
+        decision = take_json_object(raw)
+        if decision is None:
+            decision = {"action": "none", "answer": raw}
+        action = str(decision.get("action", "none")).strip()
+        if action not in D_ACTIONS:
+            action = "none"
+        return {"action": action, "answer": str(decision.get("answer", ""))}
 
-If the user is asking for general information (crystallography theory,
-symmetry explanation, unit cell concepts, diffraction, or unrelated topics),
-set requires_action = false.
+    def comment_result(self, question: str, action: str, result: str) -> str:
+        """Ask the model to comment the result of an executed action."""
+        messages = [
+            {"role": "system", "content":
+                "You are a crystallography assistant. Comment briefly the "
+                "result for the user: quality of the fit (chi-square), "
+                "suspicious or correlated parameters, what to try next."},
+            {"role": "user", "content":
+                f"Request: {question}\nAction: {action}\nResult:\n{result[:6000]}"},
+        ]
+        return self.chat(messages)
 
-Possible actions (even if not supported yet):
-- refine
-- fix_all_parameters
-- show_refine_parameters
-- show_model
-- add_atoms
-- delete_atoms
-- modify_atom
-- symmetry
-- get_cell
-- export_cif
-- none
+    def answer(self, question: str, cryspy_object=None,
+               callback_action: Optional[Callable[[str], None]] = None) -> dict:
+        """Process the user question.
 
-Respond ONLY with JSON:
-{
-  "requires_action": true/false,
-  "action": "...",
-  "explanation": "..."
-}
-"""
-        full_prompt = system_prompt + "\nUser question: " + question
-        raw = get_json_part(self.ask(full_prompt))
-        try:
-            decision = json.loads(raw)
-        except Exception:
-            return {
-                "requires_action": False,
-                "action": "none",
-                "explanation": f"Invalid JSON: {raw}"
-            }
-        return decision
-
-    def decide_and_execute(self, question: str, cryspy_obj):
-        system_prompt = """
-You choose ONE crystallographic action for CrysPy.
-
-Allowed actions:
-- refine
-- fix_all_parameters
-- show_refine_parameters
-- show_model
-- none
-- ask_user
-
-Respond ONLY with JSON:
-{
-  "action": "...",
-  "explanation": "..."
-}
-"""
-        full_prompt = system_prompt + "\nUser question: " + question
-        raw = get_json_part(self.ask(full_prompt))
-        try:
-            decision = json.loads(raw)
-        except Exception:
-            return f"Model returned invalid JSON: {raw}"
-
-        action = decision.get("action", "none")
-        explanation = decision.get("explanation", "")
-
-        if action == "refine":
-            result = cryspy.rhochi_rietveld_refinement(cryspy_obj)
-            explanation_2 = self.ask(f'The result of Rietveld refinement is given in dictionary as  {result:}. Please provide a small analysis of this refinement. Is it some parameters are correlated or chi_sq probably is not so good. ')
-            return f"[Action: refine]\n{explanation}\n\nResult:\n{result}\n\n{explanation_2:}"
-        elif action == "fix_all_parameters":
-            cryspy_obj.fix_variables()
-            return f"[Action: fix_all]\n{explanation}\n\nAll parameters fixed."
-        elif action == "show_refine_parameters":
-            l_names = [hh[-1] for hh in cryspy_obj.get_variable_names()]
-            explanation_2 = self.ask(f'In my model the following paraemeters are refined  {l_names:}. Please rewrite it in markdown table. The first value is name and the second one (if exist), it is subindex.')
-            return f"[Action: show_refine_parameters]\n{explanation}\n\n{explanation_2}."
-        elif action == "show_model":
-            result = cryspy_obj.to_cif()
-            explanation_2 = self.ask(f'Base on this model in CIF format  provide a short resume about the model: {result:}.')
-            return f"[Action: show_model]\n{explanation}\n\n{explanation_2}."
-        elif action == "ask_user":
-            return (
-                f"[Action: ask_user]\n{explanation}\n\n"
-                "Please clarify what you want to do with the current crystallographic object."
-            )
-        else:
-            return f"[Action: none]\n{explanation}\n\nNo crystallographic operation executed."
+        Returns dict with keys 'text' (reply for the user) and
+        'flag_object_changed' (the CrysPy object was modified).
+        """
+        decision = self.decide(question)
+        action, text = decision["action"], decision["answer"]
+        flag_object_changed = False
+        if action != "none" and cryspy_object is not None:
+            description, function, flag_object_changed = D_ACTIONS[action]
+            if callback_action is not None:
+                callback_action(action)
+            result = function(cryspy_object)
+            if action in ("refine", "calculate"):
+                comment = self.comment_result(question, action, result)
+                text = f"{result}\n\n{comment}"
+            else:
+                text = result if text == "" else f"{text}\n\n{result}"
+        elif action != "none":
+            text = "Open a file first: there is no CrysPy object to work with."
+        self.history.append({"role": "user", "content": question})
+        self.history.append({"role": "assistant", "content": text[:2000]})
+        return {"text": text, "flag_object_changed": flag_object_changed,
+                "action": action}

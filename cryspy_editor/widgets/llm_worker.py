@@ -1,9 +1,29 @@
-# worker.py
+"""Background workers for the local LLM: loading a model and answering."""
+import traceback
+
 from PyQt5.QtCore import QObject, pyqtSignal
 
+
+class LLMLoadWorker(QObject):
+    finished = pyqtSignal(object)  # emits LLMLocal
+    error = pyqtSignal(str)
+
+    def __init__(self, model_path: str):
+        super().__init__()
+        self.model_path = model_path
+
+    def run(self):
+        try:
+            from cryspy_editor.widgets.llm_local import LLMLocal
+            self.finished.emit(LLMLocal(self.model_path))
+        except Exception as e:
+            self.error.emit(f"{type(e).__name__}: {e}")
+
+
 class LLMWorker(QObject):
-    finished = pyqtSignal(str)     # emits the AI reply
-    error = pyqtSignal(str)        # emits error text
+    finished = pyqtSignal(dict)  # emits result of LLMLocal.answer
+    error = pyqtSignal(str)
+    action_started = pyqtSignal(str)
 
     def __init__(self, llm, question, cryspy_obj):
         super().__init__()
@@ -13,16 +33,10 @@ class LLMWorker(QObject):
 
     def run(self):
         try:
-            decision = self.llm.decide_if_action_required(self.question)
-
-            if decision["requires_action"] and self.cryspy_obj is not None:
-                print('The action is required')
-                reply = self.llm.decide_and_execute(self.question, self.cryspy_obj)
-            else:
-                print('The action is not required')
-                reply = self.llm.ask(self.question)
-
-            self.finished.emit(reply)
-
+            result = self.llm.answer(
+                self.question, self.cryspy_obj,
+                callback_action=self.action_started.emit)
+            self.finished.emit(result)
         except Exception as e:
-            self.error.emit(str(e))
+            traceback.print_exc()
+            self.error.emit(f"{type(e).__name__}: {e}")
