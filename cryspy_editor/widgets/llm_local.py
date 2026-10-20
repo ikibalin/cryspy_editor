@@ -8,9 +8,13 @@ import json
 import os
 from typing import Callable, Dict, List, Optional
 
-import numpy
-
-import cryspy
+try:
+    # tools and help pages are in CrysPy, the editor only talks to the model
+    from cryspy import assistant_tools_as_text, call_assistant_tool
+    flag_cryspy_tools = True
+except ImportError:
+    assistant_tools_as_text = call_assistant_tool = None
+    flag_cryspy_tools = False
 
 try:
     from llama_cpp import Llama
@@ -26,8 +30,16 @@ INSTALL_HINT = (
     "or\n    pip install cryspy_editor[ai]"
 )
 
+CRYSPY_UPDATE_HINT = (
+    "The installed CrysPy has no assistant tools. Update it:\n"
+    "    pip install --upgrade cryspy")
+
 MAX_HISTORY_MESSAGES = 10
 TOKENS_PER_MESSAGE = 8
+# tool calls for one question: e.g. refine_parameters, refine, answer
+MAX_TOOL_CALLS = 4
+# characters of a tool result kept in the chat history
+MAX_RESULT_IN_HISTORY = 2000
 
 # n_threads = 0 means all cores but one; n_gpu_layers = -1 means all layers
 # on GPU (Metal on Apple Silicon, CUDA if llama-cpp-python is built with it)
@@ -110,149 +122,28 @@ def take_json_object(text: str) -> Optional[dict]:
     return None
 
 
-def format_parameter_name(name: tuple) -> str:
-    """CrysPy variable name as text.
-
-    (('global', ''), ('crystal', 'ho2ti2o7'), ('atom_site_susceptibility', ''),
-    ('chi_11', 0)) -> 'crystal_ho2ti2o7.atom_site_susceptibility.chi_11[0]'
-    """
-    if len(name) == 3 and isinstance(name[0], str):
-        # name from the dictionary pipeline (RhoChi result):
-        # ('diffrn_x', 'extinction_radius', (0,)) -> 'diffrn_x.extinction_radius[0]'
-        index = ", ".join(str(int(i)) for i in numpy.atleast_1d(name[2]))
-        return f"{name[0]}.{name[1]}[{index}]"
-    ls_part = []
-    for part_name, part_label in name[:-1]:
-        if part_name == "global":
-            continue
-        if part_label in (None, "", ()):
-            ls_part.append(str(part_name))
-        else:
-            ls_part.append(f"{part_name}_{part_label}")
-    param, index = name[-1][0], name[-1][1]
-    if index in (None, "", ()):
-        ls_part.append(str(param))
-    elif isinstance(index, tuple):
-        ls_part.append(f"{param}[{', '.join(str(i) for i in index)}]")
-    else:
-        ls_part.append(f"{param}[{index}]")
-    return ".".join(ls_part)
-
-
-def form_parameter_table(cryspy_object: cryspy.GlobalN) -> str:
-    """Refined parameters with values and errors as a short text table."""
-    ls_out = []
-    for name in cryspy_object.get_variable_names():
-        value = cryspy_object.get_variable_by_name(name)
-        name_sigma = name[:-1] + ((name[-1][0] + "_sigma", name[-1][1]),)
-        try:
-            sigma = cryspy_object.get_variable_by_name(name_sigma)
-            ls_out.append(f"{format_parameter_name(name)} = {value:.5f} +- {sigma:.5f}")
-        except Exception:
-            ls_out.append(f"{format_parameter_name(name)} = {value:.5f}")
-    return "\n".join(ls_out)
-
-
-def format_refinement_result(result: dict, cryspy_object: cryspy.GlobalN,
-                             correlation_limit: float = 0.7) -> str:
-    """Short text of a RhoChi result: chi-square, parameters, correlations.
-
-    The full result holds the whole correlation matrix and long parameter
-    names, which do not fit into the context of a small local model.
-    """
-    ls_out = []
-    if "chi_sq" in result:
-        ls_out.append(f"chi_sq = {float(result['chi_sq']):.5g}")
-    table = form_parameter_table(cryspy_object)
-    if table != "":
-        ls_out.append("Refined parameters:\n" + table)
-    names = result.get("parameter_name", [])
-    matrix = result.get("correlation_matrix", None)
-    if matrix is not None and len(names) == len(matrix):
-        l_pair = []
-        for ind_1 in range(len(names)):
-            for ind_2 in range(ind_1 + 1, len(names)):
-                value = float(matrix[ind_1][ind_2])
-                if abs(value) >= correlation_limit:
-                    l_pair.append((abs(value), value, ind_1, ind_2))
-        l_pair.sort(reverse=True)
-        if len(l_pair) > 0:
-            ls_out.append(f"Correlations |r| >= {correlation_limit}:")
-            for _, value, ind_1, ind_2 in l_pair[:20]:
-                ls_out.append(
-                    f"{format_parameter_name(names[ind_1])} - "
-                    f"{format_parameter_name(names[ind_2])}: {value:.2f}")
-        else:
-            ls_out.append(f"No correlations with |r| >= {correlation_limit}.")
-    return "\n".join(ls_out)
-
-
-def action_refine(cryspy_object: cryspy.GlobalN) -> str:
-    if len(cryspy_object.get_variable_names()) == 0:
-        return "No parameters are marked for refinement."
-    result = cryspy.rhochi_rietveld_refinement(cryspy_object)
-    return "Refinement finished.\n" + format_refinement_result(result, cryspy_object)
-
-
-def action_calculate(cryspy_object: cryspy.GlobalN) -> str:
-    result = cryspy.rhochi_no_refinement(cryspy_object)
-    return "Calculation finished.\n" + format_refinement_result(result, cryspy_object)
-
-
-def action_fix_all_parameters(cryspy_object: cryspy.GlobalN) -> str:
-    cryspy_object.fix_variables()
-    return "All parameters are fixed."
-
-
-def action_show_refined_parameters(cryspy_object: cryspy.GlobalN) -> str:
-    names = cryspy_object.get_variable_names()
-    if len(names) == 0:
-        return "No parameters are marked for refinement."
-    ls_out = ["| Parameter | Index | Value |", "| --- | --- | --- |"]
-    for name in names:
-        value = cryspy_object.get_variable_by_name(name)
-        param, index = name[-1][0], name[-1][1]
-        ls_out.append(f"| {param} | {index} | {value:.5f} |")
-    return "\n".join(ls_out)
-
-
-def action_show_model(cryspy_object: cryspy.GlobalN) -> str:
-    return cryspy_object.to_cif()
-
-
-# name -> (description for the model, function, flag_object_changed)
-D_ACTIONS: Dict[str, tuple] = {
-    "refine": (
-        "run the refinement of the parameters marked for refinement",
-        action_refine, True),
-    "calculate": (
-        "calculate the model without refinement (chi-square, calculated data)",
-        action_calculate, True),
-    "fix_all_parameters": (
-        "fix all parameters (switch off their refinement)",
-        action_fix_all_parameters, True),
-    "show_refined_parameters": (
-        "list the parameters marked for refinement with their values",
-        action_show_refined_parameters, False),
-    "show_model": (
-        "show the whole current model and data as text",
-        action_show_model, False),
-}
-
-
 def form_system_prompt() -> str:
-    ls_action = [f"- {name}: {desc}" for name, (desc, _, _) in D_ACTIONS.items()]
-    s_actions = "\n".join(ls_action)
+    if not flag_cryspy_tools:
+        s_tools = "(no tools: the installed CrysPy is too old)"
+    else:
+        s_tools = assistant_tools_as_text()
     return f"""You are the assistant of CrysPy Editor, a program for crystallographic
 analysis of neutron and X-ray diffraction data with the CrysPy library.
-The user has a CrysPy object loaded (crystal structures, experiments, data).
+The user may have a CrysPy object loaded (crystal structures, experiments, data).
 
-If the user asks to do something with the object, choose one action:
-{s_actions}
-Otherwise use the action "none" and answer the question in "answer".
+You can call one tool of CrysPy per reply:
+{s_tools}
+
+Rules:
+- For questions on how to describe something in rcif or what a category
+  means (thermal vibrations, multipoles, extinction, twins, ...), call
+  get_help first and answer from its text only.
+- To change or refine the model use the tools; never invent results.
+- After a tool result you may call another tool or give the final answer.
 
 Respond ONLY with a JSON object:
-{{"action": "<one of: {', '.join(D_ACTIONS)}, none>", "answer": "<short text for the user>"}}"""
+{{"tool": "<tool name or none>", "arguments": {{...}}, "answer": "<short text for the user>"}}
+Use "tool": "none" for the final answer."""
 
 
 class LLMLocal:
@@ -329,55 +220,62 @@ class LLMLocal:
                 break
         return messages
 
-    def decide(self, question: str) -> dict:
-        """Ask the model which action to take; return {'action', 'answer'}."""
-        messages = [{"role": "system", "content": form_system_prompt()}]
-        messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
-        messages.append({"role": "user", "content": question})
+    def decide(self, messages: List[Dict[str, str]]) -> dict:
+        """Ask the model for the next step: {'tool', 'arguments', 'answer'}."""
         raw = self.chat(messages, flag_json=True)
         decision = take_json_object(raw)
         if decision is None:
-            decision = {"action": "none", "answer": raw}
-        action = str(decision.get("action", "none")).strip()
-        if action not in D_ACTIONS:
-            action = "none"
-        return {"action": action, "answer": str(decision.get("answer", ""))}
-
-    def comment_result(self, question: str, action: str, result: str) -> str:
-        """Ask the model to comment the result of an executed action."""
-        messages = [
-            {"role": "system", "content":
-                "You are a crystallography assistant. Comment briefly the "
-                "result for the user: quality of the fit (chi-square), "
-                "suspicious or correlated parameters, what to try next."},
-            {"role": "user", "content":
-                f"Request: {question}\nAction: {action}\nResult:\n{result}"},
-        ]
-        return self.chat(messages)
+            return {"tool": "none", "arguments": {}, "answer": raw, "raw": raw}
+        # "action" is the key of the first version of the prompt
+        tool = str(decision.get("tool", decision.get("action", "none"))).strip()
+        if tool == "":
+            tool = "none"
+        arguments = decision.get("arguments", {})
+        if not isinstance(arguments, dict):
+            arguments = {}
+        return {"tool": tool, "arguments": arguments,
+                "answer": str(decision.get("answer", "")), "raw": raw}
 
     def answer(self, question: str, cryspy_object=None,
                callback_action: Optional[Callable[[str], None]] = None) -> dict:
-        """Process the user question.
+        """Process the user question with the tools of CrysPy.
 
-        Returns dict with keys 'text' (reply for the user) and
-        'flag_object_changed' (the CrysPy object was modified).
+        Returns dict with keys 'text' (reply for the user),
+        'flag_object_changed' (the CrysPy object was modified) and
+        'tools' (names of the called tools).
         """
-        decision = self.decide(question)
-        action, text = decision["action"], decision["answer"]
+        messages = [{"role": "system", "content": form_system_prompt()}]
+        messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
+        messages.append({"role": "user", "content": question})
+        ls_result, l_tool = [], []
         flag_object_changed = False
-        if action != "none" and cryspy_object is not None:
-            description, function, flag_object_changed = D_ACTIONS[action]
+        answer = ""
+        for _ in range(MAX_TOOL_CALLS + 1):
+            decision = self.decide(messages)
+            tool, answer = decision["tool"], decision["answer"]
+            if tool.lower() == "none" or len(l_tool) >= MAX_TOOL_CALLS:
+                break
+            if not flag_cryspy_tools:
+                answer = CRYSPY_UPDATE_HINT
+                break
             if callback_action is not None:
-                callback_action(action)
-            result = function(cryspy_object)
-            if action in ("refine", "calculate"):
-                comment = self.comment_result(question, action, result)
-                text = f"{result}\n\n{comment}"
-            else:
-                text = result if text == "" else f"{text}\n\n{result}"
-        elif action != "none":
-            text = "Open a file first: there is no CrysPy object to work with."
+                callback_action(tool)
+            result = call_assistant_tool(
+                cryspy_object, tool, decision["arguments"])
+            flag_object_changed = flag_object_changed or \
+                result["flag_object_changed"]
+            l_tool.append(tool)
+            ls_result.append(f"[{tool}]\n{result['text']}")
+            messages.append({"role": "assistant", "content": decision["raw"]})
+            messages.append({"role": "user", "content":
+                f"Result of {tool}:\n{result['text']}\n\n"
+                "Call another tool if needed, otherwise give the final "
+                "answer with \"tool\": \"none\"."})
+        text = "\n\n".join(ls_result + ([answer] if answer != "" else []))
+        if text == "":
+            text = "(no answer)"
         self.history.append({"role": "user", "content": question})
-        self.history.append({"role": "assistant", "content": text[:2000]})
+        self.history.append({"role": "assistant",
+                             "content": text[:MAX_RESULT_IN_HISTORY]})
         return {"text": text, "flag_object_changed": flag_object_changed,
-                "action": action}
+                "tools": l_tool}

@@ -6,7 +6,8 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from cryspy_editor.widgets.llm_worker import LLMWorker, LLMLoadWorker
 
-PLACEHOLDER = "Ask a question or request an action (e.g. 'refine the model')..."
+PLACEHOLDER = ("Ask a question or request an action, e.g. 'refine the cell', "
+               "'how to describe thermal vibrations?'")
 
 
 class LLMPanel(QtWidgets.QWidget):
@@ -116,8 +117,8 @@ class LLMPanel(QtWidgets.QWidget):
             cryspy_obj = self.take_cryspy_obj()
         worker = LLMWorker(self.llm, question, cryspy_obj)
         worker.action_started.connect(
-            lambda action: self.input_line.setPlaceholderText(
-                f"Running '{action}'..."))
+            lambda tool: self.input_line.setPlaceholderText(
+                f"Running '{tool}'..."))
         self._start_thread(worker, self.on_reply, self.on_error)
 
     def _ready_for_input(self):

@@ -460,6 +460,10 @@ class CMainWindow(QMainWindow):
             )
         )
 
+        cryspy_help = menu_options.addAction("CrysPy help...")
+        cryspy_help.setShortcut("F1")
+        cryspy_help.triggered.connect(self.show_cryspy_help)
+
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
 
@@ -474,6 +478,11 @@ class CMainWindow(QMainWindow):
 
         self.init_central_widget()
         self.init_status_bar()
+
+    def show_cryspy_help(self):
+        from cryspy_editor.widgets.help_dialog import HelpDialog
+        dialog = HelpDialog(self)
+        dialog.show()
 
     def display_about(self):
         QtWidgets.QMessageBox.information(
