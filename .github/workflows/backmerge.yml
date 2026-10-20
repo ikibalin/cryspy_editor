@@ -1,0 +1,72 @@
+# After a release, open a pull request merging `main` back into
+# `develop` so develop stays in sync. Can also be run manually. The PR
+# is labelled `[bot] backmerge` so it is excluded from release notes /
+# version bump logic; merge conflicts are surfaced in the PR itself.
+
+name: Backmerge (main → develop)
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: backmerge-main-into-develop
+  cancel-in-progress: false
+
+jobs:
+  backmerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prepare branches
+        run: git fetch origin main develop
+
+      - name: Check if develop already contains main
+        id: up_to_date
+        run: |
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set PR title and body
+        if: steps.up_to_date.outputs.value == 'false'
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "TITLE=Backmerge: main into develop (manual)" >> "$GITHUB_ENV"
+            echo "BODY=Automated backmerge PR merging \`main\` into \`develop\`. Labelled \`[bot] backmerge\` and excluded from release notes / version bump logic." >> "$GITHUB_ENV"
+          else
+            echo "TITLE=Backmerge: main (${{ github.event.release.tag_name }}) into develop" >> "$GITHUB_ENV"
+            echo "BODY=Automated backmerge PR merging \`main\` (${{ github.event.release.tag_name }}) into \`develop\`. Labelled \`[bot] backmerge\` and excluded from release notes / version bump logic." >> "$GITHUB_ENV"
+          fi
+
+      - name: Create or reuse backmerge PR
+        if: steps.up_to_date.outputs.value == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          existing=$(gh pr list --repo "$REPO" --base develop --head main --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Backmerge PR #$existing already open; nothing to do."
+            exit 0
+          fi
+          gh pr create \
+            --repo "$REPO" \
+            --base develop \
+            --head main \
+            --title "${TITLE}" \
+            --label "[bot] backmerge" \
+            --body "${BODY}"
