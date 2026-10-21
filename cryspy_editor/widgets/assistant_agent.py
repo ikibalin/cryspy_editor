@@ -15,7 +15,7 @@ it free of CrysPy Editor specifics (the tools come through run_tool).
 import json
 from typing import Callable, List, Optional
 
-MAX_AGENT_STEPS = 12  # actions for one request
+MAX_AGENT_STEPS = 12  # actions for one request by default (setting "max_steps")
 MAX_SAME_CALLS = 2  # the same action with the same arguments
 MAX_ERRORS_IN_ROW = 3  # failed actions one after another
 N_MAX_OBSERVATION = 1500  # characters of the result of the last actions
@@ -88,10 +88,13 @@ class Agent:
     result is text (an error starts with "Error") or a Dialog (questions to
     the user: the loop stops and the assistant asks them);
     l_action: names of the actions the model may call;
-    take_json_object(text) -> dict or None."""
+    take_json_object(text) -> dict or None;
+    max_steps: the most actions for one request."""
 
-    def __init__(self, model, run_tool: Callable, l_action: List[str], take_json_object: Callable):
+    def __init__(self, model, run_tool: Callable, l_action: List[str], take_json_object: Callable,
+                 max_steps: int = MAX_AGENT_STEPS):
         self.model = model
+        self.max_steps = max(1, int(max_steps))
         self.run_tool = run_tool
         self.l_action = list(l_action)
         self.take_json_object = take_json_object
@@ -128,8 +131,9 @@ class Agent:
                 messages.append({"role": "assistant", "content": json.dumps(
                     {"thought": step["thought"], "action": step["action"], "arguments": step["arguments"]})})
             else:
-                if len(l_step) >= MAX_AGENT_STEPS:
-                    stopped = f"The limit of {MAX_AGENT_STEPS} actions is reached."
+                if len(l_step) >= self.max_steps:
+                    stopped = (f"The limit of {self.max_steps} actions is reached (Maximal number of "
+                               "steps of the agent in the model settings).")
                     break
                 shorten_old_observations(messages, n_prefix)
                 raw = self.model.chat(messages, flag_json=True, schema=schema)

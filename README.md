@@ -64,7 +64,9 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
 step", "refine the flip ratios") is done by a recipe of CrysPy: the model
 reads its steps and works one action at a time, judging each result by
 chi_sq/n, R_F2 and the warnings of CrysPy. Each step is written in the chat
-as it starts and when its result comes; **Stop** ends the work. The recipes
+as it starts and when its result comes; **Stop** ends the work, and at most
+"Maximal number of steps of the agent" actions (12 by default, in the model
+settings) are done for one request. The recipes
 for the experiments of the opened file (single crystal, powder, flip ratios,
 nuclear or magnetic crystal) are given to the model. **AI assistant →
 Recipes...** lists the recipes, shows their text and lets you write new ones

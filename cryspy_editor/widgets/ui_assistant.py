@@ -126,6 +126,13 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.dsb_temperature.setSingleStep(0.1)
         self.dsb_temperature.setValue(settings["temperature"])
         form.addRow("Temperature", self.dsb_temperature)
+
+        self.sb_max_steps = QtWidgets.QSpinBox(self)
+        self.sb_max_steps.setRange(1, 100000)
+        self.sb_max_steps.setValue(settings["max_steps"])
+        self.sb_max_steps.setToolTip("The most actions the assistant does for one request step by step "
+                                     "(recipes); Stop ends the work earlier.")
+        form.addRow("Maximal number of steps of the agent", self.sb_max_steps)
         layout.addLayout(form)
 
         hint = QtWidgets.QTextBrowser(self)
@@ -160,6 +167,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.sb_n_ctx.setValue(DEFAULT_SETTINGS["n_ctx"])
         self.sb_max_tokens.setValue(DEFAULT_SETTINGS["max_tokens"])
         self.dsb_temperature.setValue(DEFAULT_SETTINGS["temperature"])
+        self.sb_max_steps.setValue(DEFAULT_SETTINGS["max_steps"])
 
     def accept_if_valid(self):
         if not os.path.isfile(self.model_path()):
@@ -179,6 +187,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             "n_gpu_layers": self.sb_gpu_layers.value(),
             "max_tokens": self.sb_max_tokens.value(),
             "temperature": self.dsb_temperature.value(),
+            "max_steps": self.sb_max_steps.value(),
         }
 
 

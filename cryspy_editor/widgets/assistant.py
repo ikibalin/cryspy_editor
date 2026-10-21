@@ -14,7 +14,7 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
-from cryspy_editor.widgets.assistant_agent import Agent, form_step_result_text, form_steps_text
+from cryspy_editor.widgets.assistant_agent import MAX_AGENT_STEPS, Agent, form_step_result_text, form_steps_text
 from cryspy_editor.widgets.assistant_commands import (
     form_capabilities_text,
     is_capability_question,
@@ -83,6 +83,7 @@ DEFAULT_SETTINGS = {
     "n_gpu_layers": -1,
     "max_tokens": 512,
     "temperature": 0.2,
+    "max_steps": MAX_AGENT_STEPS,
 }
 
 # (minimal RAM in GB, models, approximate size of the Q4_K_M file); the
@@ -614,7 +615,8 @@ class Assistant:
         self.flag_stop = False
         l_first = [(action, arguments) for action, arguments in l_first
                    if action in AGENT_ACTIONS and action != STEP_BY_STEP][:1]
-        agent = Agent(self.model, run_tool, list(D_TOOLS), take_json_object)
+        max_steps = getattr(self.model, "settings", {}).get("max_steps", MAX_AGENT_STEPS)
+        agent = Agent(self.model, run_tool, list(D_TOOLS), take_json_object, max_steps=max_steps)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
                         l_first=l_first, on_step=on_step)
