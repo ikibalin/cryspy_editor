@@ -4,6 +4,7 @@ The actions are the tools of CrysPy (cryspy.call_assistant_tool): CrysPy
 Editor keeps no tools of its own. This module is the counterpart of
 assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
+import inspect
 from typing import Dict
 
 import cryspy
@@ -94,14 +95,24 @@ def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dial
     return Dialog(name, l_question, finish, intro=intro)
 
 
-def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
+def flag_ask_required() -> bool:
+    """CrysPy asks the missing required arguments of a tool called by the
+    user (newer than 0.16)."""
+    return "ask_required" in inspect.signature(call_assistant_tool).parameters
+
+
+def run_tool(name: str, cryspy_object, arguments: dict, flag_user: bool = False) -> tuple:
     """(result, flag_object_changed) of the action. The result is text;
     errors start with "Error", so that the model can correct the call and
     the answer never reports a failed action as done.
 
     When CrysPy asks values from the user (key "missing"), the result is a
-    Dialog with its questions (form_dialog)."""
-    result = call_assistant_tool(cryspy_object, name, arguments)
+    Dialog with its questions (form_dialog). flag_user: the user typed the
+    action ('@name'), so the required arguments not given are asked too."""
+    if flag_user and flag_ask_required():
+        result = call_assistant_tool(cryspy_object, name, arguments, ask_required=True)
+    else:
+        result = call_assistant_tool(cryspy_object, name, arguments)
     if result.get("missing"):
         return form_dialog(name, cryspy_object, arguments, result), False
     text = str(result["text"])

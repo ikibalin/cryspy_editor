@@ -3,7 +3,7 @@ without llama-cpp-python."""
 import cryspy
 import pytest
 
-from cryspy_editor.widgets import assistant_commands
+from cryspy_editor.widgets import assistant_commands, assistant_tools
 from cryspy_editor.widgets.assistant import Assistant
 from cryspy_editor.widgets.assistant_commands import (
     form_capabilities_text, form_completions, is_capability_question, parse_command,
@@ -165,3 +165,27 @@ def test_input_line_proposes_names(qapp):
         assert window.completer.currentCompletion() == "@set_parameter"
     finally:
         window.close()
+
+
+@pytest.mark.skipif(not assistant_tools.flag_ask_required(), reason="CrysPy without ask_required")
+def test_missing_arguments_of_action_are_asked():
+    obj = cryspy.str_to_globaln(RCIF)
+    assistant = Assistant(None)
+    out = assistant.ask("@set_parameter path=cell.length_a", obj)
+    assert out["question"] and "Q1: What is the value" in out["text"]
+    out = assistant.ask("5.43", obj)
+    assert not out["question"]
+    assert obj.items[0].cell.length_a == pytest.approx(5.43)
+
+
+@pytest.mark.skipif(not assistant_tools.flag_ask_required(), reason="CrysPy without ask_required")
+def test_cod_without_formula_is_asked():
+    out = Assistant(None).ask("@add_crystal_from_cod", cryspy.str_to_globaln(RCIF))
+    assert out["question"] and "COD number" in out["text"]
+    assert not out["text"].startswith("[add_crystal_from_cod] Error")
+
+
+def test_model_gets_error_for_missing_arguments():
+    obj = cryspy.str_to_globaln(RCIF)
+    result, _ = assistant_tools.run_tool("set_parameter", obj, {"path": "cell.length_a"})
+    assert isinstance(result, str) and result.startswith("Error")
