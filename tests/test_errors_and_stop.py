@@ -2,6 +2,7 @@
 import time
 
 import cryspy
+from PyQt5 import QtWidgets
 
 from cryspy_editor.cl_thread import CThread
 
@@ -150,3 +151,34 @@ def test_progress_lines_replace_each_other(qapp):
         logger.removeHandler(handler)
     assert [t for t in out.l_text_permanent if t] == [
         "MEM iteration procedure", "Iteration 3", "Chi_sq best is 1.00"]
+
+
+def test_stop_is_visible_while_running(qapp):
+    """Stop is in the toolbar and in the status bar while a procedure runs."""
+    from cryspy_editor.ceditor import CMainWindow
+    window = CMainWindow()
+    try:
+        assert not window.action_stop.isEnabled()
+        toolbars = window.findChildren(QtWidgets.QToolBar)
+        assert any(window.action_stop in toolbar.actions()
+                   for toolbar in toolbars)
+        thread = window.cthread
+        thread.function = long_procedure
+        thread.arguments = (cryspy.GlobalN.make_container((), (), "global"), )
+        thread.start()
+        time_start = time.time()
+        while not window.action_stop.isEnabled() and time.time() - time_start < 5:
+            qapp.processEvents()
+            time.sleep(0.01)
+        assert window.action_stop.isEnabled()
+        assert window.button_stop.isVisible()
+        assert "Stop" in window.text_edit.toPlainText()
+        window.action_stop.trigger()
+        assert window.label_progress.text() == "Stopping..."
+        assert thread.wait(5000)
+        qapp.processEvents()
+        assert thread.flag_stopped
+        assert not window.action_stop.isEnabled()
+        assert not window.button_stop.isVisible()
+    finally:
+        window.close()

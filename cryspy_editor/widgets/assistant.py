@@ -379,7 +379,8 @@ class Assistant:
             raw = self.model.chat(messages, flag_json=True)
             l_todo = take_decision(raw)["actions"]
         # the answer was written before the results: not when an action failed
-        if any(result.startswith("Error") for _, _, result in l_action):
+        flag_failed = any(result.startswith("Error") for _, _, result in l_action)
+        if flag_failed:
             answer = ""
         # a change is never reported without an action that made it
         if not l_action and claims_done(answer):
@@ -393,6 +394,8 @@ class Assistant:
                 "not from the chat (its values may be old); when the results do not answer it, say so. "
                 'Respond with {"answer": "<short text for the user>"}.')})
             reply = take_decision(self.model.chat(messages, flag_json=True))["answer"]
+            if flag_failed and claims_done(reply):  # "set and refined" after an error: the results say it
+                reply = ""
             answer = reply or ("" if claims_done(answer) else answer)
         text = "\n\n".join(f"[{action}] {result}" for action, _, result in l_action)
         if answer:
