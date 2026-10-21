@@ -21,8 +21,16 @@ from cryspy_editor.widgets.assistant import (
 )
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
-PLACEHOLDER = ("Ask a question or request an action, e.g. 'refine the cell', "
-               "'how to describe thermal vibrations?'")
+PLACEHOLDER = "Ask the question or request an action"
+EXAMPLES = (
+    "Examples of requests:\n"
+    "- which parameters are refined?\n"
+    "- fix all parameters and refine only atomic positions of all atoms\n"
+    "- refine the scale factor; refine the polarization\n"
+    "- set a of crystal_pbso4 to 8.48 and run the refinement\n"
+    "- calculate the nuclear structure factor of the reflection (5 0 3)\n"
+    "- download Al from COD and add it to my data\n"
+    "- how to describe thermal vibrations?")
 
 
 def form_hint_html(memory_gb) -> str:
@@ -236,6 +244,7 @@ class AssistantWindow(QtWidgets.QWidget):
 
         self.history_view = QtWidgets.QTextEdit(self)
         self.history_view.setReadOnly(True)
+        self.history_view.setPlaceholderText(EXAMPLES)
         layout.addWidget(self.history_view)
 
         self.input_line = QtWidgets.QLineEdit(self)
@@ -340,7 +349,7 @@ class AssistantWindow(QtWidgets.QWidget):
         question = self.input_line.text().strip()
         if question == "" or self.assistant is None or self.is_busy():
             return
-        self.append_history("User", question)
+        self.append_history("You", question)
         self.input_line.clear()
         self.input_line.setEnabled(False)
         self.input_line.setPlaceholderText("Thinking...")

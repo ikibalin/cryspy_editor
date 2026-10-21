@@ -180,7 +180,16 @@ Examples (request: actions):
   [{{"action": "refine_parameters", "arguments": {{"pattern": "cell.length"}}}},
   {{"action": "refine", "arguments": {{}}}}]
 - set a of crystal_pbso4 to 8.48:
-  [{{"action": "set_parameter", "arguments": {{"path": "crystal_pbso4.cell.length_a", "value": 8.48}}}}]"""
+  [{{"action": "set_parameter", "arguments": {{"path": "crystal_pbso4.cell.length_a", "value": 8.48}}}}]
+- fix all parameters and refine only atomic positions:
+  [{{"action": "fix_parameters", "arguments": {{}}}},
+  {{"action": "refine_parameters", "arguments": {{"pattern": "atomic positions"}}}}]
+- refine the scale factor:
+  [{{"action": "refine_parameters", "arguments": {{"pattern": "scale"}}}}]
+- calculate the nuclear structure factor of (5 0 3):
+  [{{"action": "calculate_structure_factor", "arguments": {{"hkl": "5 0 3"}}}}]
+- download Al from COD and add it:
+  [{{"action": "add_crystal_from_cod", "arguments": {{"formula": "Al"}}}}]"""
 
 
 def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Callable) -> list:
