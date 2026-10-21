@@ -3,8 +3,8 @@
 For a task of several dependent steps (a recipe of CrysPy such as the
 step-by-step refinement) the model works one action at a time: it writes
 a short thought and one action in JSON, the program runs the action and
-gives the result back (the observation: text, chi-square before and after,
-warnings, errors), and the model decides the next action, until it gives
+gives the result back (the observation: text, chi_sq/n and R_F2 before and
+after, warnings, errors), and the model decides the next action, until it gives
 the final answer or the limits are reached.
 
 The algorithms (recipes), the numbers and the checks of the results are
@@ -32,8 +32,8 @@ When the task is done, or cannot be done, respond:
 After each action you get its result. Read it before the next action: when it
 is an Error, correct the arguments or choose another way; never repeat a failed
 call unchanged. When a recipe applies, take its steps with get_recipe first and
-follow them; judge each step by the chi_sq change and the warnings in the
-results, as the recipe says. Report only what the results show, with numbers;
+follow them; judge each step by the change of chi_sq/n (R_F2 for single
+crystals) and the warnings in the results, as the recipe says. Report only what the results show, with numbers;
 never claim a step that was not done."""
 
 
