@@ -22,6 +22,7 @@ from cryspy_editor.widgets.assistant import (
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
 PLACEHOLDER = "Ask the question or request an action"
+PLACEHOLDER_ANSWER = "Answer the question ('cancel' to stop)"
 EXAMPLES = (
     "Examples of requests:\n"
     "- which parameters are refined?\n"
@@ -361,20 +362,20 @@ class AssistantWindow(QtWidgets.QWidget):
             lambda action: self.input_line.setPlaceholderText(f"Running '{action}'..."))
         self._start_thread(worker, self.on_reply, self.on_error)
 
-    def _ready_for_input(self):
+    def _ready_for_input(self, flag_question: bool = False):
         self.input_line.setEnabled(True)
-        self.input_line.setPlaceholderText(PLACEHOLDER)
+        self.input_line.setPlaceholderText(PLACEHOLDER_ANSWER if flag_question else PLACEHOLDER)
         self.input_line.setFocus()
 
     def on_reply(self, result: dict):
         self.append_history("AI", result["text"])
-        self._ready_for_input()
+        self._ready_for_input(bool(result.get("question", False)))
         if result.get("flag_object_changed", False):
             self.signal_object_changed.emit()
 
     def on_error(self, msg: str):
         self.append_history("Error", msg)
-        self._ready_for_input()
+        self._ready_for_input(self.assistant is not None and self.assistant.is_asking())
 
 
 class AssistantController(QObject):
