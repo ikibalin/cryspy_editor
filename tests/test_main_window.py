@@ -59,3 +59,31 @@ def test_help_dialog(qapp):
     dialog.line_query.setText("thermal vibrations")
     dialog.show_help()
     assert "atom_site_aniso" in dialog.text_help.toPlainText()
+
+
+def test_cif_text_is_applied_before_run(window):
+    """Text typed in the RCIF tab reaches the object before a procedure
+    started from a menu (no focus change) runs in the thread."""
+    from cryspy_editor.widgets.w_editcif import WEditCif
+    window.d_setup["data_file_name"] = os.path.join(
+        DIR_EXAMPLES, "Fe3O4_5T_powder_1d", "main.rcif")
+    window.take_rcif_object_from_d_setup()
+    crystal = [item for item in window.rcif_object.items
+               if item.is_attribute("cell")][0]
+    window.renew_w_item_tabs((crystal.get_name(), "cell"))
+    w_edit = [window.w_item_tabs.widget(ind)
+              for ind in range(window.w_item_tabs.count())
+              if isinstance(window.w_item_tabs.widget(ind), WEditCif)][0]
+    w_edit.setPlainText(w_edit.toPlainText().replace(
+        "_cell_length_a 8.45420", "_cell_length_a 8.50000"))
+    l_value = []
+
+    def procedure(rcif_object):
+        l_value.append(rcif_object.items[
+            window.rcif_object.items.index(crystal)].cell.length_a)
+
+    window.cthread.function = procedure
+    window.cthread.arguments = (window.rcif_object, )
+    window.cthread.start()
+    assert window.cthread.wait(10000)
+    assert l_value == [8.5]
