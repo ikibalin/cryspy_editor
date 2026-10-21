@@ -23,14 +23,29 @@ class COutputLogget(QtCore.QObject):
         self.out_terminal = io.StringIO()
         self.l_text_permanent = []
         self.text_last = ""
+        self.flag_last_progress = False
         self.flag_stop = False
 
-    def write(self,*arg):
+    def check_stop(self):
         # Python code cannot be interrupted from another thread; procedures
         # print their progress, so the next print ends the calculation
         if self.flag_stop:
             self.flag_stop = False
             raise CalculationStopped("Calculation is stopped by the user.")
+
+    def write_progress(self, text: str):
+        """A progress line replaces the previous progress line (one line per
+        iteration would make the output long), as print(..., end="\r")."""
+        self.check_stop()
+        if not self.flag_last_progress and self.text_last.strip() != "":
+            self.l_text_permanent.append(self.text_last.strip())
+        self.text_last = text
+        self.flag_last_progress = True
+        self.signal_refresh.emit()
+        return self.out_terminal.write(text + "\n")
+
+    def write(self,*arg):
+        self.check_stop()
         if len(arg) > 0:
             text = str(arg[0])
             if "\r" in text:
@@ -41,8 +56,10 @@ class COutputLogget(QtCore.QObject):
                 if self.text_last != "\n":
                     self.l_text_permanent.append(self.text_last.strip())
                 self.text_last = text
+                self.flag_last_progress = False
             else:
                 self.text_last = text
+                self.flag_last_progress = False
         self.signal_refresh.emit()
         return self.out_terminal.write(*arg)
 
@@ -114,8 +131,13 @@ class OutputLoggingHandler(logging.Handler):
 
     def emit(self, record):
         # no try/except here: CalculationStopped raised by write() must
-        # reach the procedure that logged the message
-        self.out_terminal.write(self.format(record) + "\n")
+        # reach the procedure that logged the message.
+        # CrysPy marks a line of each iteration with progress=True
+        # (cryspy.is_progress_record): it replaces the previous such line.
+        if getattr(record, "progress", False):
+            self.out_terminal.write_progress(self.format(record))
+        else:
+            self.out_terminal.write(self.format(record) + "\n")
 
 
 def accepts_callback(func) -> bool:
@@ -152,6 +174,9 @@ class CThread(QtCore.QThread):
         # files (.den, sections, ...) to relative paths
         self.work_dir = None
         self.function_run_calculations = None
+        # called in the main thread just before the calculation starts,
+        # e.g. to apply the text typed in the RCIF tab to the object
+        self.functions_before_start = []
         self.function_end_calculations = None
 
     def request_stop(self):
@@ -182,6 +207,11 @@ class CThread(QtCore.QThread):
         if self.flag_stop_by_callback:
             return False
         return None
+
+    def start(self, *args, **kwargs):
+        for func in self.functions_before_start:
+            func()
+        super().start(*args, **kwargs)
 
     def run(self):
         """Run."""

@@ -39,8 +39,14 @@ L_ITEM_CLS = L_ITEM_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
+from cryspy_editor.widgets.w_procedure_dialog import (
+    ProcedureDialog,
+    form_tooltip,
+    is_autorun,
+    take_description,
+)
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
-from cryspy_editor.widgets.w_editcif import WEditCif
+from cryspy_editor.widgets.w_editcif import WEditCif, take_refinable_tags
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
@@ -53,6 +59,7 @@ from cryspy_editor.widgets.cryspy_objects import (
 from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
+from cryspy_editor.history import RcifHistory
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
 
@@ -61,6 +68,10 @@ from cryspy_editor import __version__ as cryspy_editor_version
 
 
 import os, sys, subprocess
+
+# Cmd+. on macOS (the usual stop key there), Ctrl+. elsewhere; Esc as well.
+STOP_SHORTCUT = "Ctrl+."
+STOP_SHORTCUT_TEXT = "Cmd+. or Esc" if sys.platform == "darwin" else "Ctrl+. or Esc"
 
 
 def open_file_wm(filename):
@@ -293,10 +304,14 @@ class CMainWindow(QMainWindow):
         self.functions_plot_loop = []
         self.functions_plot_item = []
         # Thread block
+        # states of the object before each change, to go back
+        self.history = RcifHistory()
         self.cthread = CThread(self)
         self.cthread.signal_start.connect(self.run_calculations)
         self.cthread.signal_end.connect(self.end_calculations)
         self.cthread.signal_progress.connect(self.show_progress_text)
+        self.cthread.functions_before_start.append(self.apply_cif_edits)
+        self.cthread.functions_before_start.append(self.remember_before_run)
 
         self.setWindowTitle("Cryspy Editor")
         self.init_user_interface()
@@ -321,7 +336,7 @@ class CMainWindow(QMainWindow):
         self.label_progress.setText(text.strip()[:120])
 
     def show_progress_text(self, text: str):
-        if self.button_stop.isEnabled():  # keep "Stopping..." after Stop
+        if self.action_stop.isEnabled():  # keep "Stopping..." after Stop
             self.label_progress.setText(text)
 
     def user_scripts(self):
@@ -349,14 +364,18 @@ class CMainWindow(QMainWindow):
         self.progress_bar.setMaximumWidth(150)
         self.progress_bar.setFixedHeight(max(bar_height - 10, 6))
         self.progress_bar.setTextVisible(False)
+        # A red button with a frame: the flat text button of #12 was easy
+        # to miss in the corner of the window.
         self.button_stop = QtWidgets.QToolButton(status_bar)
-        self.button_stop.setText("Stop")
-        self.button_stop.setAutoRaise(True)
+        self.button_stop.setDefaultAction(self.action_stop)
+        self.button_stop.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         self.button_stop.setFixedHeight(bar_height - 2)
-        self.button_stop.setToolTip(
-            "Stop the calculation at its next message; "
-            "the object keeps the values it had before the run.")
-        self.button_stop.clicked.connect(self.stop_calculations)
+        self.button_stop.setStyleSheet(
+            "QToolButton {background-color: #c0392b; color: white;"
+            " font-weight: bold; border: none; border-radius: 3px;"
+            " padding: 0px 10px;}"
+            "QToolButton:hover {background-color: #e74c3c;}"
+            "QToolButton:disabled {background-color: #808080;}")
         status_bar.addPermanentWidget(self.label_progress, 1)
         status_bar.addPermanentWidget(self.progress_bar)
         status_bar.addPermanentWidget(self.button_stop)
@@ -366,21 +385,38 @@ class CMainWindow(QMainWindow):
         self.label_progress.setVisible(flag)
         self.progress_bar.setVisible(flag)
         self.button_stop.setVisible(flag)
-        self.button_stop.setEnabled(flag)
+        self.action_stop.setEnabled(flag)
         if not flag:
             self.label_progress.setText("")
 
     def stop_calculations(self):
+        if not self.cthread.isRunning():
+            return
         self.cthread.request_stop()
-        self.button_stop.setEnabled(False)
+        self.action_stop.setEnabled(False)
         self.label_progress.setText("Stopping...")
 
+    def apply_cif_edits(self):
+        """Apply the text typed in the RCIF tab to the object.
+
+        The text is applied when the tab loses focus, but a menu action or a
+        shortcut does not take the focus. Before, the text was applied on
+        signal_start, i.e. after the calculation had already started in its
+        thread, so the procedure sometimes used the old item.
+        """
+        w_item_tabs = getattr(self, "w_item_tabs", None)
+        if w_item_tabs is None:
+            return
+        for ind in range(w_item_tabs.count()):
+            widget = w_item_tabs.widget(ind)
+            if isinstance(widget, WEditCif):
+                widget.rewrite_item_by_printed_text()
+
     def run_calculations(self):  # d_info: dict = None
-        current_widget = self.w_item_tabs.currentWidget()
-        if isinstance(current_widget, WEditCif):
-            current_widget.rewrite_item_by_printed_text()
         thread = self.cthread
-        self.text_edit.setText("Calculations are running ...")
+        self.text_edit.setText(
+            "Calculations are running ... "
+            f"(Stop: the red button or {STOP_SHORTCUT_TEXT})")
         self.text_edit.upload_font_size()
         if is_dark_mode():
             self.text_edit.setStyleSheet("background-color:#521F13;")
@@ -442,6 +478,10 @@ class CMainWindow(QMainWindow):
         self.menu_recent = menu_file.addMenu("Open recent")
         self.update_menu_recent()
 
+        self.menu_history = menu_file.addMenu("History")
+        self.menu_history.setToolTipsVisible(True)
+        self.menu_history.aboutToShow.connect(self.update_menu_history)
+
         exit_button = QAction(
             QIcon(os.path.join(dir_prog_icon, "exit24.png")), "Exit", self
         )
@@ -467,6 +507,24 @@ class CMainWindow(QMainWindow):
         refresh_view.setStatusTip("Refresh")
         refresh_view.triggered.connect(self.refresh_view)
         toolbar_1.addAction(refresh_view)
+
+        # Stop of a running calculation: in the toolbar and in the status
+        # bar, enabled only while it runs.
+        self.action_stop = QAction(
+            self.style().standardIcon(QtWidgets.QStyle.SP_BrowserStop),
+            "Stop", self)
+        self.action_stop.setShortcuts(
+            [QtGui.QKeySequence(STOP_SHORTCUT),
+             QtGui.QKeySequence(QtCore.Qt.Key_Escape)])
+        self.action_stop.setToolTip(
+            f"Stop the running calculation ({STOP_SHORTCUT_TEXT}). "
+            "A refinement stops after the current iteration and keeps "
+            "the refined parameters.")
+        self.action_stop.setStatusTip("Stop the running calculation")
+        self.action_stop.setEnabled(False)
+        self.action_stop.triggered.connect(self.stop_calculations)
+        toolbar_1.addSeparator()
+        toolbar_1.addAction(self.action_stop)
 
         # Menu Options
         menu_options = self.menu_bar.addMenu("Options")
@@ -579,6 +637,22 @@ class CMainWindow(QMainWindow):
             menu_cryspy = self.menu_bar.addMenu(key)
             menu_cryspy.setToolTipsVisible(True)
             for func in functions:
+                d_procedure = take_description(func)
+                if d_procedure is not None:  # title and tooltip from the docstring
+                    func_name = d_procedure["title"]
+                    if func_name.lower().startswith(key.lower() + " "):
+                        func_name = func_name[len(key) + 1:]
+                    if is_autorun(d_procedure):
+                        func_name += " (autorun)"
+                    f_action = QtWidgets.QAction(func_name, menu_cryspy)
+                    f_action.object = func
+                    f_action.setToolTip(form_tooltip(d_procedure))
+                    f_action.setStatusTip(d_procedure["summary"])
+                    f_action.triggered.connect(
+                        lambda: self.object_to_procedure(self.press_procedure)
+                    )
+                    menu_cryspy.addAction(f_action)
+                    continue
                 if key.lower().startswith(func.__name__.split("_")[0].lower()):
                     func_name = (
                         " ".join(func.__name__.split("_")[1:])
@@ -610,6 +684,10 @@ class CMainWindow(QMainWindow):
     # procedures which is sended to  local classes to have connection with whole object
     def press_procedure(self, procedure):
         """Run procedure to performe procedure."""
+        d_procedure = take_description(procedure)
+        if d_procedure is not None:
+            self.run_described_procedure(procedure, d_procedure)
+            return
         if check_function_to_auto_run(procedure):
             self.cthread.function = procedure
             self.cthread.arguments = (self.rcif_object,)
@@ -618,6 +696,23 @@ class CMainWindow(QMainWindow):
             self.w_function.set_function(
                 procedure, self.cthread, globaln=self.rcif_object
             )
+
+    def run_described_procedure(self, procedure, d_procedure: dict):
+        """Run a procedure described by CrysPy: at once when it needs only
+        the object, otherwise after the form of its parameters."""
+        if self.cthread.isRunning():
+            return
+        self.apply_cif_edits()  # the items of the form are taken from the current object
+        if is_autorun(d_procedure):
+            arguments = (self.rcif_object,)
+        else:
+            dialog = ProcedureDialog(procedure, d_procedure, self.rcif_object, self)
+            if dialog.exec_() != QtWidgets.QDialog.Accepted:
+                return
+            arguments = dialog.arguments()
+        self.cthread.function = procedure
+        self.cthread.arguments = arguments
+        self.cthread.start()
 
     def location_on_the_screen(self):
         """Location on the screen."""
@@ -634,6 +729,7 @@ class CMainWindow(QMainWindow):
         )
 
     def save_file(self):
+        self.apply_cif_edits()  # Ctrl+S does not take the focus
         file_name = self.d_setup.get("data_file_name", "")
         if file_name == "" or os.path.isdir(file_name):
             self.save_file_as()
@@ -726,6 +822,7 @@ class CMainWindow(QMainWindow):
                 self.text_edit.append(f"File '{file_name}' is not found.")
             rcif_object = GlobalN.make_container((), (), "global")
         self.rcif_object = rcif_object
+        self.history.clear()  # states of another file are not mixed in
         self.renew_w_object_panel()
 
     def renew_w_object_panel(self):
@@ -799,6 +896,7 @@ class CMainWindow(QMainWindow):
                 parent=w_item_tabs,
                 text_placeholder=text_placeholder,
                 s_info=s_info,
+                refinable_tags=take_refinable_tags(item),
             )
             # w_edit_cif.setToolTip(item.__doc__)
             w_item_tabs.addTab(w_edit_cif, "RCIF format")
@@ -957,7 +1055,59 @@ class CMainWindow(QMainWindow):
         self.setCentralWidget(widget_main)
 
     def take_rcif_object(self):
+        self.apply_cif_edits()
+        self.remember("AI assistant request")
         return getattr(self, "rcif_object", None)
+
+    def remember(self, label: str):
+        """Keep the state of the object before the change `label`."""
+        rcif_object = getattr(self, "rcif_object", None)
+        if rcif_object is None:
+            return
+        try:
+            self.history.push(label, rcif_object.to_cif())
+        except Exception as e:
+            self.show_error("The state is not kept in History", e)
+
+    def remember_before_run(self):
+        func = self.cthread.function
+        name = getattr(func, "__name__", "procedure")
+        self.remember(name.replace("_", " "))
+
+    def update_menu_history(self):
+        menu = self.menu_history
+        menu.clear()
+        if len(self.history) == 0:
+            action = menu.addAction("No changes yet")
+            action.setEnabled(False)
+            return
+        flag_free = not self.cthread.isRunning()
+        for entry in reversed(self.history.entries):
+            action = menu.addAction(entry.title())
+            action.setToolTip("Go back to the object as it was at that time")
+            action.setEnabled(flag_free)
+            action.triggered.connect(
+                lambda checked=False, entry=entry: self.restore_history(entry))
+
+    def restore_history(self, entry):
+        """Go back to a kept state; the current one is kept too, so that
+        going back can itself be undone."""
+        if self.cthread.isRunning():
+            return
+        try:
+            rcif_object = str_to_globaln(entry.text)
+        except Exception as e:
+            self.show_error("The state is not restored", e)
+            return
+        self.apply_cif_edits()
+        self.remember(f"going back to {entry.title().split()[0]}")
+        self.rcif_object = rcif_object
+        self.w_item_tabs.item_way_in_w_item_tabs = None
+        self.renew_w_object_panel()
+        self.text_edit.setText(
+            f"The object is as it was {entry.title()}.\n"
+            "Save the file to keep it.")
+        self.print_object_info()
 
     def assistant_object_changed(self):
         self.renew_w_object_panel()
@@ -988,6 +1138,7 @@ class CMainWindow(QMainWindow):
             try:
                 item_2 = item.from_cif(text)
                 if item_2 is not None:
+                    self.remember(f"edit of {way_item[-1]}")
                     item.copy_from(item_2)
             except Exception as e:
                 ls_out = ["Item defined incorrectly: "]

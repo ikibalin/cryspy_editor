@@ -14,10 +14,12 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
+from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
     form_tools_text,
     is_answer_tool,
+    is_request_tool,
     run_tool,
 )
 
@@ -314,6 +316,8 @@ class Assistant:
     def __init__(self, model):
         self.model = model
         self.history: List[Dict[str, str]] = []
+        self.dialog: Optional[Dialog] = None  # questions of an action to the user
+        self.flag_dialog_changed = False  # the action of the dialog changes the CrysPy object
 
     @property
     def model_name(self) -> str:
@@ -325,6 +329,56 @@ class Assistant:
 
     def clear_history(self):
         self.history = []
+        self.dialog = None
+
+    def is_asking(self) -> bool:
+        """True while the assistant waits for the answer to its question."""
+        return self.dialog is not None
+
+    def _remember(self, question: str, text: str):
+        self.history.append({"role": "user", "content": question})
+        self.history.append({"role": "assistant", "content": text[:N_MAX_HISTORY]})
+
+    def _finish_dialog(self, on_action: Optional[Callable] = None):
+        """Result of the action of the dialog with all its values: text, or
+        the next Dialog when the action needs more values."""
+        dialog, self.dialog = self.dialog, None
+        if on_action is not None:
+            on_action(dialog.name)
+        try:
+            result = dialog.finish()
+        except (ValueError, TypeError, KeyError) as e:
+            return f"Error: {e}"
+        return result if isinstance(result, Dialog) else str(result)
+
+    def answer_dialog(self, answer: str, on_action: Optional[Callable] = None) -> dict:
+        """The answer of the user to the question of the dialog: read without
+        the model; the action is done when all values are known."""
+        dialog = self.dialog
+        name, l_action = dialog.name, []
+        if is_cancel(answer):
+            self.dialog = None
+            text = f"Stopped: {name} is not done."
+        else:
+            flag_taken, message = self.dialog.answer(answer)
+            if not flag_taken:
+                text = f"{message}\n{self.dialog.prompt()}"
+            elif self.dialog.is_done():
+                result = self._finish_dialog(on_action)
+                if isinstance(result, Dialog):  # the action asks more: the numbers of questions go on
+                    self.dialog, result.n_asked = result, dialog.n_asked
+                    message = message.replace(f"\n{ALL_INFORMATION}", "")
+                    s_intro = f"{result.intro}\n" if result.intro else ""
+                    text = f"{message}\n{s_intro}{result.prompt()}"
+                else:
+                    l_action.append((name, dict(dialog.values), result))
+                    text = f"{message}\n\n[{name}] {result}"
+            else:
+                text = f"{message}\n{self.dialog.prompt()}"
+        self._remember(answer, text)
+        flag_object_changed = bool(l_action) and self.flag_dialog_changed and not l_action[0][2].startswith("Error")
+        return {"text": text, "actions": l_action, "flag_object_changed": flag_object_changed,
+                "question": self.is_asking()}
 
     def close(self):
         """Free the model (see LocalModel.close)."""
@@ -339,7 +393,10 @@ class Assistant:
 
         Returns {"text": reply for the user, "actions": [(name, arguments,
         result), ...], "flag_object_changed": the CrysPy object was
-        modified}."""
+        modified, "question": the assistant asks a question (a tool returned
+        an assistant_dialog.Dialog); the next request is its answer}."""
+        if self.dialog is not None:
+            return self.answer_dialog(question, on_action)
         messages = [{"role": "system", "content": form_system_prompt(cryspy_object)}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
         messages.append({"role": "user", "content": question})
@@ -358,9 +415,17 @@ class Assistant:
                 l_done.append(key)
                 if action == "get_help" and not arguments.get("query"):
                     arguments = dict(arguments, query=question)
+                if is_request_tool(action):
+                    arguments = dict(arguments, request=question)
                 if on_action is not None:
                     on_action(action)
                 result, flag_changed = run_tool(action, cryspy_object, arguments)
+                if isinstance(result, Dialog):  # the next requests are the answers to its questions
+                    tool = D_TOOLS.get(action)
+                    self.dialog = result
+                    self.flag_dialog_changed = bool(getattr(tool, "flag_object_changed", flag_changed))
+                    l_action.append((action, arguments, result.start()))
+                    break
                 flag_object_changed = flag_object_changed or flag_changed
                 if result.startswith("Error") and i_retry < MAX_RETRIES:  # corrected below
                     # the model may send the same call again: it is tried again
@@ -368,7 +433,7 @@ class Assistant:
                     l_error.append((action, arguments, result))
                 else:
                     l_action.append((action, arguments, result))
-            if not l_error:
+            if not l_error or self.dialog is not None:
                 break
             s_error = "\n".join(f"{action} {json.dumps(arguments, default=str)}: {result}"
                                 for action, arguments, result in l_error)
@@ -379,13 +444,14 @@ class Assistant:
             raw = self.model.chat(messages, flag_json=True)
             l_todo = take_decision(raw)["actions"]
         # the answer was written before the results: not when an action failed
-        if any(result.startswith("Error") for _, _, result in l_action):
+        flag_failed = any(result.startswith("Error") for _, _, result in l_action)
+        if flag_failed or self.dialog is not None:  # the questions are the answer
             answer = ""
         # a change is never reported without an action that made it
         if not l_action and claims_done(answer):
             answer = NOTHING_DONE
         # the answer to a question is made from the results (no more actions)
-        if any(is_answer_tool(action) for action, _, _ in l_action):
+        if self.dialog is None and any(is_answer_tool(action) for action, _, _ in l_action):
             s_result = "\n\n".join(f"Result of {action}:\n{result[:N_MAX_RESULT]}" for action, _, result in l_action)
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": (
@@ -393,12 +459,14 @@ class Assistant:
                 "not from the chat (its values may be old); when the results do not answer it, say so. "
                 'Respond with {"answer": "<short text for the user>"}.')})
             reply = take_decision(self.model.chat(messages, flag_json=True))["answer"]
+            if flag_failed and claims_done(reply):  # "set and refined" after an error: the results say it
+                reply = ""
             answer = reply or ("" if claims_done(answer) else answer)
         text = "\n\n".join(f"[{action}] {result}" for action, _, result in l_action)
         if answer:
             text = answer if text == "" else f"{text}\n\n{answer}"
         if text == "":
             text = "No answer: try to ask in other words."
-        self.history.append({"role": "user", "content": question})
-        self.history.append({"role": "assistant", "content": text[:N_MAX_HISTORY]})
-        return {"text": text, "actions": l_action, "flag_object_changed": flag_object_changed}
+        self._remember(question, text)
+        return {"text": text, "actions": l_action, "flag_object_changed": flag_object_changed,
+                "question": self.is_asking()}
