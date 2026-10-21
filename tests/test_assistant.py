@@ -308,6 +308,7 @@ def test_model_is_freed_before_exit(qapp):
     """A model left to the interpreter shutdown makes the Metal backend of
     llama.cpp abort; unload and shutdown free it at once."""
     from PyQt5 import QtWidgets
+
     from cryspy_editor.widgets.ui_assistant import AssistantController, LoadWorker
     main_window = QtWidgets.QMainWindow()
     controller = AssistantController(main_window, {}, lambda: True, lambda: None, lambda: None)
