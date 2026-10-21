@@ -1,4 +1,5 @@
 import numpy
+import cryspy
 from cryspy_editor.widgets.function_basis import remove_all_items
 from cryspy_editor.widgets.procedures import (
     procedure_equiv_hkl,
@@ -22,7 +23,6 @@ from cryspy_editor.widgets.procedures import (
     procedure_convert_to_int_format,
 )
 
-from cryspy_editor.widgets.cod import load_cif_from_cod_by_formula
 from PyQt5 import QtWidgets
 import cryspy_editor.widgets.ui_setting as ui_setting
 
@@ -189,7 +189,7 @@ def redefine_inline_parameters(d_np_table):
             elif L_ACTION_NAME.index(s_hh) == 18:  # column
                 procedure_column(s_param, d_np_table)
             elif L_ACTION_NAME.index(s_hh) == 19:  # load_cif
-                s_res = load_cif_from_cod_by_formula(s_param)
+                s_res = cryspy.load_cif_from_cod(formula=s_param)
                 clipboard = QtWidgets.QApplication.clipboard()
                 clipboard.setText(s_res)
                 S_COMMENT = ui_setting.get_comment_character()
