@@ -55,6 +55,18 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
    loaded again at the next start, until **Unload model**; the window opens
    again at the next start if it was open when the program was closed.
 
+**Recipes.** A task of several steps (e.g. "refine the structure step by
+step", "refine the flip ratios") is done by a recipe of CrysPy: the model
+reads its steps and works one action at a time, judging each result by
+chi_sq/n, R_F2 and the warnings of CrysPy. Each step is written in the chat
+as it starts and when its result comes; **Stop** ends the work. The recipes
+for the experiments of the opened file (single crystal, powder, flip ratios,
+nuclear or magnetic crystal) are given to the model. **AI assistant →
+Recipes...** lists the recipes, shows their text and lets you write new ones
+or change those of CrysPy (New, Check, Save, Delete); your recipes are kept in
+the `recipes` folder next to the settings and replace the recipes of CrysPy
+with the same name.
+
 ## Development
 
 - `main` holds releases, `develop` is the integration branch. Branch off

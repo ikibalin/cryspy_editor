@@ -43,6 +43,18 @@ def form_recipes_text() -> str:
     return recipes_as_text()
 
 
+def form_object_recipes_text(cryspy_object) -> str:
+    """The kinds of the experiments of the object and their recipes
+    (tool suggest_recipes of CrysPy); empty without experiments or for a
+    CrysPy without this tool."""
+    if cryspy_object is None or "suggest_recipes" not in D_TOOLS:
+        return ""
+    result = call_assistant_tool(cryspy_object, "suggest_recipes")
+    if result["flag_error"]:
+        return ""
+    return str(result["text"])
+
+
 def is_request_tool(name: str) -> bool:
     """True if the action takes the request of the user (argument
     "request"), e.g. to find the values given in it."""

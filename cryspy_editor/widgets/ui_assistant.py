@@ -7,7 +7,7 @@ import html
 import os
 import traceback
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
 from cryspy_editor.widgets.assistant import (
@@ -19,6 +19,7 @@ from cryspy_editor.widgets.assistant import (
     take_recommended_index,
     take_settings,
 )
+from cryspy_editor.widgets.recipe_editor import init_user_recipe_folder
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
 PLACEHOLDER = "Ask the question or request an action"
@@ -201,6 +202,7 @@ class AskWorker(QObject):
     finished = pyqtSignal(dict)  # emits the result of Assistant.ask
     error = pyqtSignal(str)
     action_started = pyqtSignal(str)
+    step_text = pyqtSignal(str)  # a step of the work by a recipe, as it goes
 
     def __init__(self, assistant: Assistant, question: str, cryspy_object):
         super().__init__()
@@ -211,7 +213,8 @@ class AskWorker(QObject):
     def run(self):
         try:
             self.finished.emit(self.assistant.ask(
-                self.question, self.cryspy_object, on_action=self.action_started.emit))
+                self.question, self.cryspy_object, on_action=self.action_started.emit,
+                on_step=self.step_text.emit))
         except Exception as e:
             traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
@@ -354,6 +357,11 @@ class AssistantWindow(QtWidgets.QWidget):
             f"<b>{html.escape(role)}:</b>"
             f"<pre style='white-space: pre-wrap'>{html.escape(text)}</pre>")
 
+    def append_step(self, text: str):
+        """A step of the work by a recipe, shown as it goes."""
+        self.history_view.append(f"<pre style='white-space: pre-wrap'>{html.escape(text)}</pre>")
+        self.history_view.moveCursor(QtGui.QTextCursor.End)
+
     def on_send(self):
         question = self.input_line.text().strip()
         if question == "" or self.assistant is None or self.is_busy():
@@ -368,7 +376,8 @@ class AssistantWindow(QtWidgets.QWidget):
         worker = AskWorker(self.assistant, question, cryspy_object)
         self.button_stop.setEnabled(True)
         worker.action_started.connect(
-            lambda action: self.input_line.setPlaceholderText(f"Running '{action}'..."))
+            lambda action: self.input_line.setPlaceholderText(f"Running '{action}'... (Stop ends the work)"))
+        worker.step_text.connect(self.append_step)
         self._start_thread(worker, self.on_reply, self.on_error)
 
     def on_stop(self):
@@ -410,6 +419,8 @@ class AssistantController(QObject):
         self.window = AssistantWindow(take_cryspy_object=take_cryspy_object, parent=main_window)
         self.window.signal_object_changed.connect(on_object_changed)
         self.window.signal_model_loaded.connect(self.on_model_loaded)
+        self.recipe_dialog = None
+        init_user_recipe_folder()
         app = QtWidgets.QApplication.instance()
         if app is not None:
             # also when the program quits without closing the main window
@@ -425,7 +436,29 @@ class AssistantController(QObject):
         show_action.triggered.connect(self.show_window)
         unload_action = menu_ai.addAction("Unload model")
         unload_action.triggered.connect(self.unload_model)
+        menu_ai.addSeparator()
+        recipes_action = menu_ai.addAction("Recipes...")
+        recipes_action.setStatusTip(
+            "Read, write and edit the recipes: the steps of typical analyses the assistant follows.")
+        recipes_action.triggered.connect(self.show_recipes)
         return menu_ai
+
+    def show_recipes(self):
+        from cryspy_editor.widgets.recipe_editor import (
+            RecipeEditorDialog,
+            flag_recipe_files,
+        )
+        if not flag_recipe_files():
+            QtWidgets.QMessageBox.information(
+                self.main_window, WINDOW_TITLE,
+                "Editing of recipes needs a newer CrysPy (with recipes as text files).")
+            return
+        if self.recipe_dialog is None:
+            self.recipe_dialog = RecipeEditorDialog(parent=self.main_window)
+        else:
+            self.recipe_dialog.update_list()
+        self.recipe_dialog.show()
+        self.recipe_dialog.raise_()
 
     def show_window(self):
         self.window.show_window()

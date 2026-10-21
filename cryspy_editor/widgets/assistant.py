@@ -18,6 +18,7 @@ from cryspy_editor.widgets.assistant_agent import Agent, form_steps_text
 from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
+    form_object_recipes_text,
     form_recipes_text,
     form_tools_text,
     is_answer_tool,
@@ -165,6 +166,9 @@ When no recipe fits such a task, give the single action "{STEP_BY_STEP}" {{}}.""
                   for item in getattr(cryspy_object, "items", [])]
         s_state = (f"\nThe opened file has {len(l_name)} data blocks: "
                    f"{', '.join(l_name)}." if l_name else "\nThe opened file is empty.")
+        s_object_recipe = form_object_recipes_text(cryspy_object) if s_recipe else ""
+        if s_object_recipe:
+            s_recipe += f"\nThe experiments of the opened file and their recipes:\n{s_object_recipe}"
     return f"""You are the assistant of CrysPy Editor, a program for crystallographic
 analysis of neutron and X-ray diffraction data with the CrysPy library
 (crystal structures, magnetic structures, single crystal, powder and TOF
@@ -221,9 +225,14 @@ def take_action_names() -> list:
 def form_agent_examples() -> str:
     if "get_recipe" not in D_TOOLS:
         return ""
-    return """
+    s_out = """
 - refine the structure step by step:
   [{"action": "get_recipe", "arguments": {"name": "refine_structure"}}]"""
+    if "suggest_recipes" in D_TOOLS:
+        s_out += """
+- analyse all the data of the file by the recipes:
+  [{"action": "get_recipe", "arguments": {"name": "choose_recipes"}}]"""
+    return s_out
 
 
 def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Callable) -> list:
@@ -428,11 +437,13 @@ class Assistant:
         if hasattr(self.model, "close"):
             self.model.close()
 
-    def ask(self, question: str, cryspy_object=None, on_action: Optional[Callable] = None) -> dict:
+    def ask(self, question: str, cryspy_object=None, on_action: Optional[Callable] = None,
+            on_step: Optional[Callable] = None) -> dict:
         """Process a request: the model chooses the actions (at most
         MAX_STEPS) and the answer at once; after the actions of a question
         (assistant_tools.is_answer_tool) it answers from their results.
-        on_action(name): called before each action.
+        on_action(name): called before each action; on_step(text): the steps
+        of the work by a recipe as they go (see ask_step_by_step).
 
         Returns {"text": reply for the user, "actions": [(name, arguments,
         result), ...], "flag_object_changed": the CrysPy object was
@@ -446,7 +457,7 @@ class Assistant:
         raw = self.model.chat(messages, flag_json=True)
         decision = take_decision(raw)
         if any(action in AGENT_ACTIONS for action, _ in decision["actions"]) and "get_recipe" in D_TOOLS:
-            return self.ask_step_by_step(question, cryspy_object, decision["actions"], on_action)
+            return self.ask_step_by_step(question, cryspy_object, decision["actions"], on_action, on_step)
         answer = decision["answer"]
         l_action, l_done = [], []
         flag_object_changed = False
@@ -517,17 +528,20 @@ class Assistant:
                 "question": self.is_asking()}
 
     def ask_step_by_step(self, question: str, cryspy_object, l_first: list,
-                         on_action: Optional[Callable] = None) -> dict:
+                         on_action: Optional[Callable] = None,
+                         on_step: Optional[Callable] = None) -> dict:
         """The request is done by the agent loop (assistant_agent.Agent):
         one action at a time, each chosen after the result of the previous
-        one. l_first: the actions chosen already (get_recipe)."""
+        one. l_first: the actions chosen already (get_recipe). on_step(text):
+        the steps are shown to the user as they go; the reply then has only
+        the end (its "text"), the history of the chat keeps all."""
         self.flag_stop = False
         l_first = [(action, arguments) for action, arguments in l_first
                    if action in AGENT_ACTIONS and action != STEP_BY_STEP][:1]
         agent = Agent(self.model, run_tool, list(D_TOOLS), take_json_object)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
-                        l_first=l_first)
+                        l_first=l_first, on_step=on_step)
         l_action = [(action, arguments, result) for _, action, arguments, result in out["steps"]]
         answer = out["answer"]
         if out["dialog"] is not None:
@@ -536,12 +550,16 @@ class Assistant:
             answer = ""
         elif not any(not str(result).startswith("Error") for _, _, result in l_action) and claims_done(answer):
             answer = NOTHING_DONE
-        ls_out = [form_steps_text(out["steps"])] if out["steps"] else []
+        ls_out = []
         if out["stopped"]:
             ls_out.append(f"{out['stopped']} The results above are those of the actions done.")
         if answer:
             ls_out.append(answer)
-        text = "\n\n".join(ls_out) or "No answer: try to ask in other words."
-        self._remember(question, text)
+        s_steps = form_steps_text(out["steps"]) if out["steps"] else ""
+        text_all = "\n\n".join([s_steps] + ls_out if s_steps else ls_out) or "No answer: try to ask in other words."
+        self._remember(question, text_all)
+        text = text_all
+        if on_step is not None:  # the steps are shown already
+            text = "\n\n".join(ls_out) or ("Done." if out["steps"] else text_all)
         return {"text": text, "actions": l_action, "flag_object_changed": out["flag_object_changed"],
                 "question": self.is_asking()}
