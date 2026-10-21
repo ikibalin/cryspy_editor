@@ -481,7 +481,7 @@ class AssistantController(QObject):
         unload_action = menu_ai.addAction("Unload model")
         unload_action.triggered.connect(self.unload_model)
         menu_ai.addSeparator()
-        recipes_action = menu_ai.addAction("Recipes...")
+        recipes_action = menu_ai.addAction("CookBook...")
         recipes_action.setStatusTip(
             "Read, write and edit the recipes: the steps of typical analyses the assistant follows.")
         recipes_action.triggered.connect(self.show_recipes)

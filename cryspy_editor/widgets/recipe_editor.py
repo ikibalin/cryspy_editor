@@ -13,7 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from cryspy_editor.settings import take_config_dir
 
 S_RECIPE_FOLDER = "recipes"
-WINDOW_TITLE = "AI assistant: recipes"
+WINDOW_TITLE = "AI assistant: CookBook (recipes)"
 S_INFO = ("A recipe is the steps of an analysis that the assistant follows one action at "
           "a time. Write it in the format below (get_help 'recipe' explains it); 'Actions' "
           "are tool calls of CrysPy. Saving a recipe of CrysPy makes your copy, which "
