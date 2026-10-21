@@ -33,6 +33,16 @@ def form_tools_text() -> str:
     return "\n".join(tool.to_short_text() for tool in L_ASSISTANT_TOOLS)
 
 
+def form_recipes_text() -> str:
+    """The recipes of CrysPy (typical algorithms) for the system prompt;
+    empty for a CrysPy without recipes."""
+    try:
+        from cryspy.procedure_assistant.recipes import recipes_as_text
+    except ImportError:
+        return ""
+    return recipes_as_text()
+
+
 def is_request_tool(name: str) -> bool:
     """True if the action takes the request of the user (argument
     "request"), e.g. to find the values given in it."""

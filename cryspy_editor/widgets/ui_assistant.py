@@ -252,7 +252,15 @@ class AssistantWindow(QtWidgets.QWidget):
         self.input_line.setPlaceholderText(PLACEHOLDER)
         self.input_line.returnPressed.connect(self.on_send)
         self.input_line.setEnabled(False)
-        layout.addWidget(self.input_line)
+        layout_input = QtWidgets.QHBoxLayout()
+        layout_input.addWidget(self.input_line, 1)
+        # the step-by-step work of the assistant stops after the running action
+        self.button_stop = QtWidgets.QPushButton("Stop")
+        self.button_stop.setToolTip("Stop the step-by-step work after the running action")
+        self.button_stop.clicked.connect(self.on_stop)
+        self.button_stop.setEnabled(False)
+        layout_input.addWidget(self.button_stop)
+        layout.addLayout(layout_input)
 
     def show_window(self):
         """Show the window, or raise it if it is already open."""
@@ -358,11 +366,19 @@ class AssistantWindow(QtWidgets.QWidget):
         if self.take_cryspy_object is not None:
             cryspy_object = self.take_cryspy_object()
         worker = AskWorker(self.assistant, question, cryspy_object)
+        self.button_stop.setEnabled(True)
         worker.action_started.connect(
             lambda action: self.input_line.setPlaceholderText(f"Running '{action}'..."))
         self._start_thread(worker, self.on_reply, self.on_error)
 
+    def on_stop(self):
+        if self.assistant is not None and isinstance(self.worker, AskWorker):
+            self.assistant.request_stop()
+            self.button_stop.setEnabled(False)
+            self.input_line.setPlaceholderText("Stopping after the running action...")
+
     def _ready_for_input(self, flag_question: bool = False):
+        self.button_stop.setEnabled(False)
         self.input_line.setEnabled(True)
         self.input_line.setPlaceholderText(PLACEHOLDER_ANSWER if flag_question else PLACEHOLDER)
         self.input_line.setFocus()
