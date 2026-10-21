@@ -566,7 +566,7 @@ class Assistant:
                     "question": False}
         if on_action is not None:
             on_action(name)
-        result, flag_changed = run_tool(name, cryspy_object, arguments)
+        result, flag_changed = run_tool(name, cryspy_object, arguments, flag_user=True)
         if isinstance(result, Dialog):  # the next requests are the answers to its questions
             self.dialog = result
             self.flag_dialog_changed = bool(getattr(D_TOOLS.get(name), "flag_object_changed", flag_changed))
