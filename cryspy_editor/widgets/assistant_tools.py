@@ -6,10 +6,11 @@ assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
 from typing import Dict
 
+import cryspy
 from cryspy import call_assistant_tool
 from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 
-from cryspy_editor.widgets.assistant_dialog import Dialog
+from cryspy_editor.widgets.assistant_dialog import Dialog, Question
 
 D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOOLS}
 
@@ -38,23 +39,46 @@ def is_request_tool(name: str) -> bool:
     return bool(getattr(D_TOOLS.get(name), "flag_request", False))
 
 
-def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
-    """(result text, flag_object_changed) of the action; errors are text
-    starting with "Error", so that the model can correct the call and the
-    answer never reports a failed action as done.
+def describe_value(value) -> str:
+    """Text of an answer: lists without brackets ("5 6 4 90 90 90")."""
+    if isinstance(value, (list, tuple)):
+        return " ".join(describe_value(item) for item in value)
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
 
-    A tool that lacks information returns a Dialog (assistant_dialog.py)
-    instead of the text: it is returned as the result, the assistant asks
-    its questions; a Dialog without questions is finished at once."""
+
+def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dialog:
+    """Dialog of the arguments of the action that CrysPy asks from the user
+    (result["missing"], as MCP elicitation): CrysPy gives the questions and
+    checks the answers (cryspy.convert_assistant_answer); when all are
+    known, the action is called again with them."""
+    l_question = [
+        Question(d_missing["name"], d_missing.get("question", d_missing["name"]),
+                 lambda text, d_missing=d_missing: cryspy.convert_assistant_answer(d_missing, text),
+                 proposal=d_missing.get("proposal"), s_proposal=str(d_missing.get("s_proposal", "")),
+                 hint=str(d_missing.get("hint", "")), describe=describe_value)
+        for d_missing in result["missing"]]
+    # the text is the message of the tool and "<name> needs to know: ..."
+    l_line = str(result["text"]).split("\n")
+    intro = "\n".join(l_line[:-1])
+
+    def finish(values: dict):
+        # text, or the next Dialog when the tool needs more values
+        return run_tool(name, cryspy_object, dict(arguments, **values))[0]
+    return Dialog(name, l_question, finish, intro=intro)
+
+
+def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
+    """(result, flag_object_changed) of the action. The result is text;
+    errors start with "Error", so that the model can correct the call and
+    the answer never reports a failed action as done.
+
+    When CrysPy asks values from the user (key "missing"), the result is a
+    Dialog with its questions (form_dialog)."""
     result = call_assistant_tool(cryspy_object, name, arguments)
-    if isinstance(result["text"], Dialog):
-        dialog = result["text"]
-        if not dialog.is_done():
-            return dialog, bool(result["flag_object_changed"])
-        try:
-            result = dict(result, text=dialog.finish())
-        except (ValueError, TypeError, KeyError) as e:
-            return f"Error: {e}", False
+    if result.get("missing"):
+        return form_dialog(name, cryspy_object, arguments, result), False
     text = str(result["text"])
     if result.get("flag_error", False) and not text.startswith("Error"):
         text = f"Error: {text}"

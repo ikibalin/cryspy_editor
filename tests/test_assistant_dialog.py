@@ -2,6 +2,7 @@
 and the dialog in Assistant.ask), without llama-cpp-python."""
 import json
 
+import cryspy
 import pytest
 
 from cryspy_editor.widgets import assistant_tools
@@ -149,103 +150,147 @@ def test_skip_with_missing_value_is_asked():
     assert not Question("x", "x", float, skip=lambda values: values + 1).is_skipped({})  # TypeError
 
 
-# the dialog in Assistant.ask: a test-only tool that returns a Dialog
+# the dialog in Assistant.ask: a test-only CrysPy tool asks values from the
+# user (key "missing" of the result, as MCP elicitation)
+
+def convert_answer(d_missing: dict, text: str):
+    """cryspy.convert_assistant_answer for the tests with a CrysPy release
+    that has no "missing" yet."""
+    if d_missing.get("type") == "array":
+        l_value = [float(word) for word in text.replace(",", " ").split()]
+        if len(l_value) != d_missing.get("minItems", len(l_value)):
+            raise ValueError(f"{d_missing['minItems']} values are expected, {len(l_value)} are given.")
+        return l_value
+    if d_missing.get("type") == "number":
+        return float(text)
+    if "enum" in d_missing and text.strip().lower() not in d_missing["enum"]:
+        raise ValueError(f"'{text.strip()}' is not one of: {', '.join(d_missing['enum'])}.")
+    return text.strip().lower()
+
+
+D_CELL = {"name": "cell", "question": "the unit cell parameters", "type": "array",
+          "items": {"type": "number"}, "minItems": 6, "maxItems": 6, "hint": "a b c alpha beta gamma"}
+D_GEOMETRY = {"name": "geometry", "question": "the geometry of measurements", "type": "string",
+              "enum": ["normal beam", "four circle"]}
+D_WAVELENGTH = {"name": "wavelength", "question": "the wavelength", "type": "number", "hint": "Å",
+                "proposal": 1.26}
+
 
 @pytest.fixture
-def dialog_tool(monkeypatch):
-    """call_assistant_tool of CrysPy replaced: "plan_measurement" returns a
-    Dialog, other names a text."""
-    l_finished = []
-
-    def finish(values):
-        l_finished.append(values)
-        return f"Plan for {values['space_group']} in {values['geometry']} geometry."
+def plan_tool(monkeypatch):
+    """call_assistant_tool of CrysPy replaced: "plan_measurement" asks the
+    cell and the geometry, then the wavelength (as a tool raising
+    ArgumentsNeeded), then makes the plan; other names give a text."""
+    if not hasattr(cryspy, "convert_assistant_answer"):
+        monkeypatch.setattr(cryspy, "convert_assistant_answer", convert_answer, raising=False)
+    l_call = []
 
     def fake_call(cryspy_object, name, arguments):
-        if name == "plan_measurement":
-            return {"text": make_dialog(finish=finish), "flag_object_changed": True, "flag_error": False}
-        if name == "plan_known":
-            return {"text": make_dialog(finish=finish, values={
-                "cell": (5, 6, 4, 90, 90, 90), "space_group": "63 C m c m", "geometry": "normal beam"}),
-                "flag_object_changed": False, "flag_error": False}
-        return {"text": f"done {name}", "flag_object_changed": False, "flag_error": False}
+        l_call.append((name, dict(arguments)))
+        if name != "plan_measurement":
+            return {"text": f"done {name}", "flag_object_changed": False, "flag_error": False, "missing": []}
+        l_missing = [d for d in (D_CELL, D_GEOMETRY) if d["name"] not in arguments]
+        if l_missing:
+            return {"text": "plan_measurement needs to know: ...", "flag_object_changed": False,
+                    "flag_error": False, "missing": l_missing}
+        if "wavelength" not in arguments:
+            return {"text": "The wavelength is not given in the data.\nplan_measurement needs to know: "
+                            "the wavelength.", "flag_object_changed": False, "flag_error": False,
+                    "missing": [D_WAVELENGTH]}
+        cell = " ".join(f"{value:g}" for value in arguments["cell"])
+        return {"text": f"Plan for {cell} in {arguments['geometry']} geometry at {arguments['wavelength']:g} Å.",
+                "flag_object_changed": True, "flag_error": False, "missing": []}
 
     monkeypatch.setattr(assistant_tools, "call_assistant_tool", fake_call)
-    return l_finished
+    monkeypatch.setitem(assistant_tools.D_TOOLS, "plan_measurement",
+                        type("Tool", (), {"flag_object_changed": True})())
+    return l_call
 
 
 def reply(*names, answer=""):
     return json.dumps({"actions": [{"action": name, "arguments": {}} for name in names], "answer": answer})
 
 
-def test_assistant_asks_and_finishes(dialog_tool):
+def test_assistant_asks_and_finishes(plan_tool):
     model = FakeModel([reply("plan_measurement", "other", answer="The plan is made.")])
     assistant = Assistant(model)
     l_running = []
     result = assistant.ask("Provide the list of hkl reflections and optimize the time", on_action=l_running.append)
     assert result["question"] is True and assistant.is_asking()
-    assert result["text"].startswith("[plan_measurement] Plan of the measurement.\nI understood")
-    assert result["text"].endswith("Q1: What is the unit cell parameters (a b c alpha beta gamma)?")
-    assert "The plan is made" not in result["text"]  # the answer of the model is dropped
+    assert result["text"] == (
+        "[plan_measurement] I understood, but some information is missing. I have 2 questions; reply to them one "
+        "by one ('cancel' to stop).\nQ1: What is the unit cell parameters (a b c alpha beta gamma)?")
     assert l_running == ["plan_measurement"]  # the actions after the dialog are not run
     assert not result["flag_object_changed"]
 
     result = assistant.ask("5 6 4 90 90 90")
     assert result["question"] and result["text"] == (
-        "Thank you: the the unit cell parameters is 5 6 4 90 90 90.\nQ2: What is the space group (number)?")
-    result = assistant.ask("six hundred")
-    assert result["question"] and result["text"].startswith("Not understood:")
-    assert result["text"].endswith("Q2: What is the space group (number)?")
-    assistant.ask("63")
-    result = assistant.ask("Normal beam geometry", on_action=l_running.append)
+        "Thank you: the the unit cell parameters is 5 6 4 90 90 90.\nQ2: What is the geometry of measurements?")
+    result = assistant.ask("upside down")
+    assert result["question"] and result["text"].startswith("Not understood: 'upside down' is not one of")
+    assert result["text"].endswith("Q2: What is the geometry of measurements?")
+    # all asked values known: CrysPy asks one more, the numbers go on
+    result = assistant.ask("normal beam", on_action=l_running.append)
+    assert result["question"] and result["text"] == (
+        "Thank you: the the geometry of measurements is normal beam.\n"
+        "The wavelength is not given in the data.\n"
+        "Q3: Am I right that the wavelength is 1.26? Answer yes or give the correct value (Å).")
+    result = assistant.ask("yes", on_action=l_running.append)
     assert result["question"] is False and not assistant.is_asking()
-    assert result["text"].endswith(
-        "Now I have all the information to perform the calculations.\n\n"
-        "[plan_measurement] Plan for 63 C m c m in normal beam geometry.")
+    assert result["text"] == (
+        "Ok: the wavelength is 1.26.\nNow I have all the information to perform the calculations.\n\n"
+        "[plan_measurement] Plan for 5 6 4 90 90 90 in normal beam geometry at 1.26 Å.")
     assert result["flag_object_changed"] is True
     assert result["actions"][0][0] == "plan_measurement"
-    assert l_running[-1] == "plan_measurement"
-    assert dialog_tool[0]["cell"] == (5, 6, 4, 90, 90, 90)
+    assert l_running == ["plan_measurement"] * 3
+    assert plan_tool[-1] == ("plan_measurement", {"cell": [5., 6., 4., 90., 90., 90.], "geometry": "normal beam",
+                                                  "wavelength": 1.26})
     assert model.n_call == 1  # the answers are read without the model
     assert len(assistant.history) == 10
 
 
-def test_assistant_dialog_is_cancelled(dialog_tool):
+def test_assistant_dialog_is_cancelled(plan_tool):
     model = FakeModel([reply("plan_measurement"), reply(answer="Hello")])
     assistant = Assistant(model)
     assistant.ask("plan the measurement")
     result = assistant.ask("отмена")
     assert result == {"text": "Stopped: plan_measurement is not done.", "actions": [],
                       "flag_object_changed": False, "question": False}
-    assert not dialog_tool
+    assert len(plan_tool) == 1
     assert assistant.ask("Hi")["text"] == "Hello"  # the model answers again
 
 
-def test_clear_history_stops_the_dialog(dialog_tool):
+def test_clear_history_stops_the_dialog(plan_tool):
     assistant = Assistant(FakeModel([reply("plan_measurement")]))
     assistant.ask("plan the measurement")
     assistant.clear_history()
     assert not assistant.is_asking() and assistant.history == []
 
 
-def test_dialog_without_questions_is_finished_at_once(dialog_tool):
-    assistant = Assistant(FakeModel([reply("plan_known")]))
-    result = assistant.ask("plan the measurement")
+def test_values_given_by_the_model_are_not_asked(plan_tool):
+    model = FakeModel([json.dumps({"actions": [{"action": "plan_measurement", "arguments": {
+        "cell": [5, 6, 4, 90, 90, 90], "geometry": "four circle", "wavelength": 2.36}}]})])
+    result = Assistant(model).ask("plan the measurement of the cell 5 6 4 90 90 90 ...")
     assert result["question"] is False
-    assert result["text"] == "[plan_known] Plan for 63 C m c m in normal beam geometry."
+    assert result["text"] == "[plan_measurement] Plan for 5 6 4 90 90 90 in four circle geometry at 2.36 Å."
 
 
 def test_error_of_finish(monkeypatch):
     def finish(values):
         raise ValueError("no wavelength")
     dialog = Dialog("plan", [Question("x", "x", float)], finish)
-    monkeypatch.setattr(assistant_tools, "call_assistant_tool",
-                        lambda obj, name, arguments: {"text": dialog, "flag_object_changed": True})
+    from cryspy_editor.widgets import assistant as assistant_module
+    monkeypatch.setattr(assistant_module, "run_tool", lambda name, obj, arguments: (dialog, False))
     assistant = Assistant(FakeModel([reply("plan")]))
     assistant.ask("plan")
     result = assistant.ask("1.5")
     assert result["text"].endswith("[plan] Error: no wavelength")
     assert result["flag_object_changed"] is False
+
+
+def test_describe_value():
+    assert assistant_tools.describe_value([5.0, 6.5, 90]) == "5 6.5 90"
+    assert assistant_tools.describe_value("normal beam") == "normal beam"
 
 
 def test_request_is_given_to_the_tool(monkeypatch):
@@ -263,7 +308,7 @@ def test_request_is_given_to_the_tool(monkeypatch):
     assert l_arguments == [{"request": "cell 5 6 4 90 90 90"}, {}]
 
 
-def test_placeholder_while_asking(qapp, dialog_tool):
+def test_placeholder_while_asking(qapp, plan_tool):
     from cryspy_editor.widgets import ui_assistant
     window = ui_assistant.AssistantWindow()
     try:

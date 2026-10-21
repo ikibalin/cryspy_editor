@@ -14,7 +14,7 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
-from cryspy_editor.widgets.assistant_dialog import Dialog, is_cancel
+from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
     form_tools_text,
@@ -339,15 +339,17 @@ class Assistant:
         self.history.append({"role": "user", "content": question})
         self.history.append({"role": "assistant", "content": text[:N_MAX_HISTORY]})
 
-    def _finish_dialog(self, on_action: Optional[Callable] = None) -> str:
-        """Result text of the action of the dialog with all its values."""
+    def _finish_dialog(self, on_action: Optional[Callable] = None):
+        """Result of the action of the dialog with all its values: text, or
+        the next Dialog when the action needs more values."""
         dialog, self.dialog = self.dialog, None
         if on_action is not None:
             on_action(dialog.name)
         try:
-            return str(dialog.finish())
+            result = dialog.finish()
         except (ValueError, TypeError, KeyError) as e:
             return f"Error: {e}"
+        return result if isinstance(result, Dialog) else str(result)
 
     def answer_dialog(self, answer: str, on_action: Optional[Callable] = None) -> dict:
         """The answer of the user to the question of the dialog: read without
@@ -363,8 +365,14 @@ class Assistant:
                 text = f"{message}\n{self.dialog.prompt()}"
             elif self.dialog.is_done():
                 result = self._finish_dialog(on_action)
-                l_action.append((name, dict(dialog.values), result))
-                text = f"{message}\n\n[{name}] {result}"
+                if isinstance(result, Dialog):  # the action asks more: the numbers of questions go on
+                    self.dialog, result.n_asked = result, dialog.n_asked
+                    message = message.replace(f"\n{ALL_INFORMATION}", "")
+                    s_intro = f"{result.intro}\n" if result.intro else ""
+                    text = f"{message}\n{s_intro}{result.prompt()}"
+                else:
+                    l_action.append((name, dict(dialog.values), result))
+                    text = f"{message}\n\n[{name}] {result}"
             else:
                 text = f"{message}\n{self.dialog.prompt()}"
         self._remember(answer, text)
@@ -413,7 +421,9 @@ class Assistant:
                     on_action(action)
                 result, flag_changed = run_tool(action, cryspy_object, arguments)
                 if isinstance(result, Dialog):  # the next requests are the answers to its questions
-                    self.dialog, self.flag_dialog_changed = result, flag_changed
+                    tool = D_TOOLS.get(action)
+                    self.dialog = result
+                    self.flag_dialog_changed = bool(getattr(tool, "flag_object_changed", flag_changed))
                     l_action.append((action, arguments, result.start()))
                     break
                 flag_object_changed = flag_object_changed or flag_changed
