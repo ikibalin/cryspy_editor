@@ -73,7 +73,8 @@ the `recipes` folder next to the settings and replace the recipes of CrysPy
 with the same name.
 
 **Commands.** Type `@` in the input line to see the names of the recipes and
-of the actions with a short description, and run one directly, without the
+of the actions with a short description (Tab and Shift+Tab go through them,
+Enter takes one), and run one directly, without the
 model choosing it: `@refine_flip_ratio_nuclear`, `@refine_parameters scale`,
 `@set_parameter path=cell.length_a value=5.43` or with a JSON object of the
 arguments. Without a loaded model a recipe is done as it is written, step by
