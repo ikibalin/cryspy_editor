@@ -98,11 +98,14 @@ class Agent:
 
     def run(self, system_prompt: str, history: list, question: str, cryspy_object=None,
             on_action: Optional[Callable] = None, should_stop: Optional[Callable] = None,
-            l_first: Optional[list] = None) -> dict:
+            l_first: Optional[list] = None, on_step: Optional[Callable] = None) -> dict:
         """Run the loop for the request.
 
         l_first: actions [(name, arguments)] already chosen by the model
         (e.g. get_recipe), done before the first call of the loop.
+        on_step(text): called with the text of each step for the user when
+        the step starts (its number, thought and action) and when its result
+        comes, so that the user sees the course of the work and can stop it.
 
         Returns {"steps": [(thought, action, arguments, result)], "answer",
         "flag_object_changed", "dialog": a Dialog when an action asks the
@@ -136,6 +139,8 @@ class Agent:
                 answer = step["answer"]
                 break
             action, arguments = step["action"], step["arguments"]
+            if on_step is not None:
+                on_step(form_step_start_text(len(l_step) + 1, step["thought"], action))
             key = (action, json.dumps(arguments, sort_keys=True, default=str))
             if l_call.count(key) >= MAX_SAME_CALLS:
                 result = ("Error: this action with these arguments was already done "
@@ -148,8 +153,12 @@ class Agent:
                 if not isinstance(result, str):  # a Dialog: the user answers its questions
                     dialog = result
                     l_step.append((step["thought"], action, arguments, result.start()))
+                    if on_step is not None:
+                        on_step(form_step_result_text(action, result.start()))
                     break
                 flag_object_changed = flag_object_changed or (flag_changed and not result.startswith("Error"))
+            if on_step is not None:
+                on_step(form_step_result_text(action, result))
             l_step.append((step["thought"], action, arguments, result))
             n_error = n_error + 1 if result.startswith("Error") else 0
             if n_error >= MAX_ERRORS_IN_ROW:
@@ -162,15 +171,25 @@ class Agent:
                 "dialog": dialog, "stopped": stopped}
 
 
+def form_step_start_text(number: int, thought: str, action: str) -> str:
+    s_thought = f" {thought}" if thought else ""
+    return f"Step {number}:{s_thought}\n[{action}] ..."
+
+
+def form_step_result_text(action: str, result) -> str:
+    """The start of the result of an action for the user."""
+    l_line = str(result).split("\n")
+    s_result = "\n".join(l_line[:N_MAX_STEP_RESULT])
+    if len(l_line) > N_MAX_STEP_RESULT:
+        s_result += "\n..."
+    return f"[{action}] {s_result}"
+
+
 def form_steps_text(l_step: list) -> str:
     """The course of the work for the user: the thought and the start of
     the result of each action."""
     ls_out = []
     for number, (thought, action, _, result) in enumerate(l_step, start=1):
-        l_line = str(result).split("\n")
-        s_result = "\n".join(l_line[:N_MAX_STEP_RESULT])
-        if len(l_line) > N_MAX_STEP_RESULT:
-            s_result += "\n..."
         s_thought = f" {thought}" if thought else ""
-        ls_out.append(f"Step {number}:{s_thought}\n[{action}] {s_result}")
+        ls_out.append(f"Step {number}:{s_thought}\n{form_step_result_text(action, result)}")
     return "\n\n".join(ls_out)

@@ -284,8 +284,8 @@ def test_assistant_is_a_window_of_its_own(qapp):
     controller = AssistantController(main_window, d_setup, lambda: True, lambda: None, lambda: None)
     try:
         menu = controller.init_menu(main_window.menuBar())
-        assert [action.text() for action in menu.actions()] == \
-            ["Load local model (*.gguf)...", "Show assistant", "Unload model"]
+        assert [action.text() for action in menu.actions() if not action.isSeparator()] == \
+            ["Load local model (*.gguf)...", "Show assistant", "Unload model", "Recipes..."]
         window = controller.window
         assert window.windowTitle() == "AI Assistant / CrysPy Editor"
         assert window.windowFlags() & QtCore.Qt.Window

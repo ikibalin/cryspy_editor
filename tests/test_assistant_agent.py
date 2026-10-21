@@ -155,3 +155,33 @@ def test_request_stop_is_reset_for_the_next_request():
     assistant.request_stop()
     result = assistant.ask("go", obj)
     assert result["text"] == "ok"
+
+
+def test_steps_are_shown_as_they_go():
+    """Each step reaches the user when it starts and when its result comes;
+    the reply then has only the end, the chat history keeps all."""
+    obj = cryspy.str_to_globaln(RCIF)
+    assistant = make_assistant([
+        reply(("get_recipe", {"name": "refine_structure"})),
+        step("fix_parameters", thought="Fix all first."),
+        final("All parameters are fixed."),
+    ])
+    l_shown = []
+    result = assistant.ask("refine the structure step by step", obj, on_step=l_shown.append)
+    assert l_shown[0] == "Step 1:\n[get_recipe] ..."
+    assert l_shown[1].startswith("[get_recipe] Recipe refine_structure")
+    assert l_shown[2] == "Step 2: Fix all first.\n[fix_parameters] ..."
+    assert l_shown[3].startswith("[fix_parameters] ")
+    assert len(l_shown) == 4
+    assert result["text"] == "All parameters are fixed."
+    assert "Step 2: Fix all first." in assistant.history[-1]["content"]
+
+
+def test_window_shows_a_step(qapp):
+    from cryspy_editor.widgets.ui_assistant import AssistantWindow
+    window = AssistantWindow()
+    try:
+        window.append_step("Step 1: Fix all first.\n[fix_parameters] ...")
+        assert "Step 1: Fix all first." in window.history_view.toPlainText()
+    finally:
+        window.close()
