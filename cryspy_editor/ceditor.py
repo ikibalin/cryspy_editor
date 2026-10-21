@@ -39,6 +39,12 @@ L_ITEM_CLS = L_ITEM_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
+from cryspy_editor.widgets.w_procedure_dialog import (
+    ProcedureDialog,
+    form_tooltip,
+    is_autorun,
+    take_description,
+)
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import WEditCif, take_refinable_tags
 from cryspy_editor.widgets.w_textedit import WTextEdit
@@ -631,6 +637,22 @@ class CMainWindow(QMainWindow):
             menu_cryspy = self.menu_bar.addMenu(key)
             menu_cryspy.setToolTipsVisible(True)
             for func in functions:
+                d_procedure = take_description(func)
+                if d_procedure is not None:  # title and tooltip from the docstring
+                    func_name = d_procedure["title"]
+                    if func_name.lower().startswith(key.lower() + " "):
+                        func_name = func_name[len(key) + 1:]
+                    if is_autorun(d_procedure):
+                        func_name += " (autorun)"
+                    f_action = QtWidgets.QAction(func_name, menu_cryspy)
+                    f_action.object = func
+                    f_action.setToolTip(form_tooltip(d_procedure))
+                    f_action.setStatusTip(d_procedure["summary"])
+                    f_action.triggered.connect(
+                        lambda: self.object_to_procedure(self.press_procedure)
+                    )
+                    menu_cryspy.addAction(f_action)
+                    continue
                 if key.lower().startswith(func.__name__.split("_")[0].lower()):
                     func_name = (
                         " ".join(func.__name__.split("_")[1:])
@@ -662,6 +684,10 @@ class CMainWindow(QMainWindow):
     # procedures which is sended to  local classes to have connection with whole object
     def press_procedure(self, procedure):
         """Run procedure to performe procedure."""
+        d_procedure = take_description(procedure)
+        if d_procedure is not None:
+            self.run_described_procedure(procedure, d_procedure)
+            return
         if check_function_to_auto_run(procedure):
             self.cthread.function = procedure
             self.cthread.arguments = (self.rcif_object,)
@@ -670,6 +696,23 @@ class CMainWindow(QMainWindow):
             self.w_function.set_function(
                 procedure, self.cthread, globaln=self.rcif_object
             )
+
+    def run_described_procedure(self, procedure, d_procedure: dict):
+        """Run a procedure described by CrysPy: at once when it needs only
+        the object, otherwise after the form of its parameters."""
+        if self.cthread.isRunning():
+            return
+        self.apply_cif_edits()  # the items of the form are taken from the current object
+        if is_autorun(d_procedure):
+            arguments = (self.rcif_object,)
+        else:
+            dialog = ProcedureDialog(procedure, d_procedure, self.rcif_object, self)
+            if dialog.exec_() != QtWidgets.QDialog.Accepted:
+                return
+            arguments = dialog.arguments()
+        self.cthread.function = procedure
+        self.cthread.arguments = arguments
+        self.cthread.start()
 
     def location_on_the_screen(self):
         """Location on the screen."""
