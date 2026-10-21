@@ -128,6 +128,31 @@ def test_logging_is_shown_and_stoppable(qapp):
                    for h in logger_cryspy.handlers)
 
 
+def test_progress_lines_replace_each_other(qapp):
+    """Lines with progress=True (each iteration of MEM, RhoChi) replace the
+    previous one; the last of them stays when an ordinary line follows."""
+    import logging
+    from cryspy_editor.cl_thread import COutputLogget, OutputLoggingHandler
+    out = COutputLogget()
+    logger = logging.getLogger("cryspy.test_progress")
+    logger.setLevel(logging.INFO)
+    handler = OutputLoggingHandler(out)
+    logger.addHandler(handler)
+    try:
+        logger.info("MEM iteration procedure")
+        for ind in range(1, 4):
+            logger.info(f"Iteration {ind}", extra={"progress": True})
+        assert out.text_last == "Iteration 3"
+        assert [t for t in out.l_text_permanent if t] == [
+            "MEM iteration procedure"]
+        logger.info("Chi_sq best is 1.00")
+        logger.info("End")
+    finally:
+        logger.removeHandler(handler)
+    assert [t for t in out.l_text_permanent if t] == [
+        "MEM iteration procedure", "Iteration 3", "Chi_sq best is 1.00"]
+
+
 def test_stop_is_visible_while_running(qapp):
     """Stop is in the toolbar and in the status bar while a procedure runs."""
     from cryspy_editor.ceditor import CMainWindow
