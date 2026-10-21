@@ -151,7 +151,7 @@ class Dialog:
                     self.l_dropped.append(question.key)
                     return False, "Then give the correct value."
                 return False, f"Not understood: {e}"
-            message = f"Thank you: the {question.text} is {question.describe(value)}."
+            message = f"Thank you: {question.text} is {question.describe(value)}."
         self.values[question.key] = value
         self.n_asked += 1
         if self.is_done():
