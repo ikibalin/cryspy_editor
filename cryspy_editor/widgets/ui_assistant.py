@@ -50,21 +50,28 @@ def form_hint_html(memory_gb) -> str:
         s_memory = (f"This computer has {memory_gb:.0f} GB of memory; "
                     "the matching row is in bold.")
     return f"""
-<p>Any <i>instruct</i> (chat) model in GGUF format works. Take the Q4_K_M
-quantization: the model file should take no more than half of the memory.
+<p>Any <i>instruct</i> (chat) model in GGUF format works. Recommended:
+<b>Qwen2.5-7B-Instruct Q4_K_M</b>; with 16 GB of memory or more
+<b>Qwen2.5-14B-Instruct Q4_K_M</b>, which follows the step-by-step recipes
+(e.g. the structure refinement) much more reliably. Take a general
+<i>Instruct</i> model, not a <i>Coder</i> one: coder models follow
+instructions and reason step by step worse. Take the Q4_K_M quantization:
+it is more accurate than Q4_0 at the same size. The model file should take
+no more than half of the memory.
 {s_memory}</p>
 <table border="1" cellpadding="3" cellspacing="0">
 <tr><th>Memory</th><th>Model</th><th>Q4_K_M file</th></tr>
 {''.join(ls_rows)}
 </table>
 <p>Download the file once from huggingface.co (search for the model name
-with "GGUF", e.g. bartowski/Meta-Llama-3.1-8B-Instruct-GGUF) and save it in
+with "GGUF", e.g. bartowski/Qwen2.5-7B-Instruct-GGUF) and save it in
 any folder. After that no internet connection is needed: the model runs on
 this computer.</p>
 <p><b>Threads</b>: 0 uses all cores but one. <b>GPU layers</b>: -1 puts the
 whole model on the GPU (Metal on Apple Silicon), 0 runs on CPU only.
 <b>Context</b>: the length of the conversation the model sees, in tokens;
-larger needs more memory.</p>"""
+larger needs more memory. For the step-by-step work by recipes take 8192
+or more.</p>"""
 
 
 class ModelSettingsDialog(QtWidgets.QDialog):

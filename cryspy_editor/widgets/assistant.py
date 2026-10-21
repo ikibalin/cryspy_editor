@@ -75,12 +75,12 @@ DEFAULT_SETTINGS = {
     "temperature": 0.2,
 }
 
-# (minimal RAM in GB, models, approximate size of the Q4_K_M file)
+# (minimal RAM in GB, models, approximate size of the Q4_K_M file); the
+# step-by-step work by recipes needs a general instruct model of 7B or more
 L_RECOMMENDED_MODELS = (
-    (0, "Qwen2.5-1.5B-Instruct", "1 GB"),
-    (8, "Qwen2.5-3B-Instruct, Llama-3.2-3B-Instruct", "2 GB"),
-    (16, "Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct", "5 GB"),
-    (32, "Qwen2.5-14B-Instruct", "9 GB"),
+    (0, "Qwen2.5-3B-Instruct (single requests only: too weak for recipes)", "2 GB"),
+    (8, "Qwen2.5-7B-Instruct", "4.7 GB"),
+    (16, "Qwen2.5-14B-Instruct", "9 GB"),
 )
 
 
