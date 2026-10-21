@@ -334,6 +334,8 @@ def test_model_is_freed_before_exit(qapp):
         window._start_thread(worker, lambda result: None, lambda msg: None)
         controller.shutdown()
         assert llm.flag_closed and not window.is_busy()
+        # the signals of the finished thread are not delivered afterwards
+        qapp.processEvents()
         controller.shutdown()  # twice: on close and on aboutToQuit
     finally:
         controller.window.close()
