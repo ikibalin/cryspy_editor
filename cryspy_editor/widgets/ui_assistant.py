@@ -172,11 +172,14 @@ class LoadWorker(QObject):
         super().__init__()
         self.model_path = model_path
         self.settings = settings
+        self.assistant = None
 
     def run(self):
         try:
             from cryspy_editor.widgets.assistant import LocalModel
-            self.finished.emit(Assistant(LocalModel(self.model_path, self.settings)))
+            # kept here too: shutdown frees it if the window never gets it
+            self.assistant = Assistant(LocalModel(self.model_path, self.settings))
+            self.finished.emit(self.assistant)
         except Exception as e:
             self.error.emit(f"{type(e).__name__}: {e}")
 
@@ -280,9 +283,28 @@ class AssistantWindow(QtWidgets.QWidget):
     def unload_model(self):
         if self.is_busy():
             return
-        self.assistant = None
+        self._free_model()
         self.input_line.setEnabled(False)
         self.label_model.setText("No model loaded")
+
+    def _free_model(self):
+        assistant, self.assistant = self.assistant, None
+        if assistant is not None:
+            assistant.close()
+
+    def shutdown(self):
+        """Before the program exits: wait for the running request or load
+        and free the model, so that llama.cpp does not abort at exit."""
+        if self.thread is not None:
+            self.thread.quit()
+            self.thread.wait()
+            # the result of a load finished now never reaches the window
+            loaded = getattr(self.worker, "assistant", None)
+            if loaded is not None and loaded is not self.assistant:
+                loaded.close()
+            self.thread = None
+            self.worker = None
+        self._free_model()
 
     def on_model_loaded(self, assistant: Assistant):
         self.assistant = assistant
@@ -355,6 +377,10 @@ class AssistantController(QObject):
         self.window = AssistantWindow(take_cryspy_object=take_cryspy_object, parent=main_window)
         self.window.signal_object_changed.connect(on_object_changed)
         self.window.signal_model_loaded.connect(self.on_model_loaded)
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            # also when the program quits without closing the main window
+            app.aboutToQuit.connect(self.shutdown)
 
     def init_menu(self, menu_bar):
         menu_ai = menu_bar.addMenu("AI assistant")
@@ -416,6 +442,10 @@ class AssistantController(QObject):
             self.d_setup["llm_model_path"] = model_path
         self.d_setup["llm_autoload"] = model_path != ""
         self.save_settings()
+
+    def shutdown(self):
+        """Free the model before the program exits."""
+        self.window.shutdown()
 
     def save_window_state(self):
         """Remember for the next session whether the window is open."""
