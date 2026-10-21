@@ -14,7 +14,14 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
-from cryspy_editor.widgets.assistant_agent import Agent, form_steps_text
+from cryspy_editor.widgets.assistant_agent import Agent, form_step_result_text, form_steps_text
+from cryspy_editor.widgets.assistant_commands import (
+    form_capabilities_text,
+    is_capability_question,
+    parse_command,
+    parse_command_arguments,
+    take_recipe_names,
+)
 from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
@@ -51,6 +58,8 @@ ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply 
 # or a task whose next steps depend on the results
 STEP_BY_STEP = "work_step_by_step"
 AGENT_ACTIONS = ("get_recipe", STEP_BY_STEP)
+NO_MODEL = ("No model is loaded (AI assistant -> Load local model). Without it type @name to run a recipe "
+            "or an action of CrysPy, or ask 'what can you do?'.")
 NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
                 "or do it in the window of CrysPy Editor.")
 # an answer that reports a change (English, Russian, French, German): without
@@ -451,6 +460,15 @@ class Assistant:
         an assistant_dialog.Dialog); the next request is its answer}."""
         if self.dialog is not None:
             return self.answer_dialog(question, on_action)
+        if is_capability_question(question):
+            text = form_capabilities_text()
+            self._remember(question, text)
+            return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
+        command = parse_command(question)
+        if command is not None:
+            return self.run_command(command[0], command[1], question, cryspy_object, on_action, on_step)
+        if self.model is None:
+            return {"text": NO_MODEL, "actions": [], "flag_object_changed": False, "question": False}
         messages = [{"role": "system", "content": form_system_prompt(cryspy_object)}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
         messages.append({"role": "user", "content": question})
@@ -526,6 +544,64 @@ class Assistant:
         self._remember(question, text)
         return {"text": text, "actions": l_action, "flag_object_changed": flag_object_changed,
                 "question": self.is_asking()}
+
+    def run_command(self, name: str, text: str, question: str, cryspy_object,
+                    on_action: Optional[Callable] = None, on_step: Optional[Callable] = None) -> dict:
+        """'@name text' (assistant_commands): a recipe or an action without
+        the model choosing it; a recipe runs literally without a model."""
+        if name in take_recipe_names():
+            if self.model is not None:
+                request = text or f"Follow the recipe {name} for the opened file."
+                return self.ask_step_by_step(request, cryspy_object, [("get_recipe", {"name": name})],
+                                             on_action, on_step)
+            return self.run_recipe_without_model(name, question, cryspy_object, on_step)
+        if name not in D_TOOLS:
+            text = (f"Error: '@{name}' is neither a recipe nor an action. Type @ to see the names, "
+                    "or ask 'what can you do?'.")
+            return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
+        try:
+            arguments = parse_command_arguments(name, text)
+        except ValueError as error:
+            return {"text": f"Error: {error}.", "actions": [], "flag_object_changed": False,
+                    "question": False}
+        if on_action is not None:
+            on_action(name)
+        result, flag_changed = run_tool(name, cryspy_object, arguments)
+        if isinstance(result, Dialog):  # the next requests are the answers to its questions
+            self.dialog = result
+            self.flag_dialog_changed = bool(getattr(D_TOOLS.get(name), "flag_object_changed", flag_changed))
+            result = result.start()
+            flag_changed = False
+        text = f"[{name}] {result}"
+        self._remember(question, text)
+        return {"text": text, "actions": [(name, arguments, result)],
+                "flag_object_changed": flag_changed and not result.startswith("Error"),
+                "question": self.is_asking()}
+
+    def run_recipe_without_model(self, name: str, question: str, cryspy_object,
+                                 on_step: Optional[Callable] = None) -> dict:
+        """The recipe as it is written (cryspy.run_recipe): every step is
+        shown when it is done."""
+        from cryspy import run_recipe
+        if cryspy_object is None:
+            return {"text": "Error: no file is opened.", "actions": [], "flag_object_changed": False,
+                    "question": False}
+        self.flag_stop = False
+
+        def show_step(step_name, status, text):
+            if on_step is not None:
+                on_step(f"Step {step_name}: {status}\n{form_step_result_text(step_name, text)}")
+
+        try:
+            result = run_recipe(cryspy_object, name, callback=show_step)
+        except TypeError:  # a CrysPy without the callback
+            result = run_recipe(cryspy_object, name)
+            if on_step is not None:
+                on_step(form_steps_text([("", step_name, {}, text) for step_name, _, text in result["steps"]]))
+        text = f"No model is loaded: the recipe {name} was run as it is written.\n{result['text']}"
+        self._remember(question, text)
+        return {"text": text, "actions": [(name, {}, result["text"])], "flag_object_changed": True,
+                "question": False}
 
     def ask_step_by_step(self, question: str, cryspy_object, l_first: list,
                          on_action: Optional[Callable] = None,

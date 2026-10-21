@@ -19,6 +19,7 @@ from cryspy_editor.widgets.assistant import (
     take_recommended_index,
     take_settings,
 )
+from cryspy_editor.widgets.assistant_commands import COMMAND_PREFIX, form_completions
 from cryspy_editor.widgets.recipe_editor import init_user_recipe_folder
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
@@ -32,7 +33,9 @@ EXAMPLES = (
     "- set a of crystal_pbso4 to 8.48 and run the refinement\n"
     "- calculate the nuclear structure factor of the reflection (5 0 3)\n"
     "- download Al from COD and add it to my data\n"
-    "- how to describe thermal vibrations?")
+    "- how to describe thermal vibrations?\n"
+    "- what can you do?\n"
+    "- @refine_structure (a recipe), @refine_parameters scale (an action): the names are proposed after @")
 
 
 def form_hint_html(memory_gb) -> str:
@@ -232,6 +235,7 @@ class AssistantWindow(QtWidgets.QWidget):
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(600, 500)
         self.assistant = None
+        self.assistant_no_model = None  # '@name' commands without a model
         self.take_cryspy_object = take_cryspy_object
         self.thread = None
         self.worker = None
@@ -254,7 +258,14 @@ class AssistantWindow(QtWidgets.QWidget):
         self.input_line = QtWidgets.QLineEdit(self)
         self.input_line.setPlaceholderText(PLACEHOLDER)
         self.input_line.returnPressed.connect(self.on_send)
-        self.input_line.setEnabled(False)
+        self.input_line.textEdited.connect(self.on_text_edited)
+        # '@' proposes the recipes and the actions with their descriptions
+        self.completer = QtWidgets.QCompleter(QtGui.QStandardItemModel(self), self)
+        self.completer.setCompletionRole(QtCore.Qt.UserRole)
+        self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self.completer.setMaxVisibleItems(12)
+        self.input_line.setCompleter(self.completer)
+        self.update_completions()
         layout_input = QtWidgets.QHBoxLayout()
         layout_input.addWidget(self.input_line, 1)
         # the step-by-step work of the assistant stops after the running action
@@ -264,6 +275,31 @@ class AssistantWindow(QtWidgets.QWidget):
         self.button_stop.setEnabled(False)
         layout_input.addWidget(self.button_stop)
         layout.addLayout(layout_input)
+
+    def update_completions(self):
+        """The recipes (they may be changed in the window of recipes) and
+        the actions: '@name' is completed, 'name: description' is shown."""
+        model = self.completer.model()
+        model.clear()
+        for command, description in form_completions():
+            item = QtGui.QStandardItem(f"{command}  {description}")
+            item.setData(command, QtCore.Qt.UserRole)
+            item.setToolTip(description)
+            model.appendRow(item)
+
+    def on_text_edited(self, text: str):
+        if text == COMMAND_PREFIX:
+            self.update_completions()
+            self.completer.complete()
+
+    def take_assistant(self):
+        """The assistant with the model, or one without a model for the
+        commands '@name' and the question 'what can you do?'."""
+        if self.assistant is not None:
+            return self.assistant
+        if self.assistant_no_model is None:
+            self.assistant_no_model = Assistant(None)
+        return self.assistant_no_model
 
     def show_window(self):
         """Show the window, or raise it if it is already open."""
@@ -305,7 +341,6 @@ class AssistantWindow(QtWidgets.QWidget):
         if self.is_busy():
             return
         self._free_model()
-        self.input_line.setEnabled(False)
         self.label_model.setText("No model loaded")
 
     def _free_model(self):
@@ -344,6 +379,7 @@ class AssistantWindow(QtWidgets.QWidget):
     def on_model_error(self, msg: str):
         self.label_model.setText("No model loaded")
         self.append_history("Error", msg)
+        self.input_line.setEnabled(True)
         self.signal_model_loaded.emit("")
 
     def clear_chat(self):
@@ -364,8 +400,9 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_send(self):
         question = self.input_line.text().strip()
-        if question == "" or self.assistant is None or self.is_busy():
+        if question == "" or self.is_busy():
             return
+        assistant = self.take_assistant()
         self.append_history("You", question)
         self.input_line.clear()
         self.input_line.setEnabled(False)
@@ -373,7 +410,7 @@ class AssistantWindow(QtWidgets.QWidget):
         cryspy_object = None
         if self.take_cryspy_object is not None:
             cryspy_object = self.take_cryspy_object()
-        worker = AskWorker(self.assistant, question, cryspy_object)
+        worker = AskWorker(assistant, question, cryspy_object)
         self.button_stop.setEnabled(True)
         worker.action_started.connect(
             lambda action: self.input_line.setPlaceholderText(f"Running '{action}'... (Stop ends the work)"))
@@ -381,8 +418,8 @@ class AssistantWindow(QtWidgets.QWidget):
         self._start_thread(worker, self.on_reply, self.on_error)
 
     def on_stop(self):
-        if self.assistant is not None and isinstance(self.worker, AskWorker):
-            self.assistant.request_stop()
+        if isinstance(self.worker, AskWorker):
+            self.worker.assistant.request_stop()
             self.button_stop.setEnabled(False)
             self.input_line.setPlaceholderText("Stopping after the running action...")
 
@@ -400,7 +437,7 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_error(self, msg: str):
         self.append_history("Error", msg)
-        self._ready_for_input(self.assistant is not None and self.assistant.is_asking())
+        self._ready_for_input(self.take_assistant().is_asking())
 
 
 class AssistantController(QObject):
