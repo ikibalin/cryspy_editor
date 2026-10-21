@@ -274,6 +274,15 @@ class LocalModel:
     def model_name(self) -> str:
         return os.path.basename(self.model_path)
 
+    def close(self):
+        """Free the model and its context now. Called before the program
+        exits: a model left to the interpreter shutdown makes the Metal
+        backend of llama.cpp abort (GGML_ASSERT in ggml_metal_device_free)."""
+        llm = getattr(self, "llm", None)
+        self.llm = None
+        if llm is not None and hasattr(llm, "close"):
+            llm.close()
+
     def count_tokens(self, text: str) -> int:
         return len(self.llm.tokenize(text.encode("utf-8"), add_bos=False))
 
@@ -307,6 +316,11 @@ class Assistant:
 
     def clear_history(self):
         self.history = []
+
+    def close(self):
+        """Free the model (see LocalModel.close)."""
+        if hasattr(self.model, "close"):
+            self.model.close()
 
     def ask(self, question: str, cryspy_object=None, on_action: Optional[Callable] = None) -> dict:
         """Process a request: the model chooses the actions (at most

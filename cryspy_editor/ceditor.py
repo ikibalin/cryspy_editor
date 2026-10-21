@@ -966,6 +966,7 @@ class CMainWindow(QMainWindow):
     def closeEvent(self, event):
         self.assistant_controller.save_window_state()
         save_settings()
+        self.assistant_controller.shutdown()
         super().closeEvent(event)
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)

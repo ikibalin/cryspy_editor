@@ -27,6 +27,9 @@ class FakeLlama:
     def n_ctx(self):
         return self._n_ctx
 
+    def close(self):
+        self.flag_closed = True
+
     def tokenize(self, text: bytes, add_bos=True):
         # about 4 characters per token, as for real models on English text
         return list(range((len(text) + 3) // 4))
@@ -296,6 +299,41 @@ def test_assistant_is_a_window_of_its_own(qapp):
         assert (window.width(), window.height()) == (321, 234)
         controller.save_window_state()
         assert d_setup["assistant_window_visible"] is True
+    finally:
+        controller.window.close()
+        main_window.close()
+
+
+def test_model_is_freed_before_exit(qapp):
+    """A model left to the interpreter shutdown makes the Metal backend of
+    llama.cpp abort; unload and shutdown free it at once."""
+    from PyQt5 import QtWidgets
+    from cryspy_editor.widgets.ui_assistant import AssistantController, LoadWorker
+    main_window = QtWidgets.QMainWindow()
+    controller = AssistantController(main_window, {}, lambda: True, lambda: None, lambda: None)
+    try:
+        window = controller.window
+        assistant = make_assistant([])
+        llm = assistant.model.llm
+        window.on_model_loaded(assistant)
+        window.unload_model()
+        assert llm.flag_closed and assistant.model.llm is None
+        assert window.assistant is None
+
+        assistant = make_assistant([])
+        llm = assistant.model.llm
+        window.on_model_loaded(assistant)
+        controller.shutdown()
+        assert llm.flag_closed and window.assistant is None
+
+        # a load that finished, but whose result never reached the window
+        worker = LoadWorker("fake.gguf")
+        worker.assistant = make_assistant([])
+        llm = worker.assistant.model.llm
+        window._start_thread(worker, lambda result: None, lambda msg: None)
+        controller.shutdown()
+        assert llm.flag_closed and not window.is_busy()
+        controller.shutdown()  # twice: on close and on aboutToQuit
     finally:
         controller.window.close()
         main_window.close()
