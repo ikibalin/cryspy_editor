@@ -1,9 +1,11 @@
 """Questions of the AI assistant to the user, without Qt.
 
 A tool that lacks information (unit cell, space group, wavelength...)
-returns a Dialog instead of a text: the assistant asks its questions one
-by one, the answers of the user are read here without the model, and when
-all values are known the action is finished with them.
+says which values to ask (in CrysPy Editor: the key "missing" of the
+result of a CrysPy tool, see assistant_tools.form_dialog); the assistant
+asks the questions one by one in a Dialog, the answers of the user are
+read here without the model, and when all values are known the action is
+finished with them.
 
 The same module is in PyColl5 (assistant_dialog.py): keep them identical.
 """
@@ -22,6 +24,7 @@ NO_WORDS = frozenset((
     "нет", "неверно", "неправильно",
     "non", "faux",
     "nein", "falsch"))
+ALL_INFORMATION = "Now I have all the information to perform the calculations."
 CANCEL_WORDS = frozenset((
     "cancel", "stop", "abort", "quit", "exit",
     "отмена", "отменить", "отмени", "стоп", "хватит",
@@ -152,7 +155,7 @@ class Dialog:
         self.values[question.key] = value
         self.n_asked += 1
         if self.is_done():
-            message += "\nNow I have all the information to perform the calculations."
+            message += f"\n{ALL_INFORMATION}"
         return True, message
 
     def finish(self):
