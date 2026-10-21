@@ -53,6 +53,7 @@ from cryspy_editor.widgets.cryspy_objects import (
 from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
+from cryspy_editor.history import RcifHistory
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
 
@@ -293,11 +294,14 @@ class CMainWindow(QMainWindow):
         self.functions_plot_loop = []
         self.functions_plot_item = []
         # Thread block
+        # states of the object before each change, to go back
+        self.history = RcifHistory()
         self.cthread = CThread(self)
         self.cthread.signal_start.connect(self.run_calculations)
         self.cthread.signal_end.connect(self.end_calculations)
         self.cthread.signal_progress.connect(self.show_progress_text)
         self.cthread.functions_before_start.append(self.apply_cif_edits)
+        self.cthread.functions_before_start.append(self.remember_before_run)
 
         self.setWindowTitle("Cryspy Editor")
         self.init_user_interface()
@@ -455,6 +459,10 @@ class CMainWindow(QMainWindow):
 
         self.menu_recent = menu_file.addMenu("Open recent")
         self.update_menu_recent()
+
+        self.menu_history = menu_file.addMenu("History")
+        self.menu_history.setToolTipsVisible(True)
+        self.menu_history.aboutToShow.connect(self.update_menu_history)
 
         exit_button = QAction(
             QIcon(os.path.join(dir_prog_icon, "exit24.png")), "Exit", self
@@ -741,6 +749,7 @@ class CMainWindow(QMainWindow):
                 self.text_edit.append(f"File '{file_name}' is not found.")
             rcif_object = GlobalN.make_container((), (), "global")
         self.rcif_object = rcif_object
+        self.history.clear()  # states of another file are not mixed in
         self.renew_w_object_panel()
 
     def renew_w_object_panel(self):
@@ -973,7 +982,58 @@ class CMainWindow(QMainWindow):
 
     def take_rcif_object(self):
         self.apply_cif_edits()
+        self.remember("AI assistant request")
         return getattr(self, "rcif_object", None)
+
+    def remember(self, label: str):
+        """Keep the state of the object before the change `label`."""
+        rcif_object = getattr(self, "rcif_object", None)
+        if rcif_object is None:
+            return
+        try:
+            self.history.push(label, rcif_object.to_cif())
+        except Exception as e:
+            self.show_error("The state is not kept in History", e)
+
+    def remember_before_run(self):
+        func = self.cthread.function
+        name = getattr(func, "__name__", "procedure")
+        self.remember(name.replace("_", " "))
+
+    def update_menu_history(self):
+        menu = self.menu_history
+        menu.clear()
+        if len(self.history) == 0:
+            action = menu.addAction("No changes yet")
+            action.setEnabled(False)
+            return
+        flag_free = not self.cthread.isRunning()
+        for entry in reversed(self.history.entries):
+            action = menu.addAction(entry.title())
+            action.setToolTip("Go back to the object as it was at that time")
+            action.setEnabled(flag_free)
+            action.triggered.connect(
+                lambda checked=False, entry=entry: self.restore_history(entry))
+
+    def restore_history(self, entry):
+        """Go back to a kept state; the current one is kept too, so that
+        going back can itself be undone."""
+        if self.cthread.isRunning():
+            return
+        try:
+            rcif_object = str_to_globaln(entry.text)
+        except Exception as e:
+            self.show_error("The state is not restored", e)
+            return
+        self.apply_cif_edits()
+        self.remember(f"going back to {entry.title().split()[0]}")
+        self.rcif_object = rcif_object
+        self.w_item_tabs.item_way_in_w_item_tabs = None
+        self.renew_w_object_panel()
+        self.text_edit.setText(
+            f"The object is as it was {entry.title()}.\n"
+            "Save the file to keep it.")
+        self.print_object_info()
 
     def assistant_object_changed(self):
         self.renew_w_object_panel()
@@ -1004,6 +1064,7 @@ class CMainWindow(QMainWindow):
             try:
                 item_2 = item.from_cif(text)
                 if item_2 is not None:
+                    self.remember(f"edit of {way_item[-1]}")
                     item.copy_from(item_2)
             except Exception as e:
                 ls_out = ["Item defined incorrectly: "]
