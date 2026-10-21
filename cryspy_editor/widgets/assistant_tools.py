@@ -9,6 +9,8 @@ from typing import Dict
 from cryspy import call_assistant_tool
 from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 
+from cryspy_editor.widgets.assistant_dialog import Dialog
+
 D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOOLS}
 
 # Actions that return information rather than change the object: the model
@@ -30,11 +32,29 @@ def form_tools_text() -> str:
     return "\n".join(tool.to_short_text() for tool in L_ASSISTANT_TOOLS)
 
 
+def is_request_tool(name: str) -> bool:
+    """True if the action takes the request of the user (argument
+    "request"), e.g. to find the values given in it."""
+    return bool(getattr(D_TOOLS.get(name), "flag_request", False))
+
+
 def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
     """(result text, flag_object_changed) of the action; errors are text
     starting with "Error", so that the model can correct the call and the
-    answer never reports a failed action as done."""
+    answer never reports a failed action as done.
+
+    A tool that lacks information returns a Dialog (assistant_dialog.py)
+    instead of the text: it is returned as the result, the assistant asks
+    its questions; a Dialog without questions is finished at once."""
     result = call_assistant_tool(cryspy_object, name, arguments)
+    if isinstance(result["text"], Dialog):
+        dialog = result["text"]
+        if not dialog.is_done():
+            return dialog, bool(result["flag_object_changed"])
+        try:
+            result = dict(result, text=dialog.finish())
+        except (ValueError, TypeError, KeyError) as e:
+            return f"Error: {e}", False
     text = str(result["text"])
     if result.get("flag_error", False) and not text.startswith("Error"):
         text = f"Error: {text}"
