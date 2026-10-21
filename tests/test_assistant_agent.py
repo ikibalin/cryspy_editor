@@ -107,6 +107,21 @@ def test_number_of_actions_is_limited():
     assert "limit" in out["stopped"]
 
 
+def test_number_of_actions_is_a_setting():
+    model = CountingModel([step("calc", {"i": ind}) for ind in range(30)])
+    out = Agent(model, fake_run_tool, ["calc"], take_json_object, max_steps=20).run("system", [], "go")
+    assert len(out["steps"]) == 20 and "limit of 20 actions" in out["stopped"]
+
+
+def test_assistant_takes_max_steps_from_model_settings():
+    l_reply = [reply(("get_recipe", {"name": "refine_structure"}))]
+    l_reply += [step("list_parameters", {"pattern": f"p{ind}"}) for ind in range(5)] + [final("done")]
+    assistant = make_assistant(l_reply, settings={"max_steps": 3})
+    out = assistant.ask("refine the structure step by step", cryspy.str_to_globaln(RCIF))
+    assert len(out["actions"]) == 3
+    assert "limit of 3 actions" in out["text"]
+
+
 def test_errors_in_a_row_stop_the_loop():
     model = CountingModel([step("fail", {"i": ind}) for ind in range(10)])
     out = Agent(model, fake_run_tool, ["fail"], take_json_object).run("system", [], "go")
@@ -185,3 +200,16 @@ def test_window_shows_a_step(qapp):
         assert "Step 1: Fix all first." in window.history_view.toPlainText()
     finally:
         window.close()
+
+
+def test_max_steps_in_model_settings(qapp):
+    from cryspy_editor.widgets.ui_assistant import ModelSettingsDialog
+    dialog = ModelSettingsDialog("model.gguf", {"max_steps": 40})
+    try:
+        assert dialog.settings()["max_steps"] == 40
+        dialog.sb_max_steps.setValue(500)  # any number
+        assert dialog.settings()["max_steps"] == 500
+        dialog.set_defaults()
+        assert dialog.settings()["max_steps"] == assistant_agent.MAX_AGENT_STEPS
+    finally:
+        dialog.close()
