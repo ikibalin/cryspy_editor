@@ -297,6 +297,7 @@ class CMainWindow(QMainWindow):
         self.cthread.signal_start.connect(self.run_calculations)
         self.cthread.signal_end.connect(self.end_calculations)
         self.cthread.signal_progress.connect(self.show_progress_text)
+        self.cthread.functions_before_start.append(self.apply_cif_edits)
 
         self.setWindowTitle("Cryspy Editor")
         self.init_user_interface()
@@ -375,10 +376,23 @@ class CMainWindow(QMainWindow):
         self.button_stop.setEnabled(False)
         self.label_progress.setText("Stopping...")
 
+    def apply_cif_edits(self):
+        """Apply the text typed in the RCIF tab to the object.
+
+        The text is applied when the tab loses focus, but a menu action or a
+        shortcut does not take the focus. Before, the text was applied on
+        signal_start, i.e. after the calculation had already started in its
+        thread, so the procedure sometimes used the old item.
+        """
+        w_item_tabs = getattr(self, "w_item_tabs", None)
+        if w_item_tabs is None:
+            return
+        for ind in range(w_item_tabs.count()):
+            widget = w_item_tabs.widget(ind)
+            if isinstance(widget, WEditCif):
+                widget.rewrite_item_by_printed_text()
+
     def run_calculations(self):  # d_info: dict = None
-        current_widget = self.w_item_tabs.currentWidget()
-        if isinstance(current_widget, WEditCif):
-            current_widget.rewrite_item_by_printed_text()
         thread = self.cthread
         self.text_edit.setText("Calculations are running ...")
         self.text_edit.upload_font_size()
@@ -634,6 +648,7 @@ class CMainWindow(QMainWindow):
         )
 
     def save_file(self):
+        self.apply_cif_edits()  # Ctrl+S does not take the focus
         file_name = self.d_setup.get("data_file_name", "")
         if file_name == "" or os.path.isdir(file_name):
             self.save_file_as()
@@ -957,6 +972,7 @@ class CMainWindow(QMainWindow):
         self.setCentralWidget(widget_main)
 
     def take_rcif_object(self):
+        self.apply_cif_edits()
         return getattr(self, "rcif_object", None)
 
     def assistant_object_changed(self):

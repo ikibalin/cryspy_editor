@@ -152,6 +152,9 @@ class CThread(QtCore.QThread):
         # files (.den, sections, ...) to relative paths
         self.work_dir = None
         self.function_run_calculations = None
+        # called in the main thread just before the calculation starts,
+        # e.g. to apply the text typed in the RCIF tab to the object
+        self.functions_before_start = []
         self.function_end_calculations = None
 
     def request_stop(self):
@@ -182,6 +185,11 @@ class CThread(QtCore.QThread):
         if self.flag_stop_by_callback:
             return False
         return None
+
+    def start(self, *args, **kwargs):
+        for func in self.functions_before_start:
+            func()
+        super().start(*args, **kwargs)
 
     def run(self):
         """Run."""
