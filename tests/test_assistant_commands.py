@@ -178,10 +178,14 @@ def test_tab_goes_through_proposed_names(qapp):
     try:
         window.show()
         window.input_line.setFocus()
-        QTest.keyClicks(window.input_line, "@set_")
+        # a prefix of several names in any version of CrysPy (e.g. '@list_')
+        l_all = [name for name, _ in form_completions()]
+        prefix = next(name.split("_")[0] + "_" for name in l_all
+                      if sum(other.startswith(name.split("_")[0] + "_") for other in l_all) >= 2)
+        QTest.keyClicks(window.input_line, prefix)
         qapp.processEvents()
         popup = window.completer.popup()
-        l_name = [name for name, _ in form_completions() if name.startswith("@set_")]
+        l_name = [name for name in l_all if name.startswith(prefix)]
         assert popup.isVisible() and window.completer.completionCount() == len(l_name) >= 2
         l_text = []
         for key in [QtCore.Qt.Key_Tab] * (len(l_name) + 1) + [QtCore.Qt.Key_Backtab]:
