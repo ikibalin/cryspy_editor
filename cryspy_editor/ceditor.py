@@ -62,6 +62,10 @@ from cryspy_editor import __version__ as cryspy_editor_version
 
 import os, sys, subprocess
 
+# Cmd+. on macOS (the usual stop key there), Ctrl+. elsewhere; Esc as well.
+STOP_SHORTCUT = "Ctrl+."
+STOP_SHORTCUT_TEXT = "Cmd+. or Esc" if sys.platform == "darwin" else "Ctrl+. or Esc"
+
 
 def open_file_wm(filename):
     if sys.platform == "win32":
@@ -321,7 +325,7 @@ class CMainWindow(QMainWindow):
         self.label_progress.setText(text.strip()[:120])
 
     def show_progress_text(self, text: str):
-        if self.button_stop.isEnabled():  # keep "Stopping..." after Stop
+        if self.action_stop.isEnabled():  # keep "Stopping..." after Stop
             self.label_progress.setText(text)
 
     def user_scripts(self):
@@ -349,14 +353,18 @@ class CMainWindow(QMainWindow):
         self.progress_bar.setMaximumWidth(150)
         self.progress_bar.setFixedHeight(max(bar_height - 10, 6))
         self.progress_bar.setTextVisible(False)
+        # A red button with a frame: the flat text button of #12 was easy
+        # to miss in the corner of the window.
         self.button_stop = QtWidgets.QToolButton(status_bar)
-        self.button_stop.setText("Stop")
-        self.button_stop.setAutoRaise(True)
+        self.button_stop.setDefaultAction(self.action_stop)
+        self.button_stop.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         self.button_stop.setFixedHeight(bar_height - 2)
-        self.button_stop.setToolTip(
-            "Stop the calculation at its next message; "
-            "the object keeps the values it had before the run.")
-        self.button_stop.clicked.connect(self.stop_calculations)
+        self.button_stop.setStyleSheet(
+            "QToolButton {background-color: #c0392b; color: white;"
+            " font-weight: bold; border: none; border-radius: 3px;"
+            " padding: 0px 10px;}"
+            "QToolButton:hover {background-color: #e74c3c;}"
+            "QToolButton:disabled {background-color: #808080;}")
         status_bar.addPermanentWidget(self.label_progress, 1)
         status_bar.addPermanentWidget(self.progress_bar)
         status_bar.addPermanentWidget(self.button_stop)
@@ -366,13 +374,15 @@ class CMainWindow(QMainWindow):
         self.label_progress.setVisible(flag)
         self.progress_bar.setVisible(flag)
         self.button_stop.setVisible(flag)
-        self.button_stop.setEnabled(flag)
+        self.action_stop.setEnabled(flag)
         if not flag:
             self.label_progress.setText("")
 
     def stop_calculations(self):
+        if not self.cthread.isRunning():
+            return
         self.cthread.request_stop()
-        self.button_stop.setEnabled(False)
+        self.action_stop.setEnabled(False)
         self.label_progress.setText("Stopping...")
 
     def run_calculations(self):  # d_info: dict = None
@@ -380,7 +390,9 @@ class CMainWindow(QMainWindow):
         if isinstance(current_widget, WEditCif):
             current_widget.rewrite_item_by_printed_text()
         thread = self.cthread
-        self.text_edit.setText("Calculations are running ...")
+        self.text_edit.setText(
+            "Calculations are running ... "
+            f"(Stop: the red button or {STOP_SHORTCUT_TEXT})")
         self.text_edit.upload_font_size()
         if is_dark_mode():
             self.text_edit.setStyleSheet("background-color:#521F13;")
@@ -467,6 +479,24 @@ class CMainWindow(QMainWindow):
         refresh_view.setStatusTip("Refresh")
         refresh_view.triggered.connect(self.refresh_view)
         toolbar_1.addAction(refresh_view)
+
+        # Stop of a running calculation: in the toolbar and in the status
+        # bar, enabled only while it runs.
+        self.action_stop = QAction(
+            self.style().standardIcon(QtWidgets.QStyle.SP_BrowserStop),
+            "Stop", self)
+        self.action_stop.setShortcuts(
+            [QtGui.QKeySequence(STOP_SHORTCUT),
+             QtGui.QKeySequence(QtCore.Qt.Key_Escape)])
+        self.action_stop.setToolTip(
+            f"Stop the running calculation ({STOP_SHORTCUT_TEXT}). "
+            "A refinement stops after the current iteration and keeps "
+            "the refined parameters.")
+        self.action_stop.setStatusTip("Stop the running calculation")
+        self.action_stop.setEnabled(False)
+        self.action_stop.triggered.connect(self.stop_calculations)
+        toolbar_1.addSeparator()
+        toolbar_1.addAction(self.action_stop)
 
         # Menu Options
         menu_options = self.menu_bar.addMenu("Options")
