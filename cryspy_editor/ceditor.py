@@ -296,6 +296,7 @@ class CMainWindow(QMainWindow):
         self.cthread = CThread(self)
         self.cthread.signal_start.connect(self.run_calculations)
         self.cthread.signal_end.connect(self.end_calculations)
+        self.cthread.signal_progress.connect(self.show_progress_text)
 
         self.setWindowTitle("Cryspy Editor")
         self.init_user_interface()
@@ -318,6 +319,10 @@ class CMainWindow(QMainWindow):
         self.text_edit.setText(text_permanent + "\n" + text)
         self.text_edit.upload_font_size()
         self.label_progress.setText(text.strip()[:120])
+
+    def show_progress_text(self, text: str):
+        if self.button_stop.isEnabled():  # keep "Stopping..." after Stop
+            self.label_progress.setText(text)
 
     def user_scripts(self):
         options_window = OptionsWindow(self)
@@ -961,6 +966,7 @@ class CMainWindow(QMainWindow):
     def closeEvent(self, event):
         self.assistant_controller.save_window_state()
         save_settings()
+        self.assistant_controller.shutdown()
         super().closeEvent(event)
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)

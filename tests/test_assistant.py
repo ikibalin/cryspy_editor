@@ -27,6 +27,9 @@ class FakeLlama:
     def n_ctx(self):
         return self._n_ctx
 
+    def close(self):
+        self.flag_closed = True
+
     def tokenize(self, text: bytes, add_bos=True):
         # about 4 characters per token, as for real models on English text
         return list(range((len(text) + 3) // 4))
@@ -181,7 +184,8 @@ def test_list_parameters_and_history():
 
 def test_number_of_actions_is_limited():
     obj = cryspy.str_to_globaln(RCIF)
-    l_step = [("list_parameters", {"pattern": f"p{ind}"}) for ind in range(10)]
+    # ten different patterns, all matching (no match is an error, corrected by the model)
+    l_step = [("list_parameters", {"pattern": "cell.length_a"[:ind + 1]}) for ind in range(10)]
     assistant = make_assistant([reply(*l_step), reply(answer="ok")])
     result = assistant.ask("loop", obj)
     assert len(result["actions"]) == assistant_module.MAX_STEPS
@@ -299,3 +303,116 @@ def test_assistant_is_a_window_of_its_own(qapp):
     finally:
         controller.window.close()
         main_window.close()
+
+
+def test_model_is_freed_before_exit(qapp):
+    """A model left to the interpreter shutdown makes the Metal backend of
+    llama.cpp abort; unload and shutdown free it at once."""
+    from PyQt5 import QtWidgets
+
+    from cryspy_editor.widgets.ui_assistant import AssistantController, LoadWorker
+    main_window = QtWidgets.QMainWindow()
+    controller = AssistantController(main_window, {}, lambda: True, lambda: None, lambda: None)
+    try:
+        window = controller.window
+        assistant = make_assistant([])
+        llm = assistant.model.llm
+        window.on_model_loaded(assistant)
+        window.unload_model()
+        assert llm.flag_closed and assistant.model.llm is None
+        assert window.assistant is None
+
+        assistant = make_assistant([])
+        llm = assistant.model.llm
+        window.on_model_loaded(assistant)
+        controller.shutdown()
+        assert llm.flag_closed and window.assistant is None
+
+        # a load that finished, but whose result never reached the window
+        worker = LoadWorker("fake.gguf")
+        worker.assistant = make_assistant([])
+        llm = worker.assistant.model.llm
+        window._start_thread(worker, lambda result: None, lambda msg: None)
+        controller.shutdown()
+        assert llm.flag_closed and not window.is_busy()
+        # the signals of the finished thread are not delivered afterwards
+        qapp.processEvents()
+        controller.shutdown()  # twice: on close and on aboutToQuit
+    finally:
+        controller.window.close()
+        main_window.close()
+
+
+@pytest.mark.parametrize("answer", ["The cell parameters are refined.", "Done.", "Готово, параметры уточнены.",
+                                    "Refinement completed for all parameters."])
+def test_answer_without_action_never_reports_a_change(answer):
+    """Small models answer "refined" with no action: the user is told that
+    nothing is done (as in PyColl5)."""
+    result = make_assistant([reply(answer=answer)]).ask("refine the cell", None)
+    assert result["text"] == assistant_module.NOTHING_DONE
+
+
+def test_answer_from_the_results_not_from_the_chat():
+    assistant = make_assistant([reply(("summarize_object", {}), answer="It is refined."), reply(answer="")])
+    result = assistant.ask("what is loaded?", cryspy.str_to_globaln(RCIF))
+    assert "only from these results" in assistant.model.llm.l_messages[1][-1]["content"]
+    assert "refined" not in result["text"]
+    assert "never write that something is done" in assistant_module.form_system_prompt()
+
+
+def test_failed_action_is_never_reported_as_done():
+    """The TbTe3 session: 'refine scale factor' matched nothing, the model
+    wrote 'Scale factor marked for refinement.'"""
+    assistant = make_assistant(
+        [reply(("refine_parameters", {"pattern": "scale_factor"}),
+               answer="Scale factor marked for refinement.")] * 3)
+    result = assistant.ask("Refine scale factor", cryspy.str_to_globaln(RCIF))
+    assert "Error: no parameters match" in result["text"]
+    assert "marked for refinement." not in result["text"]
+
+
+def test_new_tools_of_cryspy():
+    assistant = make_assistant(
+        [reply(("calculate_structure_factor", {"hkl": "1 1 1"})),
+         reply(answer="F_N = 1.38")])
+    obj = cryspy.str_to_globaln("""global_
+data_al
+_cell_length_a 4.05
+_cell_length_b 4.05
+_cell_length_c 4.05
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+_space_group_name_H-M_alt "F m -3 m"
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_adp_type
+_atom_site_B_iso_or_equiv
+Al Al 0 0 0 Biso 0.0
+""")
+    result = assistant.ask("Calculate nuclear structure factor for (1 1 1)", obj)
+    name, _, text = result["actions"][0]
+    assert name == "calculate_structure_factor"
+    assert "|F_N| = 1.379" in text  # 4 b(Al)
+    assert "add_crystal_from_cod" in assistant_module.form_system_prompt()
+
+
+def test_window_text_as_in_pycoll5(qapp):
+    """The window of PyColl5 and of CrysPy Editor look the same: examples
+    in the empty chat, one-line placeholder, "You" for the user."""
+    from cryspy_editor.widgets import ui_assistant
+    window = ui_assistant.AssistantWindow()
+    try:
+        assert window.input_line.placeholderText() == "Ask the question or request an action"
+        assert window.history_view.placeholderText().startswith("Examples of requests:")
+        window.assistant = make_assistant([])
+        window._start_thread = lambda worker, on_finished, on_error: None  # no model run
+        window.input_line.setText("What is Bragg law?")
+        window.on_send()
+        assert window.history_view.toPlainText().startswith("You:")
+    finally:
+        window.close()

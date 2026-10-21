@@ -32,6 +32,10 @@ def form_tools_text() -> str:
 
 def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
     """(result text, flag_object_changed) of the action; errors are text
-    starting with "Error", so that the model can correct the call."""
+    starting with "Error", so that the model can correct the call and the
+    answer never reports a failed action as done."""
     result = call_assistant_tool(cryspy_object, name, arguments)
-    return str(result["text"]), bool(result["flag_object_changed"])
+    text = str(result["text"])
+    if result.get("flag_error", False) and not text.startswith("Error"):
+        text = f"Error: {text}"
+    return text, bool(result["flag_object_changed"])

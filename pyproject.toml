@@ -6,11 +6,10 @@ readme = 'README.md'
 license = 'MIT'
 authors = [{ name = 'Iurii Kibalin', email = 'yurikibalin@outlook.com' }]
 keywords = ['CrysPy', 'RhoChi', 'MEM', 'neutron diffraction', 'rcif']
-requires-python = '>=3.9'
+requires-python = '>=3.10'
 classifiers = [
   'Operating System :: OS Independent',
   'Programming Language :: Python :: 3 :: Only',
-  'Programming Language :: Python :: 3.9',
   'Programming Language :: Python :: 3.10',
   'Programming Language :: Python :: 3.11',
   'Programming Language :: Python :: 3.12',
@@ -18,7 +17,7 @@ classifiers = [
   'Programming Language :: Python :: 3.14',
 ]
 dependencies = [
-  'cryspy>=0.14.0',
+  'cryspy>=0.16.0',
   'pyqt5>=5.15',
   'matplotlib',
   'numpy',

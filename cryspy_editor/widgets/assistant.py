@@ -11,6 +11,7 @@ Assistant asks it for actions in JSON and runs them; only the tools differ
 """
 import json
 import os
+import re
 from typing import Callable, Dict, List, Optional
 
 from cryspy_editor.widgets.assistant_tools import (
@@ -41,6 +42,20 @@ MAX_RETRIES = 2  # the model corrects the actions with an error in their argumen
 N_MAX_RESULT = 3000  # characters of a result of a tool given to the model
 N_MAX_HISTORY = 2000  # characters of a reply kept in the chat history
 ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply of the model
+NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
+                "or do it in the window of CrysPy Editor.")
+# an answer that reports a change (English, Russian, French, German): without
+# an action that made it, it is not shown (claims_done)
+RE_DONE = re.compile(
+    r"\b(is|are|was|were|has been|have been|has|have|I've|I have|we have)\s+(now\s+|been\s+|successfully\s+)*"
+    r"(applied|set|changed|updated|done|refined|reduced|saved|exported|coloured|colored|tagged|selected|"
+    r"removed|created|made|corrected|replaced|integrated|opened|started|finished|completed)\b"
+    r"|\b(applied|updated|refined|completed|done)\s+(to|for|in|on)\s+(all|the|\d)"
+    r"|^\s*(done|applied|completed)\b"
+    r"|применен|применён|установлен|изменен|изменён|сделан|выполнен|уточнен|уточнён|сохранен|сохранён"
+    r"|выделен|окрашен|удален|удалён|обновлен|обновлён|заменен|заменён|готово"
+    r"|\b(appliqu|modifi|effectu|termin|enregistr)é|\b(angewendet|gesetzt|geändert|erledigt)\b",
+    re.IGNORECASE)
 
 # n_threads = 0 means all cores but one; n_gpu_layers = -1 means all layers
 # on GPU (Metal on Apple Silicon, CUDA if llama-cpp-python is built with it)
@@ -144,9 +159,14 @@ A request of several parts (e.g. refine the cell and then refine) has one
 action for each part. A greeting or a question about scientific things needs
 no action. When the user asks how to describe something in rcif or what a
 category means (thermal vibrations, multipoles, extinction, twins, ...), use
-the action "get_help" and answer from its text only. In the answers name the
-menus and windows of CrysPy Editor, never the actions. Answer in the language
-of the user. Never invent results: use the actions.
+the action "get_help" and answer from its text only. A question about the
+opened file (parameters, cell, chi-square, structure) is answered by an
+action, never from the chat: the values in the chat may be old or wrong. In
+the answers name the menus and windows of CrysPy Editor, never the actions.
+Answer in the language of the user. Never invent results: use the actions.
+Nothing is changed without an action: when no action does what the user
+asks, give no action and say that you cannot do it (and where in CrysPy
+Editor it is done); never write that something is done, applied or set.
 
 Respond ONLY with a JSON object:
 {{"actions": [{{"action": "<one of: {', '.join(D_TOOLS)}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
@@ -160,7 +180,16 @@ Examples (request: actions):
   [{{"action": "refine_parameters", "arguments": {{"pattern": "cell.length"}}}},
   {{"action": "refine", "arguments": {{}}}}]
 - set a of crystal_pbso4 to 8.48:
-  [{{"action": "set_parameter", "arguments": {{"path": "crystal_pbso4.cell.length_a", "value": 8.48}}}}]"""
+  [{{"action": "set_parameter", "arguments": {{"path": "crystal_pbso4.cell.length_a", "value": 8.48}}}}]
+- fix all parameters and refine only atomic positions:
+  [{{"action": "fix_parameters", "arguments": {{}}}},
+  {{"action": "refine_parameters", "arguments": {{"pattern": "atomic positions"}}}}]
+- refine the scale factor:
+  [{{"action": "refine_parameters", "arguments": {{"pattern": "scale"}}}}]
+- calculate the nuclear structure factor of (5 0 3):
+  [{{"action": "calculate_structure_factor", "arguments": {{"hkl": "5 0 3"}}}}]
+- download Al from COD and add it:
+  [{{"action": "add_crystal_from_cod", "arguments": {{"formula": "Al"}}}}]"""
 
 
 def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Callable) -> list:
@@ -225,6 +254,13 @@ def take_decision(raw: str) -> dict:
     return {"actions": l_action, "answer": "" if answer is None else str(answer)}
 
 
+def claims_done(answer: str) -> bool:
+    """The answer reports a change (applied, set, done...): shown only when
+    an action made it (small models write "parameters refined" with no
+    action)."""
+    return bool(RE_DONE.search(answer or ""))
+
+
 class LocalModel:
     """A local GGUF chat model loaded by llama-cpp-python."""
 
@@ -246,6 +282,15 @@ class LocalModel:
     @property
     def model_name(self) -> str:
         return os.path.basename(self.model_path)
+
+    def close(self):
+        """Free the model and its context now. Called before the program
+        exits: a model left to the interpreter shutdown makes the Metal
+        backend of llama.cpp abort (GGML_ASSERT in ggml_metal_device_free)."""
+        llm = getattr(self, "llm", None)
+        self.llm = None
+        if llm is not None and hasattr(llm, "close"):
+            llm.close()
 
     def count_tokens(self, text: str) -> int:
         return len(self.llm.tokenize(text.encode("utf-8"), add_bos=False))
@@ -280,6 +325,11 @@ class Assistant:
 
     def clear_history(self):
         self.history = []
+
+    def close(self):
+        """Free the model (see LocalModel.close)."""
+        if hasattr(self.model, "close"):
+            self.model.close()
 
     def ask(self, question: str, cryspy_object=None, on_action: Optional[Callable] = None) -> dict:
         """Process a request: the model chooses the actions (at most
@@ -331,15 +381,19 @@ class Assistant:
         # the answer was written before the results: not when an action failed
         if any(result.startswith("Error") for _, _, result in l_action):
             answer = ""
+        # a change is never reported without an action that made it
+        if not l_action and claims_done(answer):
+            answer = NOTHING_DONE
         # the answer to a question is made from the results (no more actions)
         if any(is_answer_tool(action) for action, _, _ in l_action):
             s_result = "\n\n".join(f"Result of {action}:\n{result[:N_MAX_RESULT]}" for action, _, result in l_action)
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": (
-                f"{s_result}\n\nThe actions are done. Answer the request \"{question}\" from these results: "
-                'respond with {"answer": "<short text for the user>"}.')})
+                f"{s_result}\n\nThe actions are done. Answer the request \"{question}\" only from these results, "
+                "not from the chat (its values may be old); when the results do not answer it, say so. "
+                'Respond with {"answer": "<short text for the user>"}.')})
             reply = take_decision(self.model.chat(messages, flag_json=True))["answer"]
-            answer = reply or answer
+            answer = reply or ("" if claims_done(answer) else answer)
         text = "\n\n".join(f"[{action}] {result}" for action, _, result in l_action)
         if answer:
             text = answer if text == "" else f"{text}\n\n{answer}"
