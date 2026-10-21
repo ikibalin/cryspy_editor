@@ -295,15 +295,22 @@ class AssistantWindow(QtWidgets.QWidget):
     def shutdown(self):
         """Before the program exits: wait for the running request or load
         and free the model, so that llama.cpp does not abort at exit."""
-        if self.thread is not None:
-            self.thread.quit()
-            self.thread.wait()
+        thread, worker = self.thread, self.worker
+        self.thread = None
+        self.worker = None
+        if thread is not None:
+            # no queued slot of the finished thread may run later: with
+            # self.thread None, _thread_done would raise and PyQt aborts
+            thread.finished.disconnect()
+            worker.finished.disconnect()
+            worker.error.disconnect()
+            thread.quit()
+            thread.wait()
+            thread.deleteLater()
             # the result of a load finished now never reaches the window
-            loaded = getattr(self.worker, "assistant", None)
+            loaded = getattr(worker, "assistant", None)
             if loaded is not None and loaded is not self.assistant:
                 loaded.close()
-            self.thread = None
-            self.worker = None
         self._free_model()
 
     def on_model_loaded(self, assistant: Assistant):
