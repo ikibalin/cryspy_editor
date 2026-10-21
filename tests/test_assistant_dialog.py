@@ -97,7 +97,7 @@ def test_questions_one_by_one():
         "reply to them one by one ('cancel' to stop).\n"
         "Q1: What is the unit cell parameters (a b c alpha beta gamma)?")
     assert dialog.answer("5 6 4 90 90 90") == (
-        True, "Thank you: the the unit cell parameters is 5 6 4 90 90 90.")
+        True, "Thank you: the unit cell parameters is 5 6 4 90 90 90.")
     assert dialog.prompt() == "Q2: What is the space group (number)?"
     flag, message = dialog.answer("600")
     assert not flag and message == "Not understood: unknown space group '600'"
@@ -225,14 +225,14 @@ def test_assistant_asks_and_finishes(plan_tool):
 
     result = assistant.ask("5 6 4 90 90 90")
     assert result["question"] and result["text"] == (
-        "Thank you: the the unit cell parameters is 5 6 4 90 90 90.\nQ2: What is the geometry of measurements?")
+        "Thank you: the unit cell parameters is 5 6 4 90 90 90.\nQ2: What is the geometry of measurements?")
     result = assistant.ask("upside down")
     assert result["question"] and result["text"].startswith("Not understood: 'upside down' is not one of")
     assert result["text"].endswith("Q2: What is the geometry of measurements?")
     # all asked values known: CrysPy asks one more, the numbers go on
     result = assistant.ask("normal beam", on_action=l_running.append)
     assert result["question"] and result["text"] == (
-        "Thank you: the the geometry of measurements is normal beam.\n"
+        "Thank you: the geometry of measurements is normal beam.\n"
         "The wavelength is not given in the data.\n"
         "Q3: Am I right that the wavelength is 1.26? Answer yes or give the correct value (Å).")
     result = assistant.ask("yes", on_action=l_running.append)
@@ -321,3 +321,18 @@ def test_placeholder_while_asking(qapp, plan_tool):
         assert window.input_line.placeholderText() == "Ask the question or request an action"
     finally:
         window.close()
+
+
+def test_request_is_not_given_again_with_the_answers(plan_tool, monkeypatch):
+    """A tool with flag_request proposes values found in the request: called
+    again with the answers, it gets no request, so it does not propose them
+    again."""
+    monkeypatch.setitem(assistant_tools.D_TOOLS, "plan_measurement",
+                        type("Tool", (), {"flag_object_changed": True, "flag_request": True})())
+    assistant = Assistant(FakeModel([reply("plan_measurement")]))
+    assistant.ask("plan the measurement")
+    assert plan_tool[0] == ("plan_measurement", {"request": "plan the measurement"})
+    for answer in ("5 6 4 90 90 90", "normal beam", "yes"):
+        assistant.ask(answer)
+    assert all("request" not in arguments for _, arguments in plan_tool[1:])
+    assert not assistant.is_asking()

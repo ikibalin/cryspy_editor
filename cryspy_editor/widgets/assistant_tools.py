@@ -64,8 +64,11 @@ def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dial
     intro = "\n".join(l_line[:-1])
 
     def finish(values: dict):
-        # text, or the next Dialog when the tool needs more values
-        return run_tool(name, cryspy_object, dict(arguments, **values))[0]
+        # text, or the next Dialog when the tool needs more values; without
+        # the request: a tool that proposes values found in it would propose
+        # them again instead of taking the answers
+        d_argument = {key: value for key, value in arguments.items() if key != "request"}
+        return run_tool(name, cryspy_object, dict(d_argument, **values))[0]
     return Dialog(name, l_question, finish, intro=intro)
 
 
