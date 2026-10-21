@@ -416,3 +416,14 @@ def test_window_text_as_in_pycoll5(qapp):
         assert window.history_view.toPlainText().startswith("You:")
     finally:
         window.close()
+
+
+def test_no_answer_that_it_is_done_after_an_error():
+    """A part of the request failed: the answer written from the results
+    that everything is done is not shown (the results say what is done)."""
+    bad = ("set_parameter", {"name": "no_such_parameter", "value": 1})
+    assistant = make_assistant([reply(bad, ("summarize_object", {})), reply(bad), reply(bad),
+                                reply(answer="The parameter is set and the structure is refined.")])
+    result = assistant.ask("set no_such_parameter to 1 and say what is loaded", cryspy.str_to_globaln(RCIF))
+    assert any(text.startswith("Error") for _, _, text in result["actions"]), result["text"]
+    assert "refined" not in result["text"]
