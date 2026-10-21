@@ -165,3 +165,48 @@ def test_input_line_proposes_names(qapp):
         assert window.completer.currentCompletion() == "@set_parameter"
     finally:
         window.close()
+
+
+def test_tab_goes_through_proposed_names(qapp):
+    from PyQt5 import QtCore
+    from PyQt5.QtTest import QTest
+    from cryspy_editor.widgets import ui_assistant
+    window = ui_assistant.AssistantWindow()
+    l_sent = []
+    window.input_line.returnPressed.disconnect()
+    window.input_line.returnPressed.connect(lambda: l_sent.append(window.input_line.text()))
+    try:
+        window.show()
+        window.input_line.setFocus()
+        QTest.keyClicks(window.input_line, "@set_")
+        qapp.processEvents()
+        popup = window.completer.popup()
+        l_name = [name for name, _ in form_completions() if name.startswith("@set_")]
+        assert popup.isVisible() and window.completer.completionCount() == len(l_name) >= 2
+        l_text = []
+        for key in [QtCore.Qt.Key_Tab] * (len(l_name) + 1) + [QtCore.Qt.Key_Backtab]:
+            QTest.keyClick(popup, key)
+            l_text.append(window.input_line.text())
+        # the names in turn, back to the first one, then the last one again
+        assert l_text == l_name + [l_name[0], l_name[-1]]
+        assert window.input_line.hasFocus()
+        QTest.keyClick(popup, QtCore.Qt.Key_Return)
+        assert window.input_line.text() == f"{l_name[-1]} " and not popup.isVisible()
+        assert l_sent == []  # Enter on a name only writes it
+        window.input_line.setText("@set_param")
+        QTest.keyClick(window.input_line, QtCore.Qt.Key_Tab)  # opens the list
+        assert window.input_line.text() == "@set_parameter"
+    finally:
+        window.close()
+
+
+def test_tab_without_names_moves_focus(qapp):
+    from cryspy_editor.widgets import ui_assistant
+    window = ui_assistant.AssistantWindow()
+    try:
+        window.input_line.setText("refine")
+        assert not window.cycle_completion()
+        window.input_line.setText("@no_such_name")
+        assert not window.cycle_completion()
+    finally:
+        window.close()

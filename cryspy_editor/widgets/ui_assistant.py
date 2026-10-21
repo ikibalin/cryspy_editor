@@ -272,6 +272,9 @@ class AssistantWindow(QtWidgets.QWidget):
         self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.completer.setMaxVisibleItems(12)
         self.input_line.setCompleter(self.completer)
+        # Tab and Shift+Tab go through the proposed names instead of moving the focus
+        self.input_line.installEventFilter(self)
+        self.completer.popup().installEventFilter(self)
         self.update_completions()
         layout_input = QtWidgets.QHBoxLayout()
         layout_input.addWidget(self.input_line, 1)
@@ -293,6 +296,53 @@ class AssistantWindow(QtWidgets.QWidget):
             item.setData(command, QtCore.Qt.UserRole)
             item.setToolTip(description)
             model.appendRow(item)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.KeyPress and watched in (self.completer.popup(), self.input_line):
+            if event.key() in (QtCore.Qt.Key_Tab, QtCore.Qt.Key_Backtab):
+                if self.cycle_completion(event.key() == QtCore.Qt.Key_Backtab):
+                    return True
+            elif event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and self.take_completion():
+                return True
+        return super().eventFilter(watched, event)
+
+    def take_completion(self) -> bool:
+        """Enter on a proposed name writes it in the input line, followed by
+        a space for the arguments; the next Enter sends the request."""
+        popup = self.completer.popup()
+        index = popup.currentIndex()
+        if not popup.isVisible() or not index.isValid():
+            return False
+        self.input_line.setText(f"{index.data(QtCore.Qt.UserRole)} ")
+        popup.hide()
+        return True
+
+    def cycle_completion(self, flag_back: bool = False) -> bool:
+        """Highlight the next (previous) proposed name, which is written in
+        the input line; Enter takes it. After '@name' without the list the
+        list is opened. False when there is nothing to propose: Tab then
+        moves the focus as usual."""
+        popup = self.completer.popup()
+        if not popup.isVisible():
+            text = self.input_line.text()
+            if not text.startswith(COMMAND_PREFIX) or " " in text:
+                return False
+            self.completer.setCompletionPrefix(text)
+            if self.completer.completionCount() == 0:
+                return False
+            self.completer.complete()
+        n_row = self.completer.completionCount()
+        if n_row == 0:
+            return False
+        row = popup.currentIndex().row()
+        if row < 0:
+            row = n_row - 1 if flag_back else 0
+        else:
+            row = (row + (-1 if flag_back else 1)) % n_row
+        index = self.completer.completionModel().index(row, 0)
+        popup.setCurrentIndex(index)
+        popup.scrollTo(index)
+        return True
 
     def on_text_edited(self, text: str):
         if text == COMMAND_PREFIX:
