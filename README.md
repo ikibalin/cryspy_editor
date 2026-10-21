@@ -43,10 +43,15 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
 
    | Memory | Model | Q4_K_M file |
    | --- | --- | --- |
-   | < 8 GB | Qwen2.5-1.5B-Instruct | 1 GB |
-   | 8 GB | Qwen2.5-3B-Instruct, Llama-3.2-3B-Instruct | 2 GB |
-   | 16 GB | Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct | 5 GB |
-   | 32 GB and more | Qwen2.5-14B-Instruct | 9 GB |
+   | < 8 GB | Qwen2.5-3B-Instruct (single requests only: too weak for recipes) | 2 GB |
+   | 8 GB | Qwen2.5-7B-Instruct | 4.7 GB |
+   | 16 GB and more | Qwen2.5-14B-Instruct | 9 GB |
+
+   Recommended: Qwen2.5-7B-Instruct Q4_K_M; with 16 GB of memory or more
+   Qwen2.5-14B-Instruct Q4_K_M, which follows the step-by-step recipes much
+   more reliably. Take a general *Instruct* model, not a *Coder* one, and the
+   Q4_K_M quantization (more accurate than Q4_0 at the same size). For the
+   step-by-step work by recipes set the context to 8192 or more.
 
 3. In CrysPy Editor choose **AI assistant → Load local model (*.gguf)...**,
    pick the file and, if needed, the threads, GPU layers, context size,
