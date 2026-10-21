@@ -40,7 +40,7 @@ L_ITEM_CLS = L_ITEM_CLASS
 
 from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
-from cryspy_editor.widgets.w_editcif import WEditCif
+from cryspy_editor.widgets.w_editcif import WEditCif, take_refinable_tags
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
@@ -829,6 +829,7 @@ class CMainWindow(QMainWindow):
                 parent=w_item_tabs,
                 text_placeholder=text_placeholder,
                 s_info=s_info,
+                refinable_tags=take_refinable_tags(item),
             )
             # w_edit_cif.setToolTip(item.__doc__)
             w_item_tabs.addTab(w_edit_cif, "RCIF format")
