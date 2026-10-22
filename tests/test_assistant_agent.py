@@ -74,6 +74,42 @@ def test_error_goes_back_and_is_corrected():
     assert float(obj.items[0].cell.length_b) == 6.
 
 
+def test_steps_of_the_user_are_followed_not_a_recipe():
+    """The user describes the algorithm: the agent does it and cannot switch
+    to a recipe in the middle (a recipe is chosen only by the first reply)."""
+    from cryspy_editor.widgets.assistant import form_system_prompt
+    obj = cryspy.str_to_globaln(RCIF)
+    assistant = make_assistant([
+        reply(("work_step_by_step", {})),
+        step("get_recipe", {"name": "refine_structure"}),
+        step("list_parameters"),
+        final("The parameters are listed."),
+    ])
+    request = ("take the list of all parameters, refine them one by one and keep each only "
+               "if chi_sq gets better")
+    result = assistant.ask(request, obj)
+    l_messages = assistant.model.llm.l_messages
+    assert "never a recipe instead of them" in l_messages[0][0]["content"]
+    assert "follow exactly them" in l_messages[1][0]["content"]
+    assert "cannot be used here" in l_messages[2][-1]["content"]
+    assert "Recipe refine_structure" not in str(l_messages[-1])
+    assert [action for action, _, _ in result["actions"]] == ["get_recipe", "list_parameters"]
+    assert result["actions"][0][2].startswith("Error")
+    assert "keep it only if chi_sq gets better" in form_system_prompt(obj)
+
+
+def test_recipe_keeps_get_recipe_in_the_schema():
+    model = CountingModel([final("ok")])
+    assistant = make_assistant([])
+    assistant.model = model
+    assistant.ask_step_by_step("refine the structure step by step", None,
+                               [("get_recipe", {"name": "refine_structure"})])
+    assistant.model = CountingModel([final("ok")])
+    assistant.ask_step_by_step("my own steps", None, [])
+    assert "get_recipe" not in assistant.model.l_schema[0]["properties"]["action"]["enum"]
+    assert "get_recipe" in model.l_schema[0]["properties"]["action"]["enum"]
+
+
 class CountingModel:
     def __init__(self, replies):
         self.replies = list(replies)

@@ -166,9 +166,12 @@ def form_system_prompt(cryspy_object=None) -> str:
         s_recipe = f"""
 
 A task of several steps where the next step depends on the results (e.g. a
-step-by-step refinement) is done by a recipe of CrysPy: give the single action
-"get_recipe" with the name of the recipe; you will then work one action at a
-time. Recipes:
+step-by-step refinement) is done one action at a time. When the user describes
+the steps or the rule of decisions himself (e.g. "refine each parameter in turn
+and keep it if chi_sq gets better"), give the single action "{STEP_BY_STEP}" {{}}:
+the steps of the user are followed, never a recipe instead of them. When the
+user only names the task (e.g. "refine the structure step by step"), give the
+single action "get_recipe" with the name of the recipe that fits. Recipes:
 {form_recipes_text()}
 When no recipe fits such a task, give the single action "{STEP_BY_STEP}" {{}}."""
     s_state = "\nNo file is opened now."
@@ -236,9 +239,11 @@ def take_action_names() -> list:
 def form_agent_examples() -> str:
     if "get_recipe" not in D_TOOLS:
         return ""
-    s_out = """
+    s_out = f"""
 - refine the structure step by step:
-  [{"action": "get_recipe", "arguments": {"name": "refine_structure"}}]"""
+  [{{"action": "get_recipe", "arguments": {{"name": "refine_structure"}}}}]
+- go through the parameters one by one, refine each and keep it only if chi_sq gets better:
+  [{{"action": "{STEP_BY_STEP}", "arguments": {{}}}}]"""
     if "suggest_recipes" in D_TOOLS:
         s_out += """
 - analyse all the data of the file by the recipes:
@@ -617,7 +622,10 @@ class Assistant:
         l_first = [(action, arguments) for action, arguments in l_first
                    if action in AGENT_ACTIONS and action != STEP_BY_STEP][:1]
         max_steps = getattr(self.model, "settings", {}).get("max_steps", MAX_AGENT_STEPS)
-        agent = Agent(self.model, run_tool, list(D_TOOLS), take_json_object, max_steps=max_steps)
+        l_action = list(D_TOOLS)
+        if len(l_first) == 0:  # the steps of the user, not a recipe: no recipe in the middle of them
+            l_action = [action for action in l_action if action != "get_recipe"]
+        agent = Agent(self.model, run_tool, l_action, take_json_object, max_steps=max_steps)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
                         l_first=l_first, on_step=on_step)
