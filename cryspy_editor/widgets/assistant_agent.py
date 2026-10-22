@@ -31,9 +31,10 @@ When the task is done, or cannot be done, respond:
 {"thought": "...", "action": "final", "answer": "<answer for the user>"}
 After each action you get its result. Read it before the next action: when it
 is an Error, correct the arguments or choose another way; never repeat a failed
-call unchanged. When a recipe applies, take its steps with get_recipe first and
-follow them; judge each step by the change of chi_sq/n (R_F2 for single
-crystals) and the warnings in the results, as the recipe says. Report only what the results show, with numbers;
+call unchanged. When the user describes the steps, follow exactly them. When a
+recipe was taken with get_recipe, follow its steps. Judge each step by the
+change of chi_sq/n (R_F2 for single crystals) and the warnings in the results;
+undo_refinement returns to the state before a refinement that made it worse. Report only what the results show, with numbers;
 never claim a step that was not done."""
 
 
@@ -146,7 +147,10 @@ class Agent:
             if on_step is not None:
                 on_step(form_step_start_text(len(l_step) + 1, step["thought"], action))
             key = (action, json.dumps(arguments, sort_keys=True, default=str))
-            if l_call.count(key) >= MAX_SAME_CALLS:
+            if action not in self.l_action:  # a model without the JSON schema of the step
+                result = (f"Error: the action '{action}' cannot be used here; choose one of: "
+                          f"{', '.join(self.l_action)}, or give the final answer.")
+            elif l_call.count(key) >= MAX_SAME_CALLS:
                 result = ("Error: this action with these arguments was already done "
                           f"{MAX_SAME_CALLS} times; choose another action or give the final answer.")
             else:
