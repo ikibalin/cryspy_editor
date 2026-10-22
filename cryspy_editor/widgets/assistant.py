@@ -1,8 +1,9 @@
 """Local LLM assistant for CrysPy Editor, without Qt.
 
 The model is any chat model in GGUF format loaded by llama-cpp-python
-(optional dependency: pip install cryspy_editor[ai]). Nothing is sent
-to the internet: the model file is chosen by the user and runs locally.
+(optional dependency: pip install cryspy_editor[ai]), or a model of Ollama
+or of another server (assistant_models.ServerModel). Nothing is sent to
+the internet: the model file is chosen by the user and runs locally.
 
 The structure is the one of the assistant of PyColl5 (assistant.py,
 assistant_tools.py, ui_assistant.py): LocalModel talks to the model,
@@ -58,7 +59,7 @@ ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply 
 # or a task whose next steps depend on the results
 STEP_BY_STEP = "work_step_by_step"
 AGENT_ACTIONS = ("get_recipe", STEP_BY_STEP)
-NO_MODEL = ("No model is loaded (AI assistant -> Load local model). Without it type @name to run a recipe "
+NO_MODEL = ("No model is loaded (AI assistant -> Load model). Without it type @name to run a recipe "
             "or an action of CrysPy, or ask 'what can you do?'.")
 NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
                 "or do it in the window of CrysPy Editor.")
@@ -255,7 +256,7 @@ def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Call
         raise ValueError(
             f"The maximal answer length ({max_tokens} tokens) leaves no room for the question in the context "
             f"of {n_ctx} tokens. Increase the context or decrease the answer length in "
-            "AI assistant -> Load local model.")
+            "AI assistant -> Load model.")
     messages = [dict(message) for message in messages]
     l_tokens = [count_tokens(message["content"]) for message in messages]
     while sum(l_tokens) > budget and len(messages) > 2:
