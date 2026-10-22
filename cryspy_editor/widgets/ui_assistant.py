@@ -26,8 +26,12 @@ from cryspy_editor.widgets.assistant_models import (
     SOURCE_GGUF,
     SOURCE_OLLAMA,
     form_context_text,
+    form_max_tokens_text,
     list_server_models,
+    recommend_max_tokens,
     take_gguf_context,
+    take_gguf_thinking,
+    take_ollama_capabilities,
     take_ollama_context,
 )
 from cryspy_editor.widgets.recipe_editor import init_user_recipe_folder
@@ -92,9 +96,13 @@ field and the field is set to it. For the step-by-step work by recipes take
 server): choose it in <b>Source</b>, give its address and pick the model
 (e.g. <code>ollama pull qwen2.5:7b-instruct</code> first). The assistant then
 works exactly as with a GGUF file; the server keeps the model in its memory,
-llama-cpp-python is not needed. Thinking models of Ollama (qwen3, deepseek-r1)
-answer without thinking, otherwise the thinking takes the whole answer
-length.</p>"""
+llama-cpp-python is not needed.</p>
+<p><b>Thinking</b>: a thinking model (qwen3, deepseek-r1, ...) can think
+before each answer: it weighs the results and decides better, but slower. The
+thinking is shown in the assistant window apart from the answers (button
+Thoughts). The thinking is a part of the answer, so the <b>maximal answer
+length</b> must hold it: the recommended value is set when the thinking is
+turned on. A reply cut before the answer is reported as an error.</p>"""
 
 
 class ModelSettingsDialog(QtWidgets.QDialog):
@@ -160,10 +168,23 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         form.addRow("", self.label_context)
 
         self.sb_max_tokens = QtWidgets.QSpinBox(self)
-        self.sb_max_tokens.setRange(64, 8192)
-        self.sb_max_tokens.setSingleStep(128)
+        self.sb_max_tokens.setRange(64, 32768)
+        self.sb_max_tokens.setSingleStep(256)
         self.sb_max_tokens.setValue(settings["max_tokens"])
         form.addRow("Maximal answer length (tokens)", self.sb_max_tokens)
+        self.label_max_tokens = QtWidgets.QLabel(self)
+        self.label_max_tokens.setWordWrap(True)
+        form.addRow("", self.label_max_tokens)
+
+        self.check_thinking = QtWidgets.QCheckBox("The model thinks before each answer", self)
+        self.check_thinking.setToolTip(
+            "Thinking models (qwen3, deepseek-r1, ...) weigh the results before they decide; "
+            "the thinking is shown in the assistant window apart from the answers. "
+            "Slower, and the answer length must hold the thinking.")
+        self.check_thinking.setChecked(settings["thinking"])
+        self.check_thinking.toggled.connect(lambda _: self.update_max_tokens())
+        form.addRow("Thinking", self.check_thinking)
+        self.flag_thinking_model = False
 
         self.dsb_temperature = QtWidgets.QDoubleSpinBox(self)
         self.dsb_temperature.setRange(0.0, 2.0)
@@ -262,6 +283,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
                 d_range = take_gguf_context(self.model_path(), self.memory_gb)
         elif source == SOURCE_OLLAMA and self.server_model() != "":
             d_range = take_ollama_context(self.line_url.text().strip(), self.server_model(), self.memory_gb)
+        self.update_thinking()
         if d_range is None:
             self.label_context.setText(
                 "Choose the model to see its context range." if source in (SOURCE_GGUF, SOURCE_OLLAMA)
@@ -270,6 +292,34 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.label_context.setText(form_context_text(d_range, self.memory_gb))
         if flag_set_value:
             self.sb_n_ctx.setValue(d_range["n_recommended"])
+            self.update_max_tokens()
+
+    def update_thinking(self):
+        """The thinking can be turned on for a thinking model only (for a
+        server other than Ollama it is unknown: it may be turned on)."""
+        source = self.source()
+        if source == SOURCE_GGUF:
+            flag = os.path.isfile(self.model_path()) and take_gguf_thinking(self.model_path())
+        elif source == SOURCE_OLLAMA:
+            flag = self.server_model() != "" and "thinking" in take_ollama_capabilities(
+                self.line_url.text().strip(), self.server_model())
+        else:
+            flag = True
+        self.flag_thinking_model = bool(flag)
+        self.check_thinking.setEnabled(self.flag_thinking_model)
+        self.check_thinking.setText("The model thinks before each answer" if self.flag_thinking_model
+                                    else "The model thinks before each answer (not a thinking model)")
+        self.update_max_tokens(flag_set_value=False)
+
+    def flag_thinking(self) -> bool:
+        return self.flag_thinking_model and self.check_thinking.isChecked()
+
+    def update_max_tokens(self, flag_set_value: bool = True):
+        """Explain the answer length and set the value recommended for the
+        model, the thinking and the context."""
+        self.label_max_tokens.setText(form_max_tokens_text(self.flag_thinking(), self.sb_n_ctx.value()))
+        if flag_set_value:
+            self.sb_max_tokens.setValue(recommend_max_tokens(self.flag_thinking(), self.sb_n_ctx.value()))
 
     def server_model(self) -> str:
         return self.cb_server_model.currentText().strip()
@@ -280,6 +330,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
                 "url": self.line_url.text().strip(), "model": self.server_model()}
 
     def set_defaults(self):
+        self.check_thinking.setChecked(DEFAULT_SETTINGS["thinking"])
         self.sb_threads.setValue(DEFAULT_SETTINGS["n_threads"])
         self.sb_gpu_layers.setValue(DEFAULT_SETTINGS["n_gpu_layers"])
         self.sb_n_ctx.setValue(DEFAULT_SETTINGS["n_ctx"])
@@ -315,6 +366,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             "max_tokens": self.sb_max_tokens.value(),
             "temperature": self.dsb_temperature.value(),
             "max_steps": self.sb_max_steps.value(),
+            "thinking": bool(self.check_thinking.isChecked()),
         }
 
 
@@ -353,6 +405,7 @@ class AskWorker(QObject):
     error = pyqtSignal(str)
     action_started = pyqtSignal(str)
     step_text = pyqtSignal(str)  # a step of the work by a recipe, as it goes
+    thinking_text = pyqtSignal(str)  # the thinking of the model as it goes, "" starts a reply
 
     def __init__(self, assistant: Assistant, question: str, cryspy_object):
         super().__init__()
@@ -361,6 +414,9 @@ class AskWorker(QObject):
         self.cryspy_object = cryspy_object
 
     def run(self):
+        model = self.assistant.model
+        if model is not None and hasattr(model, "on_thinking"):
+            model.on_thinking = self.thinking_text.emit
         try:
             self.finished.emit(self.assistant.ask(
                 self.question, self.cryspy_object, on_action=self.action_started.emit,
@@ -368,6 +424,9 @@ class AskWorker(QObject):
         except Exception as e:
             traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
+        finally:
+            if model is not None and hasattr(model, "on_thinking"):
+                model.on_thinking = None
 
 
 class AssistantWindow(QtWidgets.QWidget):
@@ -391,16 +450,33 @@ class AssistantWindow(QtWidgets.QWidget):
 
         layout_title = QtWidgets.QHBoxLayout()
         self.label_model = QtWidgets.QLabel("No model loaded")
+        # a long model name is cut, not widening the window
+        self.label_model.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout_title.addWidget(self.label_model, 1)
+        # the thinking of a thinking model, apart from the answers
+        self.button_thoughts = QtWidgets.QPushButton("Thoughts")
+        self.button_thoughts.setCheckable(True)
+        self.button_thoughts.setToolTip("Show the thinking of the model (when the thinking is turned on)")
+        self.button_thoughts.toggled.connect(self.show_thoughts)
+        layout_title.addWidget(self.button_thoughts)
         self.button_clear = QtWidgets.QPushButton("Clear chat")
         self.button_clear.clicked.connect(self.clear_chat)
         layout_title.addWidget(self.button_clear)
         layout.addLayout(layout_title)
 
-        self.history_view = QtWidgets.QTextEdit(self)
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self)
+        self.history_view = QtWidgets.QTextEdit(self.splitter)
         self.history_view.setReadOnly(True)
         self.history_view.setPlaceholderText(EXAMPLES)
-        layout.addWidget(self.history_view)
+        self.thoughts_view = QtWidgets.QPlainTextEdit(self.splitter)
+        self.thoughts_view.setReadOnly(True)
+        self.thoughts_view.setPlaceholderText("Thoughts of the model: shown as it thinks.")
+        self.thoughts_view.setVisible(False)
+        self.splitter.addWidget(self.history_view)
+        self.splitter.addWidget(self.thoughts_view)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+        layout.addWidget(self.splitter)
 
         self.input_line = QtWidgets.QLineEdit(self)
         self.input_line.setPlaceholderText(PLACEHOLDER)
@@ -575,7 +651,10 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_model_loaded(self, assistant: Assistant):
         self.assistant = assistant
-        self.label_model.setText(f"Model: {assistant.model_name}")
+        flag_thinking = bool(getattr(assistant.model, "flag_thinking", False))
+        s_thinking = " (thinking)" if flag_thinking else ""
+        self.label_model.setText(f"Model: {assistant.model_name}{s_thinking}")
+        self.button_thoughts.setChecked(flag_thinking)
         self.input_line.setEnabled(True)
         self.input_line.setFocus()
         self.signal_model_loaded.emit(assistant.model_name)
@@ -586,8 +665,25 @@ class AssistantWindow(QtWidgets.QWidget):
         self.input_line.setEnabled(True)
         self.signal_model_loaded.emit("")
 
+    def show_thoughts(self, flag: bool):
+        self.thoughts_view.setVisible(flag)
+
+    def append_thinking(self, text: str):
+        """The thinking of the model as it goes; "" starts the thinking of a
+        new reply."""
+        cursor = self.thoughts_view.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.End)
+        if text == "":
+            if not self.thoughts_view.document().isEmpty():
+                cursor.insertText("\n\n" + "-" * 40 + "\n")
+        else:
+            cursor.insertText(text)
+        self.thoughts_view.setTextCursor(cursor)
+        self.thoughts_view.ensureCursorVisible()
+
     def clear_chat(self):
         self.history_view.clear()
+        self.thoughts_view.clear()
         if self.assistant is not None:
             self.assistant.clear_history()
 
@@ -619,6 +715,7 @@ class AssistantWindow(QtWidgets.QWidget):
         worker.action_started.connect(
             lambda action: self.input_line.setPlaceholderText(f"Running '{action}'... (Stop ends the work)"))
         worker.step_text.connect(self.append_step)
+        worker.thinking_text.connect(self.append_thinking)
         self._start_thread(worker, self.on_reply, self.on_error)
 
     def on_stop(self):

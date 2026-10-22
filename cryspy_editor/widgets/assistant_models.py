@@ -5,6 +5,9 @@ length, without Qt.
   was trained with, layers, attention heads), read without llama.cpp.
 - take_context_range: the context the model accepts, how much of it fits in
   the memory of this computer and the recommended value.
+- take_gguf_thinking, take_ollama_capabilities: whether the model can think
+  before it answers (qwen3, deepseek-r1, ...), and recommend_max_tokens:
+  the answer length for it, the thinking included.
 - ServerModel: a chat model served by Ollama or by an OpenAI-compatible
   server (LM Studio, llama.cpp server, ...) on this or another computer. It
   has the methods of LocalModel (chat, count_tokens, close), so the
@@ -35,6 +38,8 @@ MEMORY_FRACTION = 0.75  # of the memory, for the model and its context
 OVERHEAD_GB = 0.5  # compute buffers of llama.cpp
 CHARACTERS_PER_TOKEN = 3.  # a token is about 3-4 characters: count tokens with a margin
 TIMEOUT_CHAT = 600
+MAX_TOKENS_ANSWER = 1024  # a step of the agent (JSON) or an answer of a few paragraphs
+MAX_TOKENS_THINKING = 8192  # thinking takes from a few hundred to several thousand tokens
 TIMEOUT_INFO = 10
 
 # value types of the GGUF metadata: struct format and size
@@ -44,6 +49,7 @@ GGUF_STRING, GGUF_ARRAY = 8, 9
 # metadata keys (after "<architecture>.") needed for the context
 L_ARCH_KEYS = ("context_length", "block_count", "embedding_length", "attention.head_count",
                "attention.head_count_kv", "attention.key_length", "attention.value_length")
+KEY_CHAT_TEMPLATE = "tokenizer.chat_template"
 
 
 def _read_gguf_value(file, value_type: int, flag_keep: bool = True):
@@ -68,7 +74,8 @@ def _read_gguf_value(file, value_type: int, flag_keep: bool = True):
 def read_gguf_metadata(file_name: str) -> dict:
     """Metadata of a GGUF model needed for its context: 'architecture' and
     the keys of L_ARCH_KEYS (without the architecture prefix), for those
-    present in the file. Reading stops when all of them are found.
+    present in the file, and 'chat_template'. Reading stops when all of
+    them are found.
     Raises ValueError for a file that is not GGUF."""
     d_meta = {}
     with open(file_name, "rb") as file:
@@ -86,13 +93,55 @@ def read_gguf_metadata(file_name: str) -> dict:
             if key == "general.architecture":
                 arch = value
                 d_meta["architecture"] = value
+            elif key == KEY_CHAT_TEMPLATE:
+                d_meta["chat_template"] = value
             elif "." in key and value is not None:
                 prefix, name = key.split(".", 1)
                 if name in L_ARCH_KEYS and (arch is None or prefix == arch):
                     d_meta[name] = value
-            if arch is not None and all(name in d_meta for name in L_ARCH_KEYS):
+            if arch is not None and all(name in d_meta for name in L_ARCH_KEYS + ("chat_template",)):
                 break
     return d_meta
+
+
+def flag_thinking_template(chat_template) -> bool:
+    """True for the chat template of a thinking model (qwen3, deepseek-r1,
+    ...): it knows the <think> block."""
+    return isinstance(chat_template, str) and ("<think>" in chat_template or "enable_thinking" in chat_template)
+
+
+def take_gguf_thinking(file_name: str) -> bool:
+    """True when the GGUF model can think before it answers."""
+    try:
+        return flag_thinking_template(read_gguf_metadata(file_name).get("chat_template"))
+    except (OSError, ValueError, struct.error):
+        return False
+
+
+def recommend_max_tokens(flag_thinking: bool, n_ctx: int) -> int:
+    """The answer length (tokens) recommended for the model: the thinking is
+    a part of the answer, so a thinking model needs much more; at most half
+    of the context, the rest is for the question."""
+    n_max = MAX_TOKENS_THINKING if flag_thinking else MAX_TOKENS_ANSWER
+    return max(256, min(n_max, n_ctx // 2) // 256 * 256)
+
+
+def form_max_tokens_text(flag_thinking: bool, n_ctx: int) -> str:
+    """Explanation of the answer length for the dialog of the settings."""
+    n_recommended = recommend_max_tokens(flag_thinking, n_ctx)
+    if flag_thinking:
+        return (f"Recommended {n_recommended}: the thinking is a part of the answer and takes from a few "
+                "hundred to several thousand tokens; a cut thinking leaves no answer.")
+    return f"Recommended {n_recommended}: enough for a step of the work or an answer of a few paragraphs."
+
+
+def split_thinking(text: str):
+    """(thinking, answer) of a reply with a <think>...</think> block (also
+    when the chat template has written the opening <think> itself)."""
+    if "</think>" not in text:
+        return "", text
+    thinking, answer = text.split("</think>", 1)
+    return thinking.replace("<think>", "", 1).strip(), answer.strip()
 
 
 def calc_kv_bytes_per_token(d_meta: dict) -> Optional[float]:
@@ -181,6 +230,30 @@ def _request_json(url: str, data: Optional[dict] = None, timeout: float = TIMEOU
             f"No connection to {url}: {getattr(error, 'reason', error)}. Is the server running?") from error
 
 
+def _request_json_lines(url: str, data: dict, timeout: float = TIMEOUT_CHAT):
+    """The JSON objects of a streamed answer (one per line, as Ollama sends
+    them), as they come."""
+    request = urllib.request.Request(
+        url, data=json.dumps(data).encode("utf-8"), headers={"Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            for line in response:
+                if line.strip():
+                    d_part = json.loads(line.decode("utf-8"))
+                    if "error" in d_part:
+                        raise ConnectionError(f"The server answered: {d_part['error']}")
+                    yield d_part
+    except ConnectionError:  # the error of the server above, an OSError too
+        raise
+    except urllib.error.HTTPError as error:
+        message = error.read().decode("utf-8", errors="replace")[:500]
+        raise ConnectionError(f"The server answered {error.code}: {message}") from error
+    except (urllib.error.URLError, OSError) as error:
+        raise ConnectionError(
+            f"No connection to {url}: {getattr(error, 'reason', error)}. Is the server running?") from error
+
+
 def list_server_models(source: str, url: str) -> List[str]:
     """Names of the models of the server. Raises ConnectionError."""
     url = url.rstrip("/")
@@ -218,8 +291,10 @@ def take_ollama_context(url: str, model: str, memory_gb: Optional[float]) -> Opt
 class ServerModel:
     """A chat model of Ollama or of an OpenAI-compatible server.
 
-    settings: those of the assistant (n_ctx, max_tokens, temperature); the
-    context n_ctx is given to Ollama as num_ctx."""
+    settings: those of the assistant (n_ctx, max_tokens, temperature,
+    thinking); the context n_ctx is given to Ollama as num_ctx.
+    on_thinking(text): set by the window, gets the thinking of the model as
+    it goes ("" starts the thinking of a new reply)."""
 
     def __init__(self, source: str, url: str, model: str, settings: Optional[dict] = None):
         from cryspy_editor.widgets.assistant import take_settings
@@ -233,10 +308,16 @@ class ServerModel:
         self.settings = take_settings(settings)
         self.model_path = ""  # no file: see model_name
         list_server_models(source, self.url)  # fails now, not at the first question
-        # a thinking model (qwen3, deepseek-r1, ...) would spend max_tokens on
-        # thinking and leave the answer empty: thinking is turned off for it
-        self.flag_thinking = (source == SOURCE_OLLAMA
-                              and "thinking" in take_ollama_capabilities(self.url, self.model))
+        # Ollama tells whether the model thinks (qwen3, deepseek-r1, ...); the
+        # thinking of a server model of another kind is shown if it comes
+        self.flag_thinking_model = (source == SOURCE_OPENAI
+                                    or "thinking" in take_ollama_capabilities(self.url, self.model))
+        self.on_thinking = None
+
+    @property
+    def flag_thinking(self) -> bool:
+        """The model thinks before each answer: its thinking is shown."""
+        return self.flag_thinking_model and self.settings["thinking"]
 
     @property
     def model_name(self) -> str:
@@ -252,28 +333,68 @@ class ServerModel:
     def close(self):
         """The server keeps or frees the model itself."""
 
+    def _emit_thinking(self, text: str):
+        if self.on_thinking is not None:
+            self.on_thinking(text)
+
     def chat(self, messages: List[Dict[str, str]], flag_json: bool = False,
              schema: Optional[dict] = None) -> str:
         from cryspy_editor.widgets.assistant import fit_messages
         max_tokens = self.settings["max_tokens"]
         messages = fit_messages(messages, max_tokens, self.n_ctx(), self.count_tokens)
         if self.source == SOURCE_OLLAMA:
-            data = {"model": self.model, "messages": messages, "stream": False,
-                    "options": {"temperature": self.settings["temperature"], "num_ctx": self.n_ctx(),
-                                "num_predict": max_tokens}}
-            if flag_json:
-                data["format"] = schema if schema is not None else "json"
-            if self.flag_thinking:
-                data["think"] = False
-            result = _request_json(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT)
-            return str(result.get("message", {}).get("content", "")).strip()
+            return self._chat_ollama(messages, flag_json, schema, max_tokens)
         data = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
                 "temperature": self.settings["temperature"]}
         if flag_json and schema is not None:
             data["response_format"] = {"type": "json_schema",
                                        "json_schema": {"name": "reply", "schema": schema}}
         result = _request_json(f"{self.url}/chat/completions", data, timeout=TIMEOUT_CHAT)
-        return str(result["choices"][0]["message"]["content"] or "").strip()
+        d_message = result["choices"][0]["message"]
+        thinking, answer = split_thinking(str(d_message.get("content") or ""))
+        # LM Studio, vLLM and llama.cpp server give the thinking apart
+        thinking = str(d_message.get("reasoning_content") or d_message.get("reasoning") or thinking)
+        if thinking.strip() != "" and self.settings["thinking"]:
+            self._emit_thinking("")
+            self._emit_thinking(thinking.strip())
+        if answer == "" and result["choices"][0].get("finish_reason") == "length":
+            raise ValueError(form_cut_text(max_tokens))
+        return answer
+
+    def _chat_ollama(self, messages: list, flag_json: bool, schema: Optional[dict], max_tokens: int) -> str:
+        data = {"model": self.model, "messages": messages, "stream": self.flag_thinking,
+                "options": {"temperature": self.settings["temperature"], "num_ctx": self.n_ctx(),
+                            "num_predict": max_tokens}}
+        if flag_json:
+            data["format"] = schema if schema is not None else "json"
+        if self.flag_thinking_model:
+            data["think"] = self.flag_thinking
+        if not self.flag_thinking:
+            result = _request_json(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT)
+            answer = str(result.get("message", {}).get("content", "")).strip()
+            if answer == "" and result.get("done_reason") == "length":
+                raise ValueError(form_cut_text(max_tokens))
+            return answer
+        # the thinking is shown as it goes
+        self._emit_thinking("")
+        l_answer, done_reason = [], ""
+        for d_part in _request_json_lines(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT):
+            d_message = d_part.get("message", {})
+            if d_message.get("thinking"):
+                self._emit_thinking(d_message["thinking"])
+            if d_message.get("content"):
+                l_answer.append(d_message["content"])
+            if d_part.get("done"):
+                done_reason = d_part.get("done_reason", "")
+        answer = "".join(l_answer).strip()
+        if answer == "" and done_reason == "length":
+            raise ValueError(form_cut_text(max_tokens))
+        return answer
+
+
+def form_cut_text(max_tokens: int) -> str:
+    return (f"The reply of the model was cut at the maximal answer length ({max_tokens} tokens) before "
+            "the answer: raise it in AI assistant -> Load model... or turn the thinking off.")
 
 
 def create_model(d_model: dict, settings: Optional[dict] = None):
