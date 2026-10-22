@@ -102,7 +102,10 @@ before each answer: it weighs the results and decides better, but slower. The
 thinking is shown in the assistant window apart from the answers (button
 Thoughts). The thinking is a part of the answer, so the <b>maximal answer
 length</b> must hold it: the recommended value is set when the thinking is
-turned on. A reply cut before the answer is reported as an error.</p>"""
+turned on. <b>Maximal thinking length</b>: the model is asked to think
+briefly, and a longer thinking is stopped: the model then decides from what
+it has thought, without thinking again (Ollama and GGUF files; another server
+is only asked). The thoughts are cleared at each new request.</p>"""
 
 
 class ModelSettingsDialog(QtWidgets.QDialog):
@@ -184,6 +187,15 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.check_thinking.setChecked(settings["thinking"])
         self.check_thinking.toggled.connect(lambda _: self.update_max_tokens())
         form.addRow("Thinking", self.check_thinking)
+        self.sb_max_thinking = QtWidgets.QSpinBox(self)
+        self.sb_max_thinking.setRange(128, 32768)
+        self.sb_max_thinking.setSingleStep(256)
+        self.sb_max_thinking.setValue(settings["max_thinking_tokens"])
+        self.sb_max_thinking.setToolTip(
+            "The model is asked to think briefly; a longer thinking is stopped and the model "
+            "decides from what it has thought (for Ollama and GGUF files; another server is only asked).")
+        self.sb_max_thinking.valueChanged.connect(lambda _: self.update_max_tokens())
+        form.addRow("Maximal thinking length (tokens)", self.sb_max_thinking)
         self.flag_thinking_model = False
 
         self.dsb_temperature = QtWidgets.QDoubleSpinBox(self)
@@ -307,6 +319,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             flag = True
         self.flag_thinking_model = bool(flag)
         self.check_thinking.setEnabled(self.flag_thinking_model)
+        self.sb_max_thinking.setEnabled(self.flag_thinking_model)
         self.check_thinking.setText("The model thinks before each answer" if self.flag_thinking_model
                                     else "The model thinks before each answer (not a thinking model)")
         self.update_max_tokens(flag_set_value=False)
@@ -317,9 +330,10 @@ class ModelSettingsDialog(QtWidgets.QDialog):
     def update_max_tokens(self, flag_set_value: bool = True):
         """Explain the answer length and set the value recommended for the
         model, the thinking and the context."""
-        self.label_max_tokens.setText(form_max_tokens_text(self.flag_thinking(), self.sb_n_ctx.value()))
+        n_ctx, max_thinking = self.sb_n_ctx.value(), self.sb_max_thinking.value()
+        self.label_max_tokens.setText(form_max_tokens_text(self.flag_thinking(), n_ctx, max_thinking))
         if flag_set_value:
-            self.sb_max_tokens.setValue(recommend_max_tokens(self.flag_thinking(), self.sb_n_ctx.value()))
+            self.sb_max_tokens.setValue(recommend_max_tokens(self.flag_thinking(), n_ctx, max_thinking))
 
     def server_model(self) -> str:
         return self.cb_server_model.currentText().strip()
@@ -331,6 +345,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
 
     def set_defaults(self):
         self.check_thinking.setChecked(DEFAULT_SETTINGS["thinking"])
+        self.sb_max_thinking.setValue(DEFAULT_SETTINGS["max_thinking_tokens"])
         self.sb_threads.setValue(DEFAULT_SETTINGS["n_threads"])
         self.sb_gpu_layers.setValue(DEFAULT_SETTINGS["n_gpu_layers"])
         self.sb_n_ctx.setValue(DEFAULT_SETTINGS["n_ctx"])
@@ -367,6 +382,7 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             "temperature": self.dsb_temperature.value(),
             "max_steps": self.sb_max_steps.value(),
             "thinking": bool(self.check_thinking.isChecked()),
+            "max_thinking_tokens": self.sb_max_thinking.value(),
         }
 
 
@@ -704,6 +720,7 @@ class AssistantWindow(QtWidgets.QWidget):
             return
         assistant = self.take_assistant()
         self.append_history("You", question)
+        self.thoughts_view.clear()  # the thinking of this request only
         self.input_line.clear()
         self.input_line.setEnabled(False)
         self.input_line.setPlaceholderText("Thinking...")

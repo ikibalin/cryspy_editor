@@ -71,10 +71,13 @@ Everything else works the same; llama-cpp-python is not needed then.
 **Thinking models.** A thinking model (qwen3, deepseek-r1, ...) can think
 before each answer: turn on **Thinking** in the model settings (it is offered
 only for a model that can think). Its thinking is shown in the assistant window
-apart from the answers (button **Thoughts**), as it goes for Ollama. The thinking
-is a part of the answer, so the **Maximal answer length** must hold it: the
-value recommended for the model, the thinking and the context is set and
-explained under the field.
+apart from the answers (button **Thoughts**), as it goes, and is cleared at each
+new request. **Maximal thinking length** limits it: the model is asked to think
+briefly, and a longer thinking is stopped, after which the model decides from
+what it has thought without thinking again (Ollama and GGUF files; another
+server is only asked to be brief). The thinking is a part of the answer, so the
+**Maximal answer length** must hold it: the value recommended for the model,
+the thinking limit and the context is set and explained under the field.
 
 **Recipes.** A task of several steps (e.g. "refine the structure step by
 step", "refine the flip ratios") is done by a recipe of CrysPy: the model

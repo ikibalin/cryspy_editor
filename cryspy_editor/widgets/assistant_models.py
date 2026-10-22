@@ -7,7 +7,10 @@ length, without Qt.
   the memory of this computer and the recommended value.
 - take_gguf_thinking, take_ollama_capabilities: whether the model can think
   before it answers (qwen3, deepseek-r1, ...), and recommend_max_tokens:
-  the answer length for it, the thinking included.
+  the answer length for it, the thinking included. The thinking is limited
+  by max_thinking_tokens: the model is asked to think briefly, and a longer
+  thinking is stopped and the model answers from what it has thought
+  (add_thinking_rule, form_decide_messages).
 - ServerModel: a chat model served by Ollama or by an OpenAI-compatible
   server (LM Studio, llama.cpp server, ...) on this or another computer. It
   has the methods of LocalModel (chat, count_tokens, close), so the
@@ -118,21 +121,58 @@ def take_gguf_thinking(file_name: str) -> bool:
         return False
 
 
-def recommend_max_tokens(flag_thinking: bool, n_ctx: int) -> int:
+def recommend_max_tokens(flag_thinking: bool, n_ctx: int, max_thinking_tokens: int = 0) -> int:
     """The answer length (tokens) recommended for the model: the thinking is
-    a part of the answer, so a thinking model needs much more; at most half
-    of the context, the rest is for the question."""
-    n_max = MAX_TOKENS_THINKING if flag_thinking else MAX_TOKENS_ANSWER
+    a part of the answer, so a thinking model needs the limit of its
+    thinking more; at most half of the context, the rest is for the
+    question."""
+    n_max = MAX_TOKENS_ANSWER
+    if flag_thinking:
+        n_max += max_thinking_tokens if max_thinking_tokens > 0 else MAX_TOKENS_THINKING
     return max(256, min(n_max, n_ctx // 2) // 256 * 256)
 
 
-def form_max_tokens_text(flag_thinking: bool, n_ctx: int) -> str:
+def form_max_tokens_text(flag_thinking: bool, n_ctx: int, max_thinking_tokens: int = 0) -> str:
     """Explanation of the answer length for the dialog of the settings."""
-    n_recommended = recommend_max_tokens(flag_thinking, n_ctx)
+    n_recommended = recommend_max_tokens(flag_thinking, n_ctx, max_thinking_tokens)
     if flag_thinking:
-        return (f"Recommended {n_recommended}: the thinking is a part of the answer and takes from a few "
-                "hundred to several thousand tokens; a cut thinking leaves no answer.")
+        return (f"Recommended {n_recommended}: the thinking (up to its limit) and the answer; "
+                "at most half of the context.")
     return f"Recommended {n_recommended}: enough for a step of the work or an answer of a few paragraphs."
+
+
+def form_thinking_rule(max_thinking_tokens: int) -> str:
+    n_word = int(max_thinking_tokens * 0.7)
+    return (f"Think briefly: your thinking must not exceed about {n_word} words. When the "
+            "instructions or the results leave several choices, do not weigh them again and "
+            "again: take the most reasonable one, say in the answer what is uncertain, and answer.")
+
+
+def add_thinking_rule(messages: list, max_thinking_tokens: int) -> list:
+    """The messages with the limit of the thinking at the end of the
+    system message (a new one if there is none)."""
+    rule = form_thinking_rule(max_thinking_tokens)
+    messages = [dict(d_message) for d_message in messages]
+    if messages and messages[0].get("role") == "system":
+        messages[0]["content"] = f"{messages[0]['content']}\n\n{rule}"
+    else:
+        messages.insert(0, {"role": "system", "content": rule})
+    return messages
+
+
+def form_decide_messages(messages: list, thinking: str) -> list:
+    """The messages to ask for the answer after the thinking was stopped at
+    its limit: the model answers from what it has thought, without thinking
+    again."""
+    return list(messages) + [
+        {"role": "assistant", "content": f"(my thinking, stopped at its limit)\n{thinking.strip()}"},
+        {"role": "user", "content": (
+            "Your thinking has reached its limit. Do not think more: decide now from what you have "
+            "thought and give the final answer in the required format.")}]
+
+
+def form_stop_text(max_thinking_tokens: int) -> str:
+    return f"\n[the thinking reached its limit of {max_thinking_tokens} tokens: the model decides now]"
 
 
 def split_thinking(text: str):
@@ -344,6 +384,8 @@ class ServerModel:
         messages = fit_messages(messages, max_tokens, self.n_ctx(), self.count_tokens)
         if self.source == SOURCE_OLLAMA:
             return self._chat_ollama(messages, flag_json, schema, max_tokens)
+        if self.flag_thinking:  # the server thinks without a limit: only asked to be brief
+            messages = add_thinking_rule(messages, self.settings["max_thinking_tokens"])
         data = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
                 "temperature": self.settings["temperature"]}
         if flag_json and schema is not None:
@@ -361,31 +403,53 @@ class ServerModel:
             raise ValueError(form_cut_text(max_tokens))
         return answer
 
-    def _chat_ollama(self, messages: list, flag_json: bool, schema: Optional[dict], max_tokens: int) -> str:
-        data = {"model": self.model, "messages": messages, "stream": self.flag_thinking,
+    def _chat_ollama(self, messages: list, flag_json: bool, schema: Optional[dict], max_tokens: int,
+                     flag_think: Optional[bool] = None) -> str:
+        """flag_think: None takes the setting; False is the answer after the
+        thinking was stopped at its limit."""
+        flag_thinking = self.flag_thinking if flag_think is None else flag_think
+        max_thinking_tokens = self.settings["max_thinking_tokens"]
+        messages_asked = add_thinking_rule(messages, max_thinking_tokens) if flag_thinking else messages
+        data = {"model": self.model, "messages": messages_asked, "stream": flag_thinking,
                 "options": {"temperature": self.settings["temperature"], "num_ctx": self.n_ctx(),
                             "num_predict": max_tokens}}
         if flag_json:
             data["format"] = schema if schema is not None else "json"
         if self.flag_thinking_model:
-            data["think"] = self.flag_thinking
-        if not self.flag_thinking:
+            data["think"] = flag_thinking
+        if not flag_thinking:
             result = _request_json(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT)
             answer = str(result.get("message", {}).get("content", "")).strip()
             if answer == "" and result.get("done_reason") == "length":
                 raise ValueError(form_cut_text(max_tokens))
             return answer
-        # the thinking is shown as it goes
+        # the thinking is shown as it goes and stopped at its limit
         self._emit_thinking("")
-        l_answer, done_reason = [], ""
-        for d_part in _request_json_lines(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT):
-            d_message = d_part.get("message", {})
-            if d_message.get("thinking"):
-                self._emit_thinking(d_message["thinking"])
-            if d_message.get("content"):
-                l_answer.append(d_message["content"])
-            if d_part.get("done"):
-                done_reason = d_part.get("done_reason", "")
+        l_answer, l_thinking, done_reason = [], [], ""
+        n_character, flag_stopped = 0, False
+        parts = _request_json_lines(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT)
+        try:
+            for d_part in parts:
+                d_message = d_part.get("message", {})
+                if d_message.get("thinking"):
+                    self._emit_thinking(d_message["thinking"])
+                    l_thinking.append(d_message["thinking"])
+                    n_character += len(d_message["thinking"])
+                    if n_character / CHARACTERS_PER_TOKEN > max_thinking_tokens and not l_answer:
+                        flag_stopped = True
+                        break
+                if d_message.get("content"):
+                    l_answer.append(d_message["content"])
+                if d_part.get("done"):
+                    done_reason = d_part.get("done_reason", "")
+        finally:
+            parts.close()  # the server stops when the connection is closed
+        if flag_stopped:
+            from cryspy_editor.widgets.assistant import fit_messages
+            self._emit_thinking(form_stop_text(max_thinking_tokens))
+            messages = fit_messages(form_decide_messages(messages, "".join(l_thinking)), max_tokens,
+                                    self.n_ctx(), self.count_tokens)
+            return self._chat_ollama(messages, flag_json, schema, max_tokens, flag_think=False)
         answer = "".join(l_answer).strip()
         if answer == "" and done_reason == "length":
             raise ValueError(form_cut_text(max_tokens))
