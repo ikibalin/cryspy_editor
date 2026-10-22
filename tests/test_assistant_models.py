@@ -107,7 +107,8 @@ class FakeServer(BaseHTTPRequestHandler):
         if self.path == "/api/chat":
             self.answer({"message": {"role": "assistant", "content": s_reply}})
         elif self.path == "/api/show":
-            self.answer({"model_info": {"general.architecture": "qwen2", **{
+            l_capability = ["completion", "thinking"] if d_in["model"].startswith("qwen3") else ["completion"]
+            self.answer({"capabilities": l_capability, "model_info": {"general.architecture": "qwen2", **{
                 f"qwen2.{key}": value for key, value in D_QWEN_7B.items() if key != "architecture"}}})
         elif self.path == "/v1/chat/completions":
             self.answer({"choices": [{"message": {"content": s_reply}}]})
@@ -135,9 +136,20 @@ def test_ollama_model_answers(server_url):
     assert path == "/api/chat" and d_in["model"] == "qwen2.5:7b" and not d_in["stream"]
     assert d_in["options"]["num_ctx"] == 8192 and d_in["options"]["num_predict"] == 256
     assert d_in["format"] is not None  # JSON or the schema of the reply
+    assert "think" not in d_in  # not a thinking model
     assert assistant_models.list_server_models(SOURCE_OLLAMA, server_url) == ["qwen2.5:7b"]
     d_range = assistant_models.take_ollama_context(server_url, "qwen2.5:7b", 16.)
     assert d_range["n_train"] == 32768
+
+
+def test_ollama_thinking_model_does_not_think(server_url):
+    """qwen3 and other thinking models would spend max_tokens on thinking."""
+    model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:8b")
+    assert model.flag_thinking
+    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True).startswith("{")
+    path, d_in = FakeServer.l_request[-1]
+    assert path == "/api/chat" and d_in["think"] is False
+    assert assistant_models.take_ollama_capabilities("http://127.0.0.1:9", "qwen3:8b") == []
 
 
 def test_openai_compatible_model(server_url):

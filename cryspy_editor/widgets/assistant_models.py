@@ -189,6 +189,15 @@ def list_server_models(source: str, url: str) -> List[str]:
     return [d_model["id"] for d_model in _request_json(f"{url}/models").get("data", [])]
 
 
+def take_ollama_capabilities(url: str, model: str) -> List[str]:
+    """Capabilities of an Ollama model from /api/show ('completion', 'tools',
+    'thinking', ...); empty when the server does not tell them."""
+    try:
+        return list(_request_json(f"{url.rstrip('/')}/api/show", {"model": model}).get("capabilities", []))
+    except ConnectionError:
+        return []
+
+
 def take_ollama_context(url: str, model: str, memory_gb: Optional[float]) -> Optional[dict]:
     """take_context_range of an Ollama model from /api/show; None when the
     server does not tell it."""
@@ -224,6 +233,10 @@ class ServerModel:
         self.settings = take_settings(settings)
         self.model_path = ""  # no file: see model_name
         list_server_models(source, self.url)  # fails now, not at the first question
+        # a thinking model (qwen3, deepseek-r1, ...) would spend max_tokens on
+        # thinking and leave the answer empty: thinking is turned off for it
+        self.flag_thinking = (source == SOURCE_OLLAMA
+                              and "thinking" in take_ollama_capabilities(self.url, self.model))
 
     @property
     def model_name(self) -> str:
@@ -250,6 +263,8 @@ class ServerModel:
                                 "num_predict": max_tokens}}
             if flag_json:
                 data["format"] = schema if schema is not None else "json"
+            if self.flag_thinking:
+                data["think"] = False
             result = _request_json(f"{self.url}/api/chat", data, timeout=TIMEOUT_CHAT)
             return str(result.get("message", {}).get("content", "")).strip()
         data = {"model": self.model, "messages": messages, "max_tokens": max_tokens,

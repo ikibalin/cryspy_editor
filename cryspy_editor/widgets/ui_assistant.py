@@ -92,7 +92,9 @@ field and the field is set to it. For the step-by-step work by recipes take
 server): choose it in <b>Source</b>, give its address and pick the model
 (e.g. <code>ollama pull qwen2.5:7b-instruct</code> first). The assistant then
 works exactly as with a GGUF file; the server keeps the model in its memory,
-llama-cpp-python is not needed.</p>"""
+llama-cpp-python is not needed. Thinking models of Ollama (qwen3, deepseek-r1)
+answer without thinking, otherwise the thinking takes the whole answer
+length.</p>"""
 
 
 class ModelSettingsDialog(QtWidgets.QDialog):
