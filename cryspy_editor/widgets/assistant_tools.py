@@ -8,6 +8,7 @@ from typing import Dict
 
 import cryspy
 from cryspy import call_assistant_tool
+from cryspy.procedure_assistant.recipes import recipes_as_text
 from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 
 from cryspy_editor.widgets.assistant_dialog import Dialog, Question
@@ -31,6 +32,22 @@ def is_answer_tool(name: str) -> bool:
 def form_tools_text() -> str:
     """The actions with their arguments for the system prompt."""
     return "\n".join(tool.to_short_text() for tool in L_ASSISTANT_TOOLS)
+
+
+def form_recipes_text() -> str:
+    """The recipes of CrysPy (typical algorithms) for the system prompt."""
+    return recipes_as_text()
+
+
+def form_object_recipes_text(cryspy_object) -> str:
+    """The kinds of the experiments of the object and their recipes
+    (tool suggest_recipes of CrysPy); empty without experiments."""
+    if cryspy_object is None:
+        return ""
+    result = call_assistant_tool(cryspy_object, "suggest_recipes")
+    if result["flag_error"]:
+        return ""
+    return str(result["text"])
 
 
 def is_request_tool(name: str) -> bool:
@@ -72,14 +89,15 @@ def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dial
     return Dialog(name, l_question, finish, intro=intro)
 
 
-def run_tool(name: str, cryspy_object, arguments: dict) -> tuple:
+def run_tool(name: str, cryspy_object, arguments: dict, flag_user: bool = False) -> tuple:
     """(result, flag_object_changed) of the action. The result is text;
     errors start with "Error", so that the model can correct the call and
     the answer never reports a failed action as done.
 
     When CrysPy asks values from the user (key "missing"), the result is a
-    Dialog with its questions (form_dialog)."""
-    result = call_assistant_tool(cryspy_object, name, arguments)
+    Dialog with its questions (form_dialog). flag_user: the user typed the
+    action ('@name'), so the required arguments not given are asked too."""
+    result = call_assistant_tool(cryspy_object, name, arguments, ask_required=flag_user)
     if result.get("missing"):
         return form_dialog(name, cryspy_object, arguments, result), False
     text = str(result["text"])

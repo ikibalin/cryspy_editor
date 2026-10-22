@@ -43,17 +43,63 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
 
    | Memory | Model | Q4_K_M file |
    | --- | --- | --- |
-   | < 8 GB | Qwen2.5-1.5B-Instruct | 1 GB |
-   | 8 GB | Qwen2.5-3B-Instruct, Llama-3.2-3B-Instruct | 2 GB |
-   | 16 GB | Llama-3.1-8B-Instruct, Qwen2.5-7B-Instruct | 5 GB |
-   | 32 GB and more | Qwen2.5-14B-Instruct | 9 GB |
+   | < 8 GB | Qwen2.5-3B-Instruct (single requests only: too weak for recipes) | 2 GB |
+   | 8 GB | Qwen2.5-7B-Instruct | 4.7 GB |
+   | 16 GB and more | Qwen2.5-14B-Instruct | 9 GB |
 
-3. In CrysPy Editor choose **AI assistant → Load local model (*.gguf)...**,
+   Recommended: Qwen2.5-7B-Instruct Q4_K_M; with 16 GB of memory or more
+   Qwen2.5-14B-Instruct Q4_K_M, which follows the step-by-step recipes much
+   more reliably. Take a general *Instruct* model, not a *Coder* one, and the
+   Q4_K_M quantization (more accurate than Q4_0 at the same size). For the
+   step-by-step work by recipes set the context to 8192 or more.
+
+3. In CrysPy Editor choose **AI assistant → Load model (GGUF file or Ollama)...**,
    pick the file and, if needed, the threads, GPU layers, context size,
    answer length and temperature. The same table is shown there, with the row
-   for your computer in bold. The model is loaded in the background and is
+   for your computer in bold. When the file is chosen, the context range of the
+   model (from its GGUF header) and the context recommended for the memory of
+   your computer are shown under the field, and the field is set to it. The model is loaded in the background and is
    loaded again at the next start, until **Unload model**; the window opens
    again at the next start if it was open when the program was closed.
+
+**Ollama or another server.** Instead of a GGUF file the assistant can use a
+model of [Ollama](https://ollama.com) (e.g. after `ollama pull qwen2.5:7b-instruct`)
+or of an OpenAI-compatible server (LM Studio, llama.cpp server, vLLM): choose it
+in **Source**, give the address of the server and pick the model (**List models**).
+Everything else works the same; llama-cpp-python is not needed then.
+
+**Thinking models.** A thinking model (qwen3, deepseek-r1, ...) can think
+before each answer: turn on **Thinking** in the model settings (it is offered
+only for a model that can think). Its thinking is shown in the assistant window
+apart from the answers (button **Thoughts**), as it goes, and is cleared at each
+new request. **Maximal thinking length** limits it: the model is asked to think
+briefly, and a longer thinking is stopped, after which the model decides from
+what it has thought without thinking again (Ollama and GGUF files; another
+server is only asked to be brief). The thinking is a part of the answer, so the
+**Maximal answer length** must hold it: the value recommended for the model,
+the thinking limit and the context is set and explained under the field.
+
+**Recipes.** A task of several steps (e.g. "refine the structure step by
+step", "refine the flip ratios") is done by a recipe of CrysPy: the model
+reads its steps and works one action at a time, judging each result by
+chi_sq/n, R_F2 and the warnings of CrysPy. Each step is written in the chat
+as it starts and when its result comes; **Stop** ends the work, and at most
+"Maximal number of steps of the agent" actions (12 by default, in the model
+settings) are done for one request. The recipes
+for the experiments of the opened file (single crystal, powder, flip ratios,
+nuclear or magnetic crystal) are given to the model. **AI assistant →
+CookBook...** lists the recipes, shows their text and lets you write new ones
+or change those of CrysPy (New, Check, Save, Delete); your recipes are kept in
+the `recipes` folder next to the settings and replace the recipes of CrysPy
+with the same name.
+
+**Commands.** Type `@` in the input line to see the names of the recipes and
+of the actions with a short description (Tab and Shift+Tab go through them,
+Enter takes one), and run one directly, without the
+model choosing it: `@refine_flip_ratio_nuclear`, `@refine_parameters scale`,
+`@set_parameter path=cell.length_a value=5.43` or with a JSON object of the
+arguments. Without a loaded model a recipe is done as it is written, step by
+step. "What can you do?" (or `help`, `?`) lists the recipes and the actions.
 
 ## Development
 

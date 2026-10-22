@@ -2,6 +2,7 @@
 import re
 from typing import Callable, NoReturn, Optional
 from PyQt5 import QtWidgets, QtCore, QtGui
+import cryspy
 import cryspy_editor.widgets.ui_setting as ui_setting
 
 # class WEditCif(QtWidgets.QScrollArea):
@@ -40,9 +41,22 @@ def find_tag_of_token(lines: list, ind_line: int, ind_token: int) -> Optional[st
     return l_tag[ind_token]
 
 
-def toggle_refinement_in_text(text: str, position: int, refinable_tags: set):
+def switch_value(token: str, choices) -> str:
+    """Next allowed value of a text value (Ciso -> Cani -> Ciso), quoted
+    when it has spaces."""
+    new_value = cryspy.next_value_choice(choices, token)
+    if " " in new_value:
+        return f"'{new_value:}'"
+    return new_value
+
+
+def toggle_refinement_in_text(text: str, position: int, refinable_tags: set,
+                              value_choices: dict = None):
     """(new_text, start, end, new_token) for a double click at position, or
-    None if there is no refinable number there."""
+    None if there is nothing to change there.
+
+    A refinable number is refined or fixed; a text value with allowed
+    values (value_choices: CIF tag -> values) gets the next allowed value."""
     lines = text.split("\n")
     ind_start_line = 0
     for ind_line, line in enumerate(lines):
@@ -59,44 +73,41 @@ def toggle_refinement_in_text(text: str, position: int, refinable_tags: set):
     else:
         return None
     token = line[start:end]
-    if RE_NUMBER.match(token) is None:
-        return None
     tag = find_tag_of_token(lines, ind_line, ind_token)
-    if tag is None or normalize_tag(tag) not in refinable_tags:
+    if tag is None:
         return None
-    new_token = toggle_refinement(token)
+    tag = normalize_tag(tag)
+    if value_choices and tag in value_choices:
+        new_token = switch_value(token, value_choices[tag])
+    elif RE_NUMBER.match(token) is not None and tag in refinable_tags:
+        new_token = toggle_refinement(token)
+    else:
+        return None
     start += ind_start_line
     end += ind_start_line
     return text[:start] + new_token + text[end:], start, end, new_token
 
 
+def take_value_choices(item) -> dict:
+    """CIF tag -> allowed values of the text parameters of an ItemN or
+    LoopN, from the definition of its class in CrysPy (any class)."""
+    return cryspy.take_value_choices(item)
+
+
 def take_refinable_tags(item) -> set:
     """CIF tags of the parameters of an ItemN or LoopN that can be refined."""
-    item_class = getattr(item, "ITEM_CLASS", None)
-    if item_class is None:
-        item_class = item
-    try:
-        prefix = item_class.PREFIX
-        l_name, l_cif = item_class.ATTR_NAMES, item_class.ATTR_CIF
-        attr_ref = item_class.ATTR_REF
-    except AttributeError:
-        return set()
-    if not isinstance(attr_ref, (tuple, list)):  # a property on a class
-        return set()
-    s_tag = set()
-    for name, name_cif in zip(l_name, l_cif):
-        if name in attr_ref:
-            s_tag.add(normalize_tag(f"_{prefix}_{name_cif or name}"))
-    return s_tag
+    return cryspy.take_refinable_cif_tags(item)
 
 
 class WEditCif(QtWidgets.QTextEdit):
     """WFunction class."""
 
-    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str="", s_info:str="", refinable_tags: set = None):
+    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str="", s_info:str="", refinable_tags: set = None, value_choices: dict = None):
         super(WEditCif, self).__init__(parent)
         # double click on a number of these tags refines or fixes it
         self.refinable_tags = refinable_tags if refinable_tags else set()
+        # double click on a value of these tags gives the next allowed value
+        self.value_choices = value_choices if value_choices else {}
 
         self.setAcceptRichText(True)
         self.setSizePolicy(
@@ -115,10 +126,13 @@ class WEditCif(QtWidgets.QTextEdit):
 
     def mouseDoubleClickEvent(self, event):
         """A double click on a parameter that can be refined adds "()"
-        after it (refined) or removes the brackets (fixed value)."""
+        after it (refined) or removes the brackets (fixed value); on a
+        text value with allowed values (e.g. chi_type: Ciso, Cani) it puts
+        the next allowed value."""
         cursor = self.cursorForPosition(event.pos())
         result = toggle_refinement_in_text(
-            self.toPlainText(), cursor.position(), self.refinable_tags)
+            self.toPlainText(), cursor.position(), self.refinable_tags,
+            self.value_choices)
         if result is None:
             super().mouseDoubleClickEvent(event)
             return

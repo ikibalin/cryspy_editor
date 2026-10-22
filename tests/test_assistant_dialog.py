@@ -2,7 +2,6 @@
 and the dialog in Assistant.ask), without llama-cpp-python."""
 import json
 
-import cryspy
 import pytest
 
 from cryspy_editor.widgets import assistant_tools
@@ -153,21 +152,6 @@ def test_skip_with_missing_value_is_asked():
 # the dialog in Assistant.ask: a test-only CrysPy tool asks values from the
 # user (key "missing" of the result, as MCP elicitation)
 
-def convert_answer(d_missing: dict, text: str):
-    """cryspy.convert_assistant_answer for the tests with a CrysPy release
-    that has no "missing" yet."""
-    if d_missing.get("type") == "array":
-        l_value = [float(word) for word in text.replace(",", " ").split()]
-        if len(l_value) != d_missing.get("minItems", len(l_value)):
-            raise ValueError(f"{d_missing['minItems']} values are expected, {len(l_value)} are given.")
-        return l_value
-    if d_missing.get("type") == "number":
-        return float(text)
-    if "enum" in d_missing and text.strip().lower() not in d_missing["enum"]:
-        raise ValueError(f"'{text.strip()}' is not one of: {', '.join(d_missing['enum'])}.")
-    return text.strip().lower()
-
-
 D_CELL = {"name": "cell", "question": "the unit cell parameters", "type": "array",
           "items": {"type": "number"}, "minItems": 6, "maxItems": 6, "hint": "a b c alpha beta gamma"}
 D_GEOMETRY = {"name": "geometry", "question": "the geometry of measurements", "type": "string",
@@ -181,11 +165,9 @@ def plan_tool(monkeypatch):
     """call_assistant_tool of CrysPy replaced: "plan_measurement" asks the
     cell and the geometry, then the wavelength (as a tool raising
     ArgumentsNeeded), then makes the plan; other names give a text."""
-    if not hasattr(cryspy, "convert_assistant_answer"):
-        monkeypatch.setattr(cryspy, "convert_assistant_answer", convert_answer, raising=False)
     l_call = []
 
-    def fake_call(cryspy_object, name, arguments):
+    def fake_call(cryspy_object, name, arguments, ask_required=False):
         l_call.append((name, dict(arguments)))
         if name != "plan_measurement":
             return {"text": f"done {name}", "flag_object_changed": False, "flag_error": False, "missing": []}
@@ -300,7 +282,7 @@ def test_request_is_given_to_the_tool(monkeypatch):
     monkeypatch.setitem(assistant_tools.D_TOOLS, "find_values", Tool())
     l_arguments = []
 
-    def fake_call(obj, name, arguments):
+    def fake_call(obj, name, arguments, ask_required=False):
         l_arguments.append(arguments)
         return {"text": "ok", "flag_object_changed": False}
     monkeypatch.setattr(assistant_tools, "call_assistant_tool", fake_call)

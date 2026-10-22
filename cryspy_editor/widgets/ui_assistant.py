@@ -7,7 +7,7 @@ import html
 import os
 import traceback
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 
 from cryspy_editor.widgets.assistant import (
@@ -19,6 +19,22 @@ from cryspy_editor.widgets.assistant import (
     take_recommended_index,
     take_settings,
 )
+from cryspy_editor.widgets.assistant_commands import COMMAND_PREFIX, form_completions
+from cryspy_editor.widgets.assistant_models import (
+    D_DEFAULT_URL,
+    D_SOURCE_NAMES,
+    SOURCE_GGUF,
+    SOURCE_OLLAMA,
+    form_context_text,
+    form_max_tokens_text,
+    list_server_models,
+    recommend_max_tokens,
+    take_gguf_context,
+    take_gguf_thinking,
+    take_ollama_capabilities,
+    take_ollama_context,
+)
+from cryspy_editor.widgets.recipe_editor import init_user_recipe_folder
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
 PLACEHOLDER = "Ask the question or request an action"
@@ -31,7 +47,9 @@ EXAMPLES = (
     "- set a of crystal_pbso4 to 8.48 and run the refinement\n"
     "- calculate the nuclear structure factor of the reflection (5 0 3)\n"
     "- download Al from COD and add it to my data\n"
-    "- how to describe thermal vibrations?")
+    "- how to describe thermal vibrations?\n"
+    "- what can you do?\n"
+    "- @refine_structure (a recipe), @refine_parameters scale (an action): the names are proposed after @")
 
 
 def form_hint_html(memory_gb) -> str:
@@ -50,34 +68,64 @@ def form_hint_html(memory_gb) -> str:
         s_memory = (f"This computer has {memory_gb:.0f} GB of memory; "
                     "the matching row is in bold.")
     return f"""
-<p>Any <i>instruct</i> (chat) model in GGUF format works. Take the Q4_K_M
-quantization: the model file should take no more than half of the memory.
+<p>Any <i>instruct</i> (chat) model in GGUF format works. Recommended:
+<b>Qwen2.5-7B-Instruct Q4_K_M</b>; with 16 GB of memory or more
+<b>Qwen2.5-14B-Instruct Q4_K_M</b>, which follows the step-by-step recipes
+(e.g. the structure refinement) much more reliably. Take a general
+<i>Instruct</i> model, not a <i>Coder</i> one: coder models follow
+instructions and reason step by step worse. Take the Q4_K_M quantization:
+it is more accurate than Q4_0 at the same size. The model file should take
+no more than half of the memory.
 {s_memory}</p>
 <table border="1" cellpadding="3" cellspacing="0">
 <tr><th>Memory</th><th>Model</th><th>Q4_K_M file</th></tr>
 {''.join(ls_rows)}
 </table>
 <p>Download the file once from huggingface.co (search for the model name
-with "GGUF", e.g. bartowski/Meta-Llama-3.1-8B-Instruct-GGUF) and save it in
+with "GGUF", e.g. bartowski/Qwen2.5-7B-Instruct-GGUF) and save it in
 any folder. After that no internet connection is needed: the model runs on
 this computer.</p>
 <p><b>Threads</b>: 0 uses all cores but one. <b>GPU layers</b>: -1 puts the
 whole model on the GPU (Metal on Apple Silicon), 0 runs on CPU only.
 <b>Context</b>: the length of the conversation the model sees, in tokens;
-larger needs more memory.</p>"""
+larger needs more memory and makes the answers slower. When a model is chosen,
+its range and the value recommended for this computer are shown under the
+field and the field is set to it. For the step-by-step work by recipes take
+8192 or more.</p>
+<p><b>Ollama</b> (ollama.com) or another server of models (LM Studio, llama.cpp
+server): choose it in <b>Source</b>, give its address and pick the model
+(e.g. <code>ollama pull qwen2.5:7b-instruct</code> first). The assistant then
+works exactly as with a GGUF file; the server keeps the model in its memory,
+llama-cpp-python is not needed.</p>
+<p><b>Thinking</b>: a thinking model (qwen3, deepseek-r1, ...) can think
+before each answer: it weighs the results and decides better, but slower. The
+thinking is shown in the assistant window apart from the answers (button
+Thoughts). The thinking is a part of the answer, so the <b>maximal answer
+length</b> must hold it: the recommended value is set when the thinking is
+turned on. <b>Maximal thinking length</b>: the model is asked to think
+briefly, and a longer thinking is stopped: the model then decides from what
+it has thought, without thinking again (Ollama and GGUF files; another server
+is only asked). The thoughts are cleared at each new request.</p>"""
 
 
 class ModelSettingsDialog(QtWidgets.QDialog):
     """Choose the model file and its parameters."""
 
     def __init__(self, model_path: str = "", settings: dict = None,
-                 parent=None):
+                 parent=None, d_model: dict = None):
         super().__init__(parent)
         self.setWindowTitle("AI assistant: model settings")
         settings = take_settings(settings)
+        d_model = dict(d_model) if d_model else {}
+        self.memory_gb = get_total_memory_gb()
 
         layout = QtWidgets.QVBoxLayout(self)
         form = QtWidgets.QFormLayout()
+
+        self.cb_source = QtWidgets.QComboBox(self)
+        for source, name in D_SOURCE_NAMES.items():
+            self.cb_source.addItem(name, source)
+        form.addRow("Source", self.cb_source)
 
         layout_path = QtWidgets.QHBoxLayout()
         self.line_model_path = QtWidgets.QLineEdit(model_path, self)
@@ -87,6 +135,21 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         button_browse.clicked.connect(self.browse_model)
         layout_path.addWidget(button_browse)
         form.addRow("Model file (*.gguf)", layout_path)
+        self.line_model_path.editingFinished.connect(self.update_context)
+
+        self.line_url = QtWidgets.QLineEdit(d_model.get("url", ""), self)
+        form.addRow("Server address", self.line_url)
+        layout_server_model = QtWidgets.QHBoxLayout()
+        self.cb_server_model = QtWidgets.QComboBox(self)
+        self.cb_server_model.setEditable(True)
+        self.cb_server_model.setMinimumWidth(300)
+        self.cb_server_model.setEditText(d_model.get("model", ""))
+        self.cb_server_model.activated.connect(lambda _: self.update_context())
+        layout_server_model.addWidget(self.cb_server_model)
+        self.button_refresh = QtWidgets.QPushButton("List models", self)
+        self.button_refresh.clicked.connect(self.refresh_server_models)
+        layout_server_model.addWidget(self.button_refresh)
+        form.addRow("Model of the server", layout_server_model)
 
         self.sb_threads = QtWidgets.QSpinBox(self)
         self.sb_threads.setRange(0, max(1, os.cpu_count() or 1))
@@ -103,19 +166,58 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.sb_n_ctx.setSingleStep(1024)
         self.sb_n_ctx.setValue(settings["n_ctx"])
         form.addRow("Context (tokens)", self.sb_n_ctx)
+        self.label_context = QtWidgets.QLabel(self)
+        self.label_context.setWordWrap(True)
+        form.addRow("", self.label_context)
 
         self.sb_max_tokens = QtWidgets.QSpinBox(self)
-        self.sb_max_tokens.setRange(64, 8192)
-        self.sb_max_tokens.setSingleStep(128)
+        self.sb_max_tokens.setRange(64, 32768)
+        self.sb_max_tokens.setSingleStep(256)
         self.sb_max_tokens.setValue(settings["max_tokens"])
         form.addRow("Maximal answer length (tokens)", self.sb_max_tokens)
+        self.label_max_tokens = QtWidgets.QLabel(self)
+        self.label_max_tokens.setWordWrap(True)
+        form.addRow("", self.label_max_tokens)
+
+        self.check_thinking = QtWidgets.QCheckBox("The model thinks before each answer", self)
+        self.check_thinking.setToolTip(
+            "Thinking models (qwen3, deepseek-r1, ...) weigh the results before they decide; "
+            "the thinking is shown in the assistant window apart from the answers. "
+            "Slower, and the answer length must hold the thinking.")
+        self.check_thinking.setChecked(settings["thinking"])
+        self.check_thinking.toggled.connect(lambda _: self.update_max_tokens())
+        form.addRow("Thinking", self.check_thinking)
+        self.sb_max_thinking = QtWidgets.QSpinBox(self)
+        self.sb_max_thinking.setRange(128, 32768)
+        self.sb_max_thinking.setSingleStep(256)
+        self.sb_max_thinking.setValue(settings["max_thinking_tokens"])
+        self.sb_max_thinking.setToolTip(
+            "The model is asked to think briefly; a longer thinking is stopped and the model "
+            "decides from what it has thought (for Ollama and GGUF files; another server is only asked).")
+        self.sb_max_thinking.valueChanged.connect(lambda _: self.update_max_tokens())
+        form.addRow("Maximal thinking length (tokens)", self.sb_max_thinking)
+        self.flag_thinking_model = False
 
         self.dsb_temperature = QtWidgets.QDoubleSpinBox(self)
         self.dsb_temperature.setRange(0.0, 2.0)
         self.dsb_temperature.setSingleStep(0.1)
         self.dsb_temperature.setValue(settings["temperature"])
         form.addRow("Temperature", self.dsb_temperature)
+
+        self.sb_max_steps = QtWidgets.QSpinBox(self)
+        self.sb_max_steps.setRange(1, 100000)
+        self.sb_max_steps.setValue(settings["max_steps"])
+        self.sb_max_steps.setToolTip("The most actions the assistant does for one request step by step "
+                                     "(recipes); Stop ends the work earlier.")
+        form.addRow("Maximal number of steps of the agent", self.sb_max_steps)
         layout.addLayout(form)
+        self.form = form
+        self.l_gguf_fields = [layout_path, self.sb_threads, self.sb_gpu_layers]
+        self.l_server_fields = [self.line_url, layout_server_model]
+        index = self.cb_source.findData(d_model.get("source", SOURCE_GGUF))
+        self.cb_source.setCurrentIndex(max(index, 0))
+        self.cb_source.currentIndexChanged.connect(self.on_source_changed)
+        self.on_source_changed(flag_set_context=False)
 
         hint = QtWidgets.QTextBrowser(self)
         hint.setOpenExternalLinks(True)
@@ -142,19 +244,129 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             "GGUF models (*.gguf);; All Files (*)")
         if file_name:
             self.line_model_path.setText(file_name)
+            self.update_context()
+
+    def source(self) -> str:
+        return self.cb_source.currentData()
+
+    def _set_row_visible(self, field, flag: bool):
+        label = self.form.labelForField(field)
+        if label is not None:
+            label.setVisible(flag)
+        if isinstance(field, QtWidgets.QLayout):
+            for ind in range(field.count()):
+                widget = field.itemAt(ind).widget()
+                if widget is not None:
+                    widget.setVisible(flag)
+        else:
+            field.setVisible(flag)
+
+    def on_source_changed(self, *args, flag_set_context: bool = True):
+        source = self.source()
+        flag_gguf = source == SOURCE_GGUF
+        for field in self.l_gguf_fields:
+            self._set_row_visible(field, flag_gguf)
+        for field in self.l_server_fields:
+            self._set_row_visible(field, not flag_gguf)
+        if not flag_gguf and self.line_url.text().strip() in [""] + list(D_DEFAULT_URL.values()):
+            self.line_url.setText(D_DEFAULT_URL[source])
+        self.update_context(flag_set_value=flag_set_context)
+
+    def refresh_server_models(self):
+        try:
+            l_model = list_server_models(self.source(), self.line_url.text().strip())
+        except ConnectionError as error:
+            self.label_context.setText(str(error))
+            return
+        text = self.cb_server_model.currentText()
+        self.cb_server_model.clear()
+        self.cb_server_model.addItems(l_model)
+        if text in l_model or not l_model:
+            self.cb_server_model.setEditText(text)
+        self.update_context()
+
+    def update_context(self, flag_set_value: bool = True):
+        """Show the context range of the chosen model and set the value
+        recommended for this computer."""
+        source = self.source()
+        d_range = None
+        if source == SOURCE_GGUF:
+            if os.path.isfile(self.model_path()):
+                d_range = take_gguf_context(self.model_path(), self.memory_gb)
+        elif source == SOURCE_OLLAMA and self.server_model() != "":
+            d_range = take_ollama_context(self.line_url.text().strip(), self.server_model(), self.memory_gb)
+        self.update_thinking()
+        if d_range is None:
+            self.label_context.setText(
+                "Choose the model to see its context range." if source in (SOURCE_GGUF, SOURCE_OLLAMA)
+                else "Give the context set for the model in the server: the questions are shortened to it.")
+            return
+        self.label_context.setText(form_context_text(d_range, self.memory_gb))
+        if flag_set_value:
+            self.sb_n_ctx.setValue(d_range["n_recommended"])
+            self.update_max_tokens()
+
+    def update_thinking(self):
+        """The thinking can be turned on for a thinking model only (for a
+        server other than Ollama it is unknown: it may be turned on)."""
+        source = self.source()
+        if source == SOURCE_GGUF:
+            flag = os.path.isfile(self.model_path()) and take_gguf_thinking(self.model_path())
+        elif source == SOURCE_OLLAMA:
+            flag = self.server_model() != "" and "thinking" in take_ollama_capabilities(
+                self.line_url.text().strip(), self.server_model())
+        else:
+            flag = True
+        self.flag_thinking_model = bool(flag)
+        self.check_thinking.setEnabled(self.flag_thinking_model)
+        self.sb_max_thinking.setEnabled(self.flag_thinking_model)
+        self.check_thinking.setText("The model thinks before each answer" if self.flag_thinking_model
+                                    else "The model thinks before each answer (not a thinking model)")
+        self.update_max_tokens(flag_set_value=False)
+
+    def flag_thinking(self) -> bool:
+        return self.flag_thinking_model and self.check_thinking.isChecked()
+
+    def update_max_tokens(self, flag_set_value: bool = True):
+        """Explain the answer length and set the value recommended for the
+        model, the thinking and the context."""
+        n_ctx, max_thinking = self.sb_n_ctx.value(), self.sb_max_thinking.value()
+        self.label_max_tokens.setText(form_max_tokens_text(self.flag_thinking(), n_ctx, max_thinking))
+        if flag_set_value:
+            self.sb_max_tokens.setValue(recommend_max_tokens(self.flag_thinking(), n_ctx, max_thinking))
+
+    def server_model(self) -> str:
+        return self.cb_server_model.currentText().strip()
+
+    def model_description(self) -> dict:
+        """'source', 'model_path', 'url', 'model' of the chosen model."""
+        return {"source": self.source(), "model_path": self.model_path(),
+                "url": self.line_url.text().strip(), "model": self.server_model()}
 
     def set_defaults(self):
+        self.check_thinking.setChecked(DEFAULT_SETTINGS["thinking"])
+        self.sb_max_thinking.setValue(DEFAULT_SETTINGS["max_thinking_tokens"])
         self.sb_threads.setValue(DEFAULT_SETTINGS["n_threads"])
         self.sb_gpu_layers.setValue(DEFAULT_SETTINGS["n_gpu_layers"])
         self.sb_n_ctx.setValue(DEFAULT_SETTINGS["n_ctx"])
         self.sb_max_tokens.setValue(DEFAULT_SETTINGS["max_tokens"])
         self.dsb_temperature.setValue(DEFAULT_SETTINGS["temperature"])
+        self.sb_max_steps.setValue(DEFAULT_SETTINGS["max_steps"])
 
     def accept_if_valid(self):
-        if not os.path.isfile(self.model_path()):
+        if self.source() == SOURCE_GGUF:
+            from cryspy_editor.widgets.assistant import flag_llama_cpp
+            if not flag_llama_cpp:
+                QtWidgets.QMessageBox.information(self, "AI assistant", INSTALL_HINT)
+                return
+            if not os.path.isfile(self.model_path()):
+                QtWidgets.QMessageBox.warning(
+                    self, "AI assistant",
+                    "Choose an existing model file (*.gguf).")
+                return
+        elif self.server_model() == "":
             QtWidgets.QMessageBox.warning(
-                self, "AI assistant",
-                "Choose an existing model file (*.gguf).")
+                self, "AI assistant", "Give the model of the server (List models shows them).")
             return
         self.accept()
 
@@ -168,6 +380,9 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             "n_gpu_layers": self.sb_gpu_layers.value(),
             "max_tokens": self.sb_max_tokens.value(),
             "temperature": self.dsb_temperature.value(),
+            "max_steps": self.sb_max_steps.value(),
+            "thinking": bool(self.check_thinking.isChecked()),
+            "max_thinking_tokens": self.sb_max_thinking.value(),
         }
 
 
@@ -177,17 +392,21 @@ class LoadWorker(QObject):
     finished = pyqtSignal(object)  # emits Assistant
     error = pyqtSignal(str)
 
-    def __init__(self, model_path: str, settings: dict = None):
+    def __init__(self, d_model, settings: dict = None):
+        """d_model: see assistant_models.create_model; a text is the path
+        of a GGUF file."""
         super().__init__()
-        self.model_path = model_path
+        if isinstance(d_model, str):
+            d_model = {"source": SOURCE_GGUF, "model_path": d_model}
+        self.d_model = d_model
         self.settings = settings
         self.assistant = None
 
     def run(self):
         try:
-            from cryspy_editor.widgets.assistant import LocalModel
+            from cryspy_editor.widgets.assistant_models import create_model
             # kept here too: shutdown frees it if the window never gets it
-            self.assistant = Assistant(LocalModel(self.model_path, self.settings))
+            self.assistant = Assistant(create_model(self.d_model, self.settings))
             self.finished.emit(self.assistant)
         except Exception as e:
             self.error.emit(f"{type(e).__name__}: {e}")
@@ -201,6 +420,8 @@ class AskWorker(QObject):
     finished = pyqtSignal(dict)  # emits the result of Assistant.ask
     error = pyqtSignal(str)
     action_started = pyqtSignal(str)
+    step_text = pyqtSignal(str)  # a step of the work by a recipe, as it goes
+    thinking_text = pyqtSignal(str)  # the thinking of the model as it goes, "" starts a reply
 
     def __init__(self, assistant: Assistant, question: str, cryspy_object):
         super().__init__()
@@ -209,12 +430,19 @@ class AskWorker(QObject):
         self.cryspy_object = cryspy_object
 
     def run(self):
+        model = self.assistant.model
+        if model is not None and hasattr(model, "on_thinking"):
+            model.on_thinking = self.thinking_text.emit
         try:
             self.finished.emit(self.assistant.ask(
-                self.question, self.cryspy_object, on_action=self.action_started.emit))
+                self.question, self.cryspy_object, on_action=self.action_started.emit,
+                on_step=self.step_text.emit))
         except Exception as e:
             traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
+        finally:
+            if model is not None and hasattr(model, "on_thinking"):
+                model.on_thinking = None
 
 
 class AssistantWindow(QtWidgets.QWidget):
@@ -229,6 +457,7 @@ class AssistantWindow(QtWidgets.QWidget):
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(600, 500)
         self.assistant = None
+        self.assistant_no_model = None  # '@name' commands without a model
         self.take_cryspy_object = take_cryspy_object
         self.thread = None
         self.worker = None
@@ -237,22 +466,129 @@ class AssistantWindow(QtWidgets.QWidget):
 
         layout_title = QtWidgets.QHBoxLayout()
         self.label_model = QtWidgets.QLabel("No model loaded")
+        # a long model name is cut, not widening the window
+        self.label_model.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred)
         layout_title.addWidget(self.label_model, 1)
+        # the thinking of a thinking model, apart from the answers
+        self.button_thoughts = QtWidgets.QPushButton("Thoughts")
+        self.button_thoughts.setCheckable(True)
+        self.button_thoughts.setToolTip("Show the thinking of the model (when the thinking is turned on)")
+        self.button_thoughts.toggled.connect(self.show_thoughts)
+        layout_title.addWidget(self.button_thoughts)
         self.button_clear = QtWidgets.QPushButton("Clear chat")
         self.button_clear.clicked.connect(self.clear_chat)
         layout_title.addWidget(self.button_clear)
         layout.addLayout(layout_title)
 
-        self.history_view = QtWidgets.QTextEdit(self)
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self)
+        self.history_view = QtWidgets.QTextEdit(self.splitter)
         self.history_view.setReadOnly(True)
         self.history_view.setPlaceholderText(EXAMPLES)
-        layout.addWidget(self.history_view)
+        self.thoughts_view = QtWidgets.QPlainTextEdit(self.splitter)
+        self.thoughts_view.setReadOnly(True)
+        self.thoughts_view.setPlaceholderText("Thoughts of the model: shown as it thinks.")
+        self.thoughts_view.setVisible(False)
+        self.splitter.addWidget(self.history_view)
+        self.splitter.addWidget(self.thoughts_view)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+        layout.addWidget(self.splitter)
 
         self.input_line = QtWidgets.QLineEdit(self)
         self.input_line.setPlaceholderText(PLACEHOLDER)
         self.input_line.returnPressed.connect(self.on_send)
-        self.input_line.setEnabled(False)
-        layout.addWidget(self.input_line)
+        self.input_line.textEdited.connect(self.on_text_edited)
+        # '@' proposes the recipes and the actions with their descriptions
+        self.completer = QtWidgets.QCompleter(QtGui.QStandardItemModel(self), self)
+        self.completer.setCompletionRole(QtCore.Qt.UserRole)
+        self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self.completer.setMaxVisibleItems(12)
+        self.input_line.setCompleter(self.completer)
+        # Tab and Shift+Tab go through the proposed names instead of moving the focus
+        self.input_line.installEventFilter(self)
+        self.completer.popup().installEventFilter(self)
+        self.update_completions()
+        layout_input = QtWidgets.QHBoxLayout()
+        layout_input.addWidget(self.input_line, 1)
+        # the step-by-step work of the assistant stops after the running action
+        self.button_stop = QtWidgets.QPushButton("Stop")
+        self.button_stop.setToolTip("Stop the step-by-step work after the running action")
+        self.button_stop.clicked.connect(self.on_stop)
+        self.button_stop.setEnabled(False)
+        layout_input.addWidget(self.button_stop)
+        layout.addLayout(layout_input)
+
+    def update_completions(self):
+        """The recipes (they may be changed in the window of recipes) and
+        the actions: '@name' is completed, 'name: description' is shown."""
+        model = self.completer.model()
+        model.clear()
+        for command, description in form_completions():
+            item = QtGui.QStandardItem(f"{command}  {description}")
+            item.setData(command, QtCore.Qt.UserRole)
+            item.setToolTip(description)
+            model.appendRow(item)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.KeyPress and watched in (self.completer.popup(), self.input_line):
+            if event.key() in (QtCore.Qt.Key_Tab, QtCore.Qt.Key_Backtab):
+                if self.cycle_completion(event.key() == QtCore.Qt.Key_Backtab):
+                    return True
+            elif event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) and self.take_completion():
+                return True
+        return super().eventFilter(watched, event)
+
+    def take_completion(self) -> bool:
+        """Enter on a proposed name writes it in the input line, followed by
+        a space for the arguments; the next Enter sends the request."""
+        popup = self.completer.popup()
+        index = popup.currentIndex()
+        if not popup.isVisible() or not index.isValid():
+            return False
+        self.input_line.setText(f"{index.data(QtCore.Qt.UserRole)} ")
+        popup.hide()
+        return True
+
+    def cycle_completion(self, flag_back: bool = False) -> bool:
+        """Highlight the next (previous) proposed name, which is written in
+        the input line; Enter takes it. After '@name' without the list the
+        list is opened. False when there is nothing to propose: Tab then
+        moves the focus as usual."""
+        popup = self.completer.popup()
+        if not popup.isVisible():
+            text = self.input_line.text()
+            if not text.startswith(COMMAND_PREFIX) or " " in text:
+                return False
+            self.completer.setCompletionPrefix(text)
+            if self.completer.completionCount() == 0:
+                return False
+            self.completer.complete()
+        n_row = self.completer.completionCount()
+        if n_row == 0:
+            return False
+        row = popup.currentIndex().row()
+        if row < 0:
+            row = n_row - 1 if flag_back else 0
+        else:
+            row = (row + (-1 if flag_back else 1)) % n_row
+        index = self.completer.completionModel().index(row, 0)
+        popup.setCurrentIndex(index)
+        popup.scrollTo(index)
+        return True
+
+    def on_text_edited(self, text: str):
+        if text == COMMAND_PREFIX:
+            self.update_completions()
+            self.completer.complete()
+
+    def take_assistant(self):
+        """The assistant with the model, or one without a model for the
+        commands '@name' and the question 'what can you do?'."""
+        if self.assistant is not None:
+            return self.assistant
+        if self.assistant_no_model is None:
+            self.assistant_no_model = Assistant(None)
+        return self.assistant_no_model
 
     def show_window(self):
         """Show the window, or raise it if it is already open."""
@@ -280,21 +616,27 @@ class AssistantWindow(QtWidgets.QWidget):
         self.thread = None
         self.worker = None
 
-    def load_model(self, model_path: str, settings: dict = None):
+    def load_model(self, d_model, settings: dict = None):
+        """d_model: see LoadWorker."""
         if self.is_busy():
             return
         self.assistant = None
         self.input_line.setEnabled(False)
-        self.label_model.setText(f"Loading {model_path} ...")
+        if isinstance(d_model, str):
+            s_model = d_model
+        elif d_model.get("source", SOURCE_GGUF) == SOURCE_GGUF:
+            s_model = d_model.get("model_path", "")
+        else:
+            s_model = f"{d_model.get('model', '')} from {d_model.get('url', '')}"
+        self.label_model.setText(f"Loading {s_model} ...")
         self._start_thread(
-            LoadWorker(model_path, settings), self.on_model_loaded,
+            LoadWorker(d_model, settings), self.on_model_loaded,
             self.on_model_error)
 
     def unload_model(self):
         if self.is_busy():
             return
         self._free_model()
-        self.input_line.setEnabled(False)
         self.label_model.setText("No model loaded")
 
     def _free_model(self):
@@ -325,18 +667,39 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_model_loaded(self, assistant: Assistant):
         self.assistant = assistant
-        self.label_model.setText(f"Model: {assistant.model_name}")
+        flag_thinking = bool(getattr(assistant.model, "flag_thinking", False))
+        s_thinking = " (thinking)" if flag_thinking else ""
+        self.label_model.setText(f"Model: {assistant.model_name}{s_thinking}")
+        self.button_thoughts.setChecked(flag_thinking)
         self.input_line.setEnabled(True)
         self.input_line.setFocus()
-        self.signal_model_loaded.emit(assistant.model_path)
+        self.signal_model_loaded.emit(assistant.model_name)
 
     def on_model_error(self, msg: str):
         self.label_model.setText("No model loaded")
         self.append_history("Error", msg)
+        self.input_line.setEnabled(True)
         self.signal_model_loaded.emit("")
+
+    def show_thoughts(self, flag: bool):
+        self.thoughts_view.setVisible(flag)
+
+    def append_thinking(self, text: str):
+        """The thinking of the model as it goes; "" starts the thinking of a
+        new reply."""
+        cursor = self.thoughts_view.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.End)
+        if text == "":
+            if not self.thoughts_view.document().isEmpty():
+                cursor.insertText("\n\n" + "-" * 40 + "\n")
+        else:
+            cursor.insertText(text)
+        self.thoughts_view.setTextCursor(cursor)
+        self.thoughts_view.ensureCursorVisible()
 
     def clear_chat(self):
         self.history_view.clear()
+        self.thoughts_view.clear()
         if self.assistant is not None:
             self.assistant.clear_history()
 
@@ -346,23 +709,40 @@ class AssistantWindow(QtWidgets.QWidget):
             f"<b>{html.escape(role)}:</b>"
             f"<pre style='white-space: pre-wrap'>{html.escape(text)}</pre>")
 
+    def append_step(self, text: str):
+        """A step of the work by a recipe, shown as it goes."""
+        self.history_view.append(f"<pre style='white-space: pre-wrap'>{html.escape(text)}</pre>")
+        self.history_view.moveCursor(QtGui.QTextCursor.End)
+
     def on_send(self):
         question = self.input_line.text().strip()
-        if question == "" or self.assistant is None or self.is_busy():
+        if question == "" or self.is_busy():
             return
+        assistant = self.take_assistant()
         self.append_history("You", question)
+        self.thoughts_view.clear()  # the thinking of this request only
         self.input_line.clear()
         self.input_line.setEnabled(False)
         self.input_line.setPlaceholderText("Thinking...")
         cryspy_object = None
         if self.take_cryspy_object is not None:
             cryspy_object = self.take_cryspy_object()
-        worker = AskWorker(self.assistant, question, cryspy_object)
+        worker = AskWorker(assistant, question, cryspy_object)
+        self.button_stop.setEnabled(True)
         worker.action_started.connect(
-            lambda action: self.input_line.setPlaceholderText(f"Running '{action}'..."))
+            lambda action: self.input_line.setPlaceholderText(f"Running '{action}'... (Stop ends the work)"))
+        worker.step_text.connect(self.append_step)
+        worker.thinking_text.connect(self.append_thinking)
         self._start_thread(worker, self.on_reply, self.on_error)
 
+    def on_stop(self):
+        if isinstance(self.worker, AskWorker):
+            self.worker.assistant.request_stop()
+            self.button_stop.setEnabled(False)
+            self.input_line.setPlaceholderText("Stopping after the running action...")
+
     def _ready_for_input(self, flag_question: bool = False):
+        self.button_stop.setEnabled(False)
         self.input_line.setEnabled(True)
         self.input_line.setPlaceholderText(PLACEHOLDER_ANSWER if flag_question else PLACEHOLDER)
         self.input_line.setFocus()
@@ -375,7 +755,7 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_error(self, msg: str):
         self.append_history("Error", msg)
-        self._ready_for_input(self.assistant is not None and self.assistant.is_asking())
+        self._ready_for_input(self.take_assistant().is_asking())
 
 
 class AssistantController(QObject):
@@ -383,7 +763,8 @@ class AssistantController(QObject):
     assistant, Unload model; loads the model of the last session at start.
 
     d_setup keys (kept from older versions): llm_model_path, llm_settings,
-    llm_autoload; assistant_window_visible.
+    llm_autoload; assistant_window_visible; llm_source, llm_server_url,
+    llm_server_model (Ollama or another server).
     """
 
     def __init__(self, main_window, d_setup: dict, save_settings, take_cryspy_object, on_object_changed):
@@ -394,6 +775,8 @@ class AssistantController(QObject):
         self.window = AssistantWindow(take_cryspy_object=take_cryspy_object, parent=main_window)
         self.window.signal_object_changed.connect(on_object_changed)
         self.window.signal_model_loaded.connect(self.on_model_loaded)
+        self.recipe_dialog = None
+        init_user_recipe_folder()
         app = QtWidgets.QApplication.instance()
         if app is not None:
             # also when the program quits without closing the main window
@@ -401,50 +784,82 @@ class AssistantController(QObject):
 
     def init_menu(self, menu_bar):
         menu_ai = menu_bar.addMenu("AI assistant")
-        load_action = menu_ai.addAction("Load local model (*.gguf)...")
+        load_action = menu_ai.addAction("Load model (GGUF file or Ollama)...")
         load_action.setStatusTip(
-            "Choose a GGUF chat model and its settings; it runs on this computer.")
+            "Choose a chat model (a GGUF file or a model of Ollama) and its settings; "
+            "it runs on this computer.")
         load_action.triggered.connect(self.choose_model)
         show_action = menu_ai.addAction("Show assistant")
         show_action.triggered.connect(self.show_window)
         unload_action = menu_ai.addAction("Unload model")
         unload_action.triggered.connect(self.unload_model)
+        menu_ai.addSeparator()
+        recipes_action = menu_ai.addAction("CookBook...")
+        recipes_action.setStatusTip(
+            "Read, write and edit the recipes: the steps of typical analyses the assistant follows.")
+        recipes_action.triggered.connect(self.show_recipes)
         return menu_ai
+
+    def show_recipes(self):
+        from cryspy_editor.widgets.recipe_editor import RecipeEditorDialog
+        if self.recipe_dialog is None:
+            self.recipe_dialog = RecipeEditorDialog(parent=self.main_window)
+        else:
+            self.recipe_dialog.update_list()
+        self.recipe_dialog.show()
+        self.recipe_dialog.raise_()
 
     def show_window(self):
         self.window.show_window()
         self.d_setup["assistant_window_visible"] = True
 
+    def take_model_description(self) -> dict:
+        return {"source": self.d_setup.get("llm_source", SOURCE_GGUF),
+                "model_path": self.d_setup.get("llm_model_path", ""),
+                "url": self.d_setup.get("llm_server_url", ""),
+                "model": self.d_setup.get("llm_server_model", "")}
+
     def choose_model(self):
-        from cryspy_editor.widgets.assistant import flag_llama_cpp
-        if not flag_llama_cpp:
-            QtWidgets.QMessageBox.information(self.main_window, WINDOW_TITLE, INSTALL_HINT)
-            return
         if self.window.is_busy():
             QtWidgets.QMessageBox.information(
                 self.main_window, WINDOW_TITLE, "The assistant is busy, try again later.")
             return
         dialog = ModelSettingsDialog(
             model_path=self.d_setup.get("llm_model_path", ""),
-            settings=self.d_setup.get("llm_settings", None), parent=self.main_window)
+            settings=self.d_setup.get("llm_settings", None), parent=self.main_window,
+            d_model=self.take_model_description())
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             self.d_setup["llm_settings"] = dialog.settings()
+            d_model = dialog.model_description()
+            self.d_setup["llm_source"] = d_model["source"]
+            if d_model["source"] == SOURCE_GGUF:
+                self.d_setup["llm_model_path"] = d_model["model_path"]
+            else:
+                self.d_setup["llm_server_url"] = d_model["url"]
+                self.d_setup["llm_server_model"] = d_model["model"]
             self.show_window()
-            self.load_model(dialog.model_path())
+            self.load_model(d_model)
 
-    def load_model(self, model_path: str):
-        self.window.load_model(model_path, self.d_setup.get("llm_settings", None))
+    def load_model(self, d_model):
+        """d_model: see LoadWorker."""
+        self.window.load_model(d_model, self.d_setup.get("llm_settings", None))
 
     def autoload_model(self):
-        """Load the model of the last session, if llama-cpp-python is
-        installed; the window is shown if it was open then."""
+        """Load the model of the last session (a GGUF file if
+        llama-cpp-python is installed, or the model of a server); the window
+        is shown if it was open then."""
         from cryspy_editor.widgets.assistant import flag_llama_cpp
-        model_path = self.d_setup.get("llm_model_path", "")
-        flag_autoload = bool(self.d_setup.get("llm_autoload", False))
-        if flag_llama_cpp and flag_autoload and os.path.isfile(model_path):
-            if bool(self.d_setup.get("assistant_window_visible", True)):
-                self.window.show_window()
-            self.load_model(model_path)
+        d_model = self.take_model_description()
+        if not bool(self.d_setup.get("llm_autoload", False)):
+            return
+        if d_model["source"] == SOURCE_GGUF:
+            if not (flag_llama_cpp and os.path.isfile(d_model["model_path"])):
+                return
+        elif d_model["model"] == "":
+            return
+        if bool(self.d_setup.get("assistant_window_visible", True)):
+            self.window.show_window()
+        self.load_model(d_model)
 
     def unload_model(self):
         if self.window.is_busy():
@@ -454,10 +869,9 @@ class AssistantController(QObject):
         self.d_setup["llm_autoload"] = False
         self.save_settings()
 
-    def on_model_loaded(self, model_path: str):
-        if model_path != "":
-            self.d_setup["llm_model_path"] = model_path
-        self.d_setup["llm_autoload"] = model_path != ""
+    def on_model_loaded(self, model_name: str):
+        """model_name is empty when the model was not loaded."""
+        self.d_setup["llm_autoload"] = model_name != ""
         self.save_settings()
 
     def shutdown(self):

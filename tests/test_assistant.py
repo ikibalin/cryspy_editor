@@ -228,7 +228,7 @@ def test_take_settings():
 
 
 @pytest.mark.parametrize("memory, index", [
-    (None, None), (4, 0), (7.6, 1), (8, 1), (16, 2), (24, 2), (64, 3)])
+    (None, None), (4, 0), (7.6, 1), (8, 1), (16, 2), (24, 2), (64, 2)])
 def test_take_recommended_index(memory, index):
     assert assistant_module.take_recommended_index(memory) == index
 
@@ -284,8 +284,8 @@ def test_assistant_is_a_window_of_its_own(qapp):
     controller = AssistantController(main_window, d_setup, lambda: True, lambda: None, lambda: None)
     try:
         menu = controller.init_menu(main_window.menuBar())
-        assert [action.text() for action in menu.actions()] == \
-            ["Load local model (*.gguf)...", "Show assistant", "Unload model"]
+        assert [action.text() for action in menu.actions() if not action.isSeparator()] == \
+            ["Load model (GGUF file or Ollama)...", "Show assistant", "Unload model", "CookBook..."]
         window = controller.window
         assert window.windowTitle() == "AI Assistant / CrysPy Editor"
         assert window.windowFlags() & QtCore.Qt.Window

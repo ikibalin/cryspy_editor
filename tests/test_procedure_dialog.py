@@ -1,20 +1,13 @@
 """Menus and forms of CrysPy procedures made from their descriptions in
 CrysPy (type hints and numpydoc docstrings)."""
 import cryspy
-import pytest
 from PyQt5 import QtWidgets
 
-from cryspy_editor.widgets import w_procedure_dialog
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
     is_autorun,
     take_description,
 )
-
-# CrysPy describes its procedures since the release after 0.16.0
-pytestmark = pytest.mark.skipif(
-    w_procedure_dialog.describe_procedure is None,
-    reason="this CrysPy has no cryspy.procedure_assistant.procedures")
 
 RCIF = """global_
 
