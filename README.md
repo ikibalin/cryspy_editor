@@ -53,12 +53,20 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
    Q4_K_M quantization (more accurate than Q4_0 at the same size). For the
    step-by-step work by recipes set the context to 8192 or more.
 
-3. In CrysPy Editor choose **AI assistant → Load local model (*.gguf)...**,
+3. In CrysPy Editor choose **AI assistant → Load model (GGUF file or Ollama)...**,
    pick the file and, if needed, the threads, GPU layers, context size,
    answer length and temperature. The same table is shown there, with the row
-   for your computer in bold. The model is loaded in the background and is
+   for your computer in bold. When the file is chosen, the context range of the
+   model (from its GGUF header) and the context recommended for the memory of
+   your computer are shown under the field, and the field is set to it. The model is loaded in the background and is
    loaded again at the next start, until **Unload model**; the window opens
    again at the next start if it was open when the program was closed.
+
+**Ollama or another server.** Instead of a GGUF file the assistant can use a
+model of [Ollama](https://ollama.com) (e.g. after `ollama pull qwen2.5:7b-instruct`)
+or of an OpenAI-compatible server (LM Studio, llama.cpp server, vLLM): choose it
+in **Source**, give the address of the server and pick the model (**List models**).
+Everything else works the same; llama-cpp-python is not needed then.
 
 **Recipes.** A task of several steps (e.g. "refine the structure step by
 step", "refine the flip ratios") is done by a recipe of CrysPy: the model
