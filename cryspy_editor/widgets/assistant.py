@@ -86,6 +86,7 @@ DEFAULT_SETTINGS = {
     "temperature": 0.2,
     "max_steps": MAX_AGENT_STEPS,
     "thinking": False,  # a thinking model (qwen3, deepseek-r1) thinks before each answer
+    "max_thinking_tokens": 2048,  # then the thinking is stopped and the model decides
 }
 
 # (minimal RAM in GB, models, approximate size of the Q4_K_M file); the
@@ -364,33 +365,71 @@ class LocalModel:
         return getattr(self, "flag_thinking_model", False) and self.settings.get("thinking", False)
 
     def chat(self, messages: List[Dict[str, str]], flag_json: bool = False,
-             schema: Optional[dict] = None) -> str:
+             schema: Optional[dict] = None, flag_think: Optional[bool] = None) -> str:
         """Reply of the model; with flag_json it is a JSON object, with
         schema it follows the JSON schema (grammar of llama.cpp). A grammar
         lets the model write only JSON, so a thinking model gets none: its
-        <think> block goes to on_thinking and the JSON is found after it."""
-        from cryspy_editor.widgets.assistant_models import form_cut_text, split_thinking
+        <think> block goes to on_thinking as it comes and the JSON is found
+        after it. A thinking longer than max_thinking_tokens is stopped and
+        the model answers from it (flag_think False: that answer)."""
+        from cryspy_editor.widgets.assistant_models import (
+            add_thinking_rule,
+            form_cut_text,
+            form_decide_messages,
+            form_stop_text,
+            split_thinking,
+        )
+        flag_thinking = self.flag_thinking if flag_think is None else flag_think
         kwargs = {}
-        if flag_json and not self.flag_thinking:
+        if flag_json and not flag_thinking:
             kwargs["response_format"] = {"type": "json_object"}
             if schema is not None:
                 kwargs["response_format"]["schema"] = schema
         max_tokens = self.settings["max_tokens"]
         messages = fit_messages(messages, max_tokens, self.llm.n_ctx(), self.count_tokens)
-        result = self.llm.create_chat_completion(
-            messages=messages, max_tokens=max_tokens,
-            temperature=self.settings["temperature"], **kwargs)
-        text = result["choices"][0]["message"]["content"] or ""
-        if not self.flag_thinking:
+        if not flag_thinking:
+            result = self.llm.create_chat_completion(
+                messages=messages, max_tokens=max_tokens,
+                temperature=self.settings["temperature"], **kwargs)
+            text = result["choices"][0]["message"]["content"] or ""
+            if flag_think is False:  # a <think> block written in spite of the request
+                text = split_thinking(text)[1]
             return text.strip()
+        max_thinking_tokens = self.settings["max_thinking_tokens"]
+        on_thinking = getattr(self, "on_thinking", None) or (lambda text: None)
+        on_thinking("")
+        chunks = self.llm.create_chat_completion(
+            messages=add_thinking_rule(messages, max_thinking_tokens), max_tokens=max_tokens,
+            temperature=self.settings["temperature"], stream=True)
+        text, n_thinking, finish_reason, flag_stopped = "", 0, None, False
+        try:
+            for chunk in chunks:
+                d_choice = chunk["choices"][0]
+                finish_reason = d_choice.get("finish_reason") or finish_reason
+                delta = d_choice.get("delta", {}).get("content") or ""
+                if "</think>" in text:  # the answer
+                    text += delta
+                    continue
+                text += delta
+                if "</think>" in text:
+                    on_thinking(delta.split("</think>", 1)[0])
+                    continue
+                on_thinking(delta.replace("<think>", ""))
+                n_thinking += 1  # a chunk is a token
+                if n_thinking > max_thinking_tokens:
+                    flag_stopped = True
+                    break
+        finally:
+            if hasattr(chunks, "close"):
+                chunks.close()
+        if flag_stopped:
+            on_thinking(form_stop_text(max_thinking_tokens))
+            thinking = text.replace("<think>", "", 1)
+            return self.chat(form_decide_messages(messages, thinking), flag_json, schema, flag_think=False)
         thinking, answer = split_thinking(text)
-        if thinking == "" and "<think>" in text:  # cut inside the thinking
-            thinking, answer = text.replace("<think>", "", 1).strip(), ""
-        on_thinking = getattr(self, "on_thinking", None)
-        if on_thinking is not None and thinking != "":
-            on_thinking("")
-            on_thinking(thinking)
-        if answer == "" and result["choices"][0].get("finish_reason") == "length":
+        if "</think>" not in text and "<think>" in text:  # cut inside the thinking
+            answer = ""
+        if answer == "" and finish_reason == "length":
             raise ValueError(form_cut_text(max_tokens))
         return answer
 

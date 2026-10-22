@@ -70,8 +70,9 @@ def test_thinking_and_answer_length():
     assert split_thinking('a is fine</think>{"x": 1}') == ("a is fine", '{"x": 1}')  # <think> in the prompt
     assert split_thinking('{"x": 1}') == ("", '{"x": 1}')
     assert recommend_max_tokens(False, 8192) == 1024
-    assert recommend_max_tokens(True, 32768) == 8192
-    assert recommend_max_tokens(True, 8192) == 4096  # half of the context stays for the question
+    assert recommend_max_tokens(True, 32768) == 9216  # the thinking and the answer
+    assert recommend_max_tokens(True, 32768, 2048) == 3072
+    assert recommend_max_tokens(True, 8192, 8192) == 4096  # half of the context stays for the question
     assert recommend_max_tokens(False, 512) == 256
 
 
@@ -127,7 +128,9 @@ class FakeServer(BaseHTTPRequestHandler):
         if self.path == "/api/chat" and d_in["stream"]:
             # a thinking model: the thinking, then the answer, line by line
             l_part = [{"message": {"thinking": "The user "}}, {"message": {"thinking": "greets me."}}]
-            if d_in["model"] == "qwen3:cut":
+            if d_in["model"] == "qwen3:long":  # thinks without end
+                l_part = [{"message": {"thinking": "Shall I refine the scale or not? "}}] * 200
+            elif d_in["model"] == "qwen3:cut":
                 l_part.append({"done": True, "done_reason": "length", "message": {}})
             else:
                 l_part += [{"message": {"content": s_reply[:10]}}, {"message": {"content": s_reply[10:]}},
@@ -200,6 +203,67 @@ def test_ollama_thinking_model(server_url):
     assert assistant_models.take_ollama_capabilities("http://127.0.0.1:9", "qwen3:8b") == []
 
 
+def test_ollama_thinking_is_stopped_at_its_limit(server_url):
+    """A thinking longer than max_thinking_tokens is stopped; the model
+    answers from it without thinking again."""
+    model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:long",
+                        {"thinking": True, "max_thinking_tokens": 256, "max_tokens": 1024, "n_ctx": 8192})
+    l_thinking = []
+    model.on_thinking = l_thinking.append
+    messages = [{"role": "system", "content": "You help."}, {"role": "user", "content": "hi"}]
+    assert model.chat(messages, flag_json=True).startswith("{")
+    (path_1, d_think), (path_2, d_decide) = FakeServer.l_request[-2:]
+    assert d_think["stream"] and d_think["think"] is True
+    assert "Think briefly" in d_think["messages"][0]["content"]
+    assert d_decide["think"] is False and not d_decide["stream"]
+    assert "reached its limit" in d_decide["messages"][-1]["content"]
+    assert d_decide["messages"][-2]["role"] == "assistant"
+    s_thinking = "".join(l_thinking)
+    assert "limit of 256 tokens" in s_thinking
+    assert len(s_thinking) < 256 * 4 + 200  # about the limit, not all 200 parts
+    assert messages[0]["content"] == "You help."  # the messages of the assistant stay
+
+
+def test_gguf_thinking_streamed_and_stopped():
+    """A GGUF model: the <think> block is streamed to on_thinking, the
+    answer comes after it; a too long thinking is stopped."""
+    from cryspy_editor.widgets.assistant import LocalModel, take_settings
+
+    class StreamLlama:
+        def __init__(self, l_stream):
+            self.l_stream = l_stream
+            self.l_kwargs = []
+
+        def n_ctx(self):
+            return 8192
+
+        def tokenize(self, data, add_bos=False):
+            return data.split()
+
+        def create_chat_completion(self, messages, **kwargs):
+            self.l_kwargs.append(dict(kwargs, messages=messages))
+            if kwargs.get("stream"):
+                return iter([{"choices": [{"delta": {"content": part}}]} for part in self.l_stream])
+            return {"choices": [{"message": {"content": '{"answer": "decided"}'}}]}
+
+    model = LocalModel.__new__(LocalModel)
+    model.flag_thinking_model = True
+    model.settings = take_settings({"thinking": True, "max_thinking_tokens": 5})
+    l_thinking = []
+    model.on_thinking = l_thinking.append
+    model.llm = StreamLlama(["<think>", "Scale ", "first.", "</think>", '{"answer": ', '"ok"}'])
+    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True) == '{"answer": "ok"}'
+    assert "".join(l_thinking) == "Scale first."
+    assert "response_format" not in model.llm.l_kwargs[-1]  # a grammar forbids the thinking
+
+    l_thinking.clear()
+    model.llm = StreamLlama(["<think>"] + ["again "] * 50)
+    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True) == '{"answer": "decided"}'
+    assert "limit of 5 tokens" in "".join(l_thinking)
+    d_decide = model.llm.l_kwargs[-1]
+    assert "response_format" in d_decide and "reached its limit" in d_decide["messages"][-1]["content"]
+
+
 def test_openai_compatible_model(server_url):
     model = ServerModel(SOURCE_OPENAI, f"{server_url}/v1", "qwen2.5-7b-instruct")
     assert model.chat([{"role": "user", "content": "hi"}], flag_json=True,
@@ -240,10 +304,13 @@ def test_dialog_sources_and_context(qapp, tmp_path, server_url):
         assert dialog.check_thinking.isEnabled()
         dialog.check_thinking.setChecked(True)
         assert dialog.settings()["thinking"] is True
-        assert dialog.settings()["max_tokens"] == recommend_max_tokens(True, dialog.settings()["n_ctx"])
+        assert dialog.settings()["max_tokens"] == recommend_max_tokens(
+            True, dialog.settings()["n_ctx"], dialog.settings()["max_thinking_tokens"])
+        dialog.sb_max_thinking.setValue(1024)
+        assert dialog.settings()["max_tokens"] == recommend_max_tokens(True, dialog.settings()["n_ctx"], 1024)
         assert "thinking" in dialog.label_max_tokens.text()
         dialog.check_thinking.setChecked(False)
-        assert dialog.settings()["max_tokens"] == recommend_max_tokens(False, dialog.settings()["n_ctx"])
+        assert dialog.settings()["max_tokens"] == recommend_max_tokens(False, dialog.settings()["n_ctx"], 1024)
     finally:
         dialog.close()
 
@@ -289,6 +356,14 @@ def test_window_shows_the_thinking(qapp, server_url):
         assert window.thoughts_view.toPlainText() == "The user greets me."
         assert "Hello" in window.history_view.toPlainText()
         assert model.on_thinking is None  # the window takes the thinking only while it asks
+        window.input_line.setText("hello again")
+        window.on_send()  # the thoughts of the last request only
+        for _ in range(500):
+            qapp.processEvents()
+            if window.thread is None:
+                break
+            time.sleep(0.01)
+        assert window.thoughts_view.toPlainText() == "The user greets me."
         window.append_thinking("")
         window.append_thinking("Next.")
         assert window.thoughts_view.toPlainText().endswith("-" * 40 + "\nNext.")
