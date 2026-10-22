@@ -801,15 +801,7 @@ class AssistantController(QObject):
         return menu_ai
 
     def show_recipes(self):
-        from cryspy_editor.widgets.recipe_editor import (
-            RecipeEditorDialog,
-            flag_recipe_files,
-        )
-        if not flag_recipe_files():
-            QtWidgets.QMessageBox.information(
-                self.main_window, WINDOW_TITLE,
-                "Editing of recipes needs a newer CrysPy (with recipes as text files).")
-            return
+        from cryspy_editor.widgets.recipe_editor import RecipeEditorDialog
         if self.recipe_dialog is None:
             self.recipe_dialog = RecipeEditorDialog(parent=self.main_window)
         else:

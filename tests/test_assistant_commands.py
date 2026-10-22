@@ -13,8 +13,6 @@ from cryspy_editor.widgets.assistant_tools import D_TOOLS
 from test_assistant import RCIF, make_assistant
 from test_assistant_agent import final, step
 
-flag_recipes = "get_recipe" in D_TOOLS and len(take_recipe_names()) > 0
-
 
 def test_parse_command():
     assert parse_command("@refine_structure") == ("refine_structure", "")
@@ -117,7 +115,6 @@ def test_wrong_arguments_of_action():
     assert out["text"].startswith("Error") and out["actions"] == []
 
 
-@pytest.mark.skipif(not flag_recipes, reason="CrysPy without recipes")
 def test_recipe_with_model_starts_the_agent():
     name = take_recipe_names()[0]
     assistant = make_assistant([final("done")])
@@ -127,7 +124,6 @@ def test_recipe_with_model_starts_the_agent():
     assert any("[get_recipe]" in text for text in l_step)
 
 
-@pytest.mark.skipif(not flag_recipes, reason="CrysPy without recipes")
 def test_recipe_without_model_runs_literally(monkeypatch):
     calls = []
 
@@ -145,7 +141,6 @@ def test_recipe_without_model_runs_literally(monkeypatch):
     assert "Recipe done." in out["text"] and "No model" in out["text"]
 
 
-@pytest.mark.skipif(not flag_recipes, reason="CrysPy without recipes")
 def test_recipe_without_model_needs_a_file():
     out = Assistant(None).ask(f"@{take_recipe_names()[0]}", None)
     assert out["text"].startswith("Error")
@@ -216,7 +211,6 @@ def test_tab_without_names_moves_focus(qapp):
         window.close()
 
 
-@pytest.mark.skipif(not assistant_tools.flag_ask_required(), reason="CrysPy without ask_required")
 def test_missing_arguments_of_action_are_asked():
     obj = cryspy.str_to_globaln(RCIF)
     assistant = Assistant(None)
@@ -227,7 +221,6 @@ def test_missing_arguments_of_action_are_asked():
     assert obj.items[0].cell.length_a == pytest.approx(5.43)
 
 
-@pytest.mark.skipif(not assistant_tools.flag_ask_required(), reason="CrysPy without ask_required")
 def test_cod_without_formula_is_asked():
     out = Assistant(None).ask("@add_crystal_from_cod", cryspy.str_to_globaln(RCIF))
     assert out["question"] and "COD number" in out["text"]

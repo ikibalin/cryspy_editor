@@ -14,21 +14,16 @@ import inspect
 import cryspy
 from PyQt5 import QtWidgets
 
-try:
-    from cryspy.procedure_assistant.procedures import (
-        describe_procedure,
-        find_cif_objects,
-        take_procedure_parameters,
-    )
-except ImportError:  # CrysPy before procedure descriptions: the old panel is used
-    describe_procedure = find_cif_objects = take_procedure_parameters = None
+from cryspy.procedure_assistant.procedures import (
+    describe_procedure,
+    find_cif_objects,
+    take_procedure_parameters,
+)
 
 
 def take_description(function):
     """Description of the procedure by CrysPy, None if CrysPy cannot
-    describe it (older CrysPy, or parameters of other types)."""
-    if describe_procedure is None:
-        return None
+    describe it (parameters of other types)."""
     try:
         return describe_procedure(function)
     except (TypeError, ValueError, AttributeError):

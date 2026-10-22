@@ -4,11 +4,11 @@ The actions are the tools of CrysPy (cryspy.call_assistant_tool): CrysPy
 Editor keeps no tools of its own. This module is the counterpart of
 assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
-import inspect
 from typing import Dict
 
 import cryspy
 from cryspy import call_assistant_tool
+from cryspy.procedure_assistant.recipes import recipes_as_text
 from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 
 from cryspy_editor.widgets.assistant_dialog import Dialog, Question
@@ -35,20 +35,14 @@ def form_tools_text() -> str:
 
 
 def form_recipes_text() -> str:
-    """The recipes of CrysPy (typical algorithms) for the system prompt;
-    empty for a CrysPy without recipes."""
-    try:
-        from cryspy.procedure_assistant.recipes import recipes_as_text
-    except ImportError:
-        return ""
+    """The recipes of CrysPy (typical algorithms) for the system prompt."""
     return recipes_as_text()
 
 
 def form_object_recipes_text(cryspy_object) -> str:
     """The kinds of the experiments of the object and their recipes
-    (tool suggest_recipes of CrysPy); empty without experiments or for a
-    CrysPy without this tool."""
-    if cryspy_object is None or "suggest_recipes" not in D_TOOLS:
+    (tool suggest_recipes of CrysPy); empty without experiments."""
+    if cryspy_object is None:
         return ""
     result = call_assistant_tool(cryspy_object, "suggest_recipes")
     if result["flag_error"]:
@@ -95,12 +89,6 @@ def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dial
     return Dialog(name, l_question, finish, intro=intro)
 
 
-def flag_ask_required() -> bool:
-    """CrysPy asks the missing required arguments of a tool called by the
-    user (newer than 0.16)."""
-    return "ask_required" in inspect.signature(call_assistant_tool).parameters
-
-
 def run_tool(name: str, cryspy_object, arguments: dict, flag_user: bool = False) -> tuple:
     """(result, flag_object_changed) of the action. The result is text;
     errors start with "Error", so that the model can correct the call and
@@ -109,10 +97,7 @@ def run_tool(name: str, cryspy_object, arguments: dict, flag_user: bool = False)
     When CrysPy asks values from the user (key "missing"), the result is a
     Dialog with its questions (form_dialog). flag_user: the user typed the
     action ('@name'), so the required arguments not given are asked too."""
-    if flag_user and flag_ask_required():
-        result = call_assistant_tool(cryspy_object, name, arguments, ask_required=True)
-    else:
-        result = call_assistant_tool(cryspy_object, name, arguments)
+    result = call_assistant_tool(cryspy_object, name, arguments, ask_required=flag_user)
     if result.get("missing"):
         return form_dialog(name, cryspy_object, arguments, result), False
     text = str(result["text"])

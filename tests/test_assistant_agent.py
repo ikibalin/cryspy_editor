@@ -3,16 +3,12 @@ without llama-cpp-python."""
 import json
 
 import cryspy
-import pytest
 
 from cryspy_editor.widgets import assistant_agent
 from cryspy_editor.widgets.assistant import take_json_object
 from cryspy_editor.widgets.assistant_agent import Agent, form_step_schema, take_step_reply
-from cryspy_editor.widgets.assistant_tools import D_TOOLS
 
 from test_assistant import RCIF, make_assistant, reply
-
-pytestmark = pytest.mark.skipif("get_recipe" not in D_TOOLS, reason="CrysPy without recipes")
 
 
 def step(action, arguments=None, thought="next"):
