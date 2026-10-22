@@ -8,6 +8,7 @@ replaces it. Reading, checking and saving are done by CrysPy.
 """
 import os
 
+from cryspy.procedure_assistant.recipes import set_user_recipe_folder
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from cryspy_editor.settings import take_config_dir
@@ -20,24 +21,13 @@ S_INFO = ("A recipe is the steps of an analysis that the assistant follows one a
           "replaces it; delete the copy to use the recipe of CrysPy again.")
 
 
-def flag_recipe_files() -> bool:
-    """CrysPy with recipes as text files (newer than 0.16)."""
-    try:
-        from cryspy.procedure_assistant import recipes
-    except ImportError:
-        return False
-    return hasattr(recipes, "set_user_recipe_folder")
-
-
 def take_user_recipe_folder() -> str:
     return os.path.join(take_config_dir(), S_RECIPE_FOLDER)
 
 
 def init_user_recipe_folder():
     """Give CrysPy the folder of the recipes of the user."""
-    if flag_recipe_files():
-        from cryspy.procedure_assistant.recipes import set_user_recipe_folder
-        set_user_recipe_folder(take_user_recipe_folder())
+    set_user_recipe_folder(take_user_recipe_folder())
 
 
 def form_item_text(d_file: dict) -> str:

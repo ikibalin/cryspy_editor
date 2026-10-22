@@ -7,9 +7,6 @@ from PyQt5 import QtWidgets
 
 from cryspy_editor.widgets import recipe_editor
 
-pytestmark = pytest.mark.skipif(not recipe_editor.flag_recipe_files(),
-                                reason="CrysPy without recipes as text files")
-
 RCIF_FLIP_RATIO = """global_
 
 data_fe

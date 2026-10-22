@@ -1,5 +1,4 @@
 """A double click on a number in the RCIF tab refines or fixes it."""
-import pytest
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtTest import QTest
 
@@ -61,12 +60,8 @@ def test_double_click_in_widget(qapp):
 SUSCEPTIBILITY = ("loop_\n_atom_site_susceptibility_label\n"
                   "_atom_site_susceptibility_chi_type\n_atom_site_susceptibility_chi_11\n"
                   "Fe3A Ciso 0.10000()\nFe3B Cani 0.20000")
-need_choices = pytest.mark.skipif(
-    not hasattr(cryspy, "take_value_choices"),
-    reason="CrysPy without take_value_choices")
 
 
-@need_choices
 def test_value_switches_to_next_allowed():
     choices = take_value_choices(cryspy.AtomSiteSusceptibilityL)
     tags = take_refinable_tags(cryspy.AtomSiteSusceptibilityL)
@@ -81,7 +76,6 @@ def test_value_switches_to_next_allowed():
     assert result[0].endswith("Fe3B Cani 0.20000()")
 
 
-@need_choices
 def test_item_value_switches():
     text = "_extinction_model gauss\n_extinction_radius 1.0"
     result = toggle_refinement_in_text(
@@ -89,7 +83,6 @@ def test_item_value_switches():
     assert result[0].startswith("_extinction_model lorentz\n")
 
 
-@need_choices
 def test_double_click_switches_value_in_widget(qapp):
     l_text = []
     w_edit = WEditCif(

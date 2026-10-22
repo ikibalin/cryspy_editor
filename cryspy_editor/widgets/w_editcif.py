@@ -91,35 +91,12 @@ def toggle_refinement_in_text(text: str, position: int, refinable_tags: set,
 def take_value_choices(item) -> dict:
     """CIF tag -> allowed values of the text parameters of an ItemN or
     LoopN, from the definition of its class in CrysPy (any class)."""
-    function = getattr(cryspy, "take_value_choices", None)
-    if function is None:  # CrysPy before take_value_choices
-        return {}
-    return function(item)
+    return cryspy.take_value_choices(item)
 
 
 def take_refinable_tags(item) -> set:
     """CIF tags of the parameters of an ItemN or LoopN that can be refined."""
-    function = getattr(cryspy, "take_refinable_cif_tags", None)
-    if function is not None:
-        return function(item)
-    # CrysPy before take_refinable_cif_tags: remove when the minimal
-    # version of CrysPy has it
-    item_class = getattr(item, "ITEM_CLASS", None)
-    if item_class is None:
-        item_class = item
-    try:
-        prefix = item_class.PREFIX
-        l_name, l_cif = item_class.ATTR_NAMES, item_class.ATTR_CIF
-        attr_ref = item_class.ATTR_REF
-    except AttributeError:
-        return set()
-    if not isinstance(attr_ref, (tuple, list)):  # a property on a class
-        return set()
-    s_tag = set()
-    for name, name_cif in zip(l_name, l_cif):
-        if name in attr_ref:
-            s_tag.add(normalize_tag(f"_{prefix}_{name_cif or name}"))
-    return s_tag
+    return cryspy.take_refinable_cif_tags(item)
 
 
 class WEditCif(QtWidgets.QTextEdit):

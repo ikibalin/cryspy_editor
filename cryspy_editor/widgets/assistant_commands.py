@@ -32,11 +32,8 @@ N_MAX_DESCRIPTION = 90
 
 
 def take_recipes() -> list:
-    """The recipes of CrysPy (and of the user); empty for an older CrysPy."""
-    try:
-        from cryspy.procedure_assistant.recipes import take_recipes as take_cryspy_recipes
-    except ImportError:
-        return []
+    """The recipes of CrysPy (and of the user)."""
+    from cryspy.procedure_assistant.recipes import take_recipes as take_cryspy_recipes
     return take_cryspy_recipes()
 
 
