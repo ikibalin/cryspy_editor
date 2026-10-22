@@ -85,6 +85,7 @@ DEFAULT_SETTINGS = {
     "max_tokens": 512,
     "temperature": 0.2,
     "max_steps": MAX_AGENT_STEPS,
+    "thinking": False,  # a thinking model (qwen3, deepseek-r1) thinks before each answer
 }
 
 # (minimal RAM in GB, models, approximate size of the Q4_K_M file); the
@@ -333,6 +334,9 @@ class LocalModel:
         if n_threads <= 0:
             n_threads = max(1, (os.cpu_count() or 2) - 1)
         self.model_path = model_path
+        from cryspy_editor.widgets.assistant_models import take_gguf_thinking
+        self.flag_thinking_model = take_gguf_thinking(model_path)
+        self.on_thinking = None  # set by the window: see ServerModel
         self.llm = Llama(
             model_path=model_path, n_ctx=self.settings["n_ctx"],
             n_threads=n_threads, n_gpu_layers=self.settings["n_gpu_layers"],
@@ -354,12 +358,20 @@ class LocalModel:
     def count_tokens(self, text: str) -> int:
         return len(self.llm.tokenize(text.encode("utf-8"), add_bos=False))
 
+    @property
+    def flag_thinking(self) -> bool:
+        """The model thinks before each answer: its thinking is shown."""
+        return getattr(self, "flag_thinking_model", False) and self.settings.get("thinking", False)
+
     def chat(self, messages: List[Dict[str, str]], flag_json: bool = False,
              schema: Optional[dict] = None) -> str:
         """Reply of the model; with flag_json it is a JSON object, with
-        schema it follows the JSON schema (grammar of llama.cpp)."""
+        schema it follows the JSON schema (grammar of llama.cpp). A grammar
+        lets the model write only JSON, so a thinking model gets none: its
+        <think> block goes to on_thinking and the JSON is found after it."""
+        from cryspy_editor.widgets.assistant_models import form_cut_text, split_thinking
         kwargs = {}
-        if flag_json:
+        if flag_json and not self.flag_thinking:
             kwargs["response_format"] = {"type": "json_object"}
             if schema is not None:
                 kwargs["response_format"]["schema"] = schema
@@ -368,7 +380,19 @@ class LocalModel:
         result = self.llm.create_chat_completion(
             messages=messages, max_tokens=max_tokens,
             temperature=self.settings["temperature"], **kwargs)
-        return result["choices"][0]["message"]["content"].strip()
+        text = result["choices"][0]["message"]["content"] or ""
+        if not self.flag_thinking:
+            return text.strip()
+        thinking, answer = split_thinking(text)
+        if thinking == "" and "<think>" in text:  # cut inside the thinking
+            thinking, answer = text.replace("<think>", "", 1).strip(), ""
+        on_thinking = getattr(self, "on_thinking", None)
+        if on_thinking is not None and thinking != "":
+            on_thinking("")
+            on_thinking(thinking)
+        if answer == "" and result["choices"][0].get("finish_reason") == "length":
+            raise ValueError(form_cut_text(max_tokens))
+        return answer
 
 
 class Assistant:

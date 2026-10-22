@@ -68,6 +68,14 @@ or of an OpenAI-compatible server (LM Studio, llama.cpp server, vLLM): choose it
 in **Source**, give the address of the server and pick the model (**List models**).
 Everything else works the same; llama-cpp-python is not needed then.
 
+**Thinking models.** A thinking model (qwen3, deepseek-r1, ...) can think
+before each answer: turn on **Thinking** in the model settings (it is offered
+only for a model that can think). Its thinking is shown in the assistant window
+apart from the answers (button **Thoughts**), as it goes for Ollama. The thinking
+is a part of the answer, so the **Maximal answer length** must hold it: the
+value recommended for the model, the thinking and the context is set and
+explained under the field.
+
 **Recipes.** A task of several steps (e.g. "refine the structure step by
 step", "refine the flip ratios") is done by a recipe of CrysPy: the model
 reads its steps and works one action at a time, judging each result by

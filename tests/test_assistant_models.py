@@ -17,8 +17,11 @@ from cryspy_editor.widgets.assistant_models import (
     create_model,
     form_context_text,
     read_gguf_metadata,
+    recommend_max_tokens,
+    split_thinking,
     take_context_range,
     take_gguf_context,
+    take_gguf_thinking,
 )
 
 # Qwen2.5-7B-Instruct
@@ -31,7 +34,7 @@ def pack_string(text: str) -> bytes:
     return struct.pack("<Q", len(data)) + data
 
 
-def write_gguf(file_name, d_meta: dict):
+def write_gguf(file_name, d_meta: dict, chat_template: str = ""):
     """A GGUF header with the metadata and a vocabulary array before it."""
     l_kv = [pack_string("general.architecture") + struct.pack("<I", 8) + pack_string(d_meta["architecture"]),
             pack_string("tokenizer.ggml.tokens") + struct.pack("<IIQ", 9, 8, 3)
@@ -40,6 +43,8 @@ def write_gguf(file_name, d_meta: dict):
     for key, value in d_meta.items():
         if key != "architecture":
             l_kv.append(pack_string(f"{d_meta['architecture']}.{key}") + struct.pack("<II", 4, value))
+    if chat_template != "":
+        l_kv.append(pack_string("tokenizer.chat_template") + struct.pack("<I", 8) + pack_string(chat_template))
     with open(file_name, "wb") as file:
         file.write(b"GGUF" + struct.pack("<IQQ", 3, 0, len(l_kv)) + b"".join(l_kv))
 
@@ -53,6 +58,21 @@ def test_gguf_metadata(tmp_path):
     with pytest.raises(ValueError):
         read_gguf_metadata(str(f_text))
     assert take_gguf_context(str(f_text), 16.) is None
+    assert not take_gguf_thinking(str(f_model)) and not take_gguf_thinking(str(f_text))
+    f_thinking = tmp_path / "qwen3.gguf"
+    write_gguf(f_thinking, D_QWEN_7B, "{{- '<think>' }}{{ message.content }}")
+    assert read_gguf_metadata(str(f_thinking))["chat_template"].startswith("{{")
+    assert take_gguf_thinking(str(f_thinking))
+
+
+def test_thinking_and_answer_length():
+    assert split_thinking('<think>a is fine</think>\n{"x": 1}') == ("a is fine", '{"x": 1}')
+    assert split_thinking('a is fine</think>{"x": 1}') == ("a is fine", '{"x": 1}')  # <think> in the prompt
+    assert split_thinking('{"x": 1}') == ("", '{"x": 1}')
+    assert recommend_max_tokens(False, 8192) == 1024
+    assert recommend_max_tokens(True, 32768) == 8192
+    assert recommend_max_tokens(True, 8192) == 4096  # half of the context stays for the question
+    assert recommend_max_tokens(False, 512) == 256
 
 
 def test_context_range_for_the_memory():
@@ -104,10 +124,25 @@ class FakeServer(BaseHTTPRequestHandler):
         d_in = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         FakeServer.l_request.append((self.path, d_in))
         s_reply = json.dumps({"actions": [], "answer": "Hello"})
-        if self.path == "/api/chat":
+        if self.path == "/api/chat" and d_in["stream"]:
+            # a thinking model: the thinking, then the answer, line by line
+            l_part = [{"message": {"thinking": "The user "}}, {"message": {"thinking": "greets me."}}]
+            if d_in["model"] == "qwen3:cut":
+                l_part.append({"done": True, "done_reason": "length", "message": {}})
+            else:
+                l_part += [{"message": {"content": s_reply[:10]}}, {"message": {"content": s_reply[10:]}},
+                           {"done": True, "done_reason": "stop", "message": {}}]
+            data = b"".join(json.dumps(d_part).encode("utf-8") + b"\n" for d_part in l_part)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif self.path == "/api/chat":
             self.answer({"message": {"role": "assistant", "content": s_reply}})
         elif self.path == "/api/show":
-            self.answer({"model_info": {"general.architecture": "qwen2", **{
+            l_capability = ["completion", "thinking"] if d_in["model"].startswith("qwen3") else ["completion"]
+            self.answer({"capabilities": l_capability, "model_info": {"general.architecture": "qwen2", **{
                 f"qwen2.{key}": value for key, value in D_QWEN_7B.items() if key != "architecture"}}})
         elif self.path == "/v1/chat/completions":
             self.answer({"choices": [{"message": {"content": s_reply}}]})
@@ -135,9 +170,34 @@ def test_ollama_model_answers(server_url):
     assert path == "/api/chat" and d_in["model"] == "qwen2.5:7b" and not d_in["stream"]
     assert d_in["options"]["num_ctx"] == 8192 and d_in["options"]["num_predict"] == 256
     assert d_in["format"] is not None  # JSON or the schema of the reply
+    assert "think" not in d_in  # not a thinking model
     assert assistant_models.list_server_models(SOURCE_OLLAMA, server_url) == ["qwen2.5:7b"]
     d_range = assistant_models.take_ollama_context(server_url, "qwen2.5:7b", 16.)
     assert d_range["n_train"] == 32768
+
+
+def test_ollama_thinking_model(server_url):
+    """A thinking model thinks only when it is turned on; the thinking goes
+    to on_thinking as it comes, the answer is returned."""
+    model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:8b")
+    assert model.flag_thinking_model and not model.flag_thinking
+    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True).startswith("{")
+    path, d_in = FakeServer.l_request[-1]
+    assert path == "/api/chat" and d_in["think"] is False and not d_in["stream"]
+
+    model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:8b", {"thinking": True, "max_tokens": 4096, "n_ctx": 16384})
+    l_thinking = []
+    model.on_thinking = l_thinking.append
+    result = Assistant(model).ask("hello", None)
+    assert result["text"] == "Hello"
+    path, d_in = FakeServer.l_request[-1]
+    assert d_in["think"] is True and d_in["stream"] and d_in["options"]["num_predict"] == 4096
+    assert "".join(l_thinking) == "The user greets me." and l_thinking[0] == ""
+
+    model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:cut", {"thinking": True})
+    with pytest.raises(ValueError, match="cut at the maximal answer length"):
+        model.chat([{"role": "user", "content": "hi"}])
+    assert assistant_models.take_ollama_capabilities("http://127.0.0.1:9", "qwen3:8b") == []
 
 
 def test_openai_compatible_model(server_url):
@@ -173,6 +233,17 @@ def test_dialog_sources_and_context(qapp, tmp_path, server_url):
         assert dialog.model_description() == {
             "source": SOURCE_OLLAMA, "model_path": str(f_model), "url": server_url, "model": "qwen2.5:7b"}
         assert "32768" in dialog.label_context.text()
+        # not a thinking model: the thinking cannot be turned on
+        assert not dialog.check_thinking.isEnabled()
+        dialog.cb_server_model.setEditText("qwen3:8b")
+        dialog.update_context()
+        assert dialog.check_thinking.isEnabled()
+        dialog.check_thinking.setChecked(True)
+        assert dialog.settings()["thinking"] is True
+        assert dialog.settings()["max_tokens"] == recommend_max_tokens(True, dialog.settings()["n_ctx"])
+        assert "thinking" in dialog.label_max_tokens.text()
+        dialog.check_thinking.setChecked(False)
+        assert dialog.settings()["max_tokens"] == recommend_max_tokens(False, dialog.settings()["n_ctx"])
     finally:
         dialog.close()
 
@@ -199,3 +270,30 @@ def test_controller_keeps_the_server_model(qapp, server_url):
         controller.shutdown()
         controller.window.close()
         main_window.close()
+
+
+def test_window_shows_the_thinking(qapp, server_url):
+    from cryspy_editor.widgets.ui_assistant import AssistantWindow
+    window = AssistantWindow()
+    try:
+        model = ServerModel(SOURCE_OLLAMA, server_url, "qwen3:8b", {"thinking": True})
+        window.on_model_loaded(Assistant(model))
+        assert "(thinking)" in window.label_model.text() and window.button_thoughts.isChecked()
+        window.input_line.setText("hello")
+        window.on_send()
+        for _ in range(500):
+            qapp.processEvents()
+            if window.thread is None:
+                break
+            time.sleep(0.01)
+        assert window.thoughts_view.toPlainText() == "The user greets me."
+        assert "Hello" in window.history_view.toPlainText()
+        assert model.on_thinking is None  # the window takes the thinking only while it asks
+        window.append_thinking("")
+        window.append_thinking("Next.")
+        assert window.thoughts_view.toPlainText().endswith("-" * 40 + "\nNext.")
+        window.clear_chat()
+        assert window.thoughts_view.toPlainText() == ""
+    finally:
+        window.shutdown()
+        window.close()
