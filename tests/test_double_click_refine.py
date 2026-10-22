@@ -1,11 +1,12 @@
 """A double click on a number in the RCIF tab refines or fixes it."""
+import pytest
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtTest import QTest
 
 import cryspy
 
 from cryspy_editor.widgets.w_editcif import (
-    WEditCif, take_refinable_tags, toggle_refinement_in_text)
+    WEditCif, take_refinable_tags, take_value_choices, toggle_refinement_in_text)
 
 CELL = "_cell_length_a 8.45420(55)\n_cell_length_b 8.45421\n_cell_setting cubic"
 LOOP = ("loop_\n_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n"
@@ -54,4 +55,54 @@ def test_double_click_in_widget(qapp):
     assert w_edit.text_changed
     w_edit.rewrite_item_by_printed_text()
     assert "8.45421()" in l_text[0]
+    w_edit.close()
+
+
+SUSCEPTIBILITY = ("loop_\n_atom_site_susceptibility_label\n"
+                  "_atom_site_susceptibility_chi_type\n_atom_site_susceptibility_chi_11\n"
+                  "Fe3A Ciso 0.10000()\nFe3B Cani 0.20000")
+need_choices = pytest.mark.skipif(
+    not hasattr(cryspy, "take_value_choices"),
+    reason="CrysPy without take_value_choices")
+
+
+@need_choices
+def test_value_switches_to_next_allowed():
+    choices = take_value_choices(cryspy.AtomSiteSusceptibilityL)
+    tags = take_refinable_tags(cryspy.AtomSiteSusceptibilityL)
+    text = SUSCEPTIBILITY
+    result = toggle_refinement_in_text(text, text.index("Ciso") + 1, tags, choices)
+    assert result[0].endswith("Fe3A Cani 0.10000()\nFe3B Cani 0.20000")
+    result = toggle_refinement_in_text(text, text.index("Cani") + 1, tags, choices)
+    assert result[0].endswith("Fe3B Ciso 0.20000")
+    # labels and numbers keep their behaviour
+    assert toggle_refinement_in_text(text, text.index("Fe3A") + 1, tags, choices) is None
+    result = toggle_refinement_in_text(text, text.index("0.20000") + 1, tags, choices)
+    assert result[0].endswith("Fe3B Cani 0.20000()")
+
+
+@need_choices
+def test_item_value_switches():
+    text = "_extinction_model gauss\n_extinction_radius 1.0"
+    result = toggle_refinement_in_text(
+        text, text.index("gauss") + 2, set(), take_value_choices(cryspy.Extinction))
+    assert result[0].startswith("_extinction_model lorentz\n")
+
+
+@need_choices
+def test_double_click_switches_value_in_widget(qapp):
+    l_text = []
+    w_edit = WEditCif(
+        SUSCEPTIBILITY, l_text.append,
+        refinable_tags=take_refinable_tags(cryspy.AtomSiteSusceptibilityL),
+        value_choices=take_value_choices(cryspy.AtomSiteSusceptibilityL))
+    w_edit.show()
+    cursor = w_edit.textCursor()
+    cursor.setPosition(SUSCEPTIBILITY.index("Ciso") + 2)
+    point = w_edit.cursorRect(cursor).center()
+    QTest.mouseDClick(w_edit.viewport(), QtCore.Qt.LeftButton,
+                      QtCore.Qt.NoModifier, point)
+    assert "Fe3A Cani 0.10000()" in w_edit.toPlainText()
+    w_edit.rewrite_item_by_printed_text()
+    assert "Fe3A Cani" in l_text[0]
     w_edit.close()
