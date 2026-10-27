@@ -52,7 +52,7 @@ from cryspy_editor.widgets.w_procedure_dialog import (
 )
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import (
-    WEditCif, take_refinable_tags, take_value_choices)
+    WEditCif, take_value_choices)
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
@@ -921,7 +921,6 @@ class CMainWindow(QMainWindow):
                 parent=w_item_tabs,
                 text_placeholder=text_placeholder,
                 s_info=s_info,
-                refinable_tags=take_refinable_tags(item),
                 value_choices=take_value_choices(item),
             )
             # w_edit_cif.setToolTip(item.__doc__)
