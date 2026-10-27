@@ -12,10 +12,12 @@ length, without Qt.
   thinking is stopped and the model answers from what it has thought
   (add_thinking_rule, form_decide_messages).
 - ServerModel: a chat model served by Ollama or by an OpenAI-compatible
-  server (LM Studio, llama.cpp server, ...) on this or another computer. It
-  has the methods of LocalModel (chat, count_tokens, close), so the
-  assistant and the agent work with it as with a local GGUF file. Only the
-  standard library is used (urllib): no new packages.
+  server (LM Studio, llama.cpp server, ...) on this or another computer, or
+  by a cloud service (D_CLOUD: Google Gemini, GitHub Models, Groq,
+  OpenRouter, Mistral) with an API key. It has the methods of LocalModel
+  (chat, count_tokens, close), so the assistant and the agent work with it
+  as with a local GGUF file. Only the standard library is used (urllib): no
+  new packages.
 """
 import json
 import os
@@ -27,12 +29,36 @@ from typing import Dict, List, Optional
 SOURCE_GGUF = "gguf"
 SOURCE_OLLAMA = "ollama"
 SOURCE_OPENAI = "openai"
+# cloud services with an OpenAI-compatible API and a free API key: the
+# questions, the data of the opened file and the results go to the internet
+D_CLOUD = {
+    "gemini": {"name": "Google Gemini (cloud)",
+               "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+               "env": "GEMINI_API_KEY", "key_page": "https://aistudio.google.com/apikey",
+               "model": "gemini-2.5-flash"},
+    "github": {"name": "GitHub Models (cloud)", "url": "https://models.github.ai/inference",
+               "models_url": "https://models.github.ai/catalog/models",
+               "env": "GITHUB_TOKEN", "key_page": "https://github.com/settings/personal-access-tokens",
+               "key_text": "a fine-grained token with the permission Models (read)",
+               "model": "openai/gpt-4.1-mini"},
+    "groq": {"name": "Groq (cloud)", "url": "https://api.groq.com/openai/v1",
+             "env": "GROQ_API_KEY", "key_page": "https://console.groq.com/keys",
+             "model": "llama-3.3-70b-versatile"},
+    "openrouter": {"name": "OpenRouter (cloud)", "url": "https://openrouter.ai/api/v1",
+                   "env": "OPENROUTER_API_KEY", "key_page": "https://openrouter.ai/keys",
+                   "model": "meta-llama/llama-3.3-70b-instruct:free"},
+    "mistral": {"name": "Mistral (cloud)", "url": "https://api.mistral.ai/v1",
+                "env": "MISTRAL_API_KEY", "key_page": "https://console.mistral.ai/api-keys",
+                "model": "mistral-small-latest"},
+}
 D_SOURCE_NAMES = {
     SOURCE_GGUF: "Local GGUF file (llama-cpp-python)",
     SOURCE_OLLAMA: "Ollama",
     SOURCE_OPENAI: "OpenAI-compatible server (LM Studio, llama.cpp server, vLLM)",
+    **{source: d_cloud["name"] for source, d_cloud in D_CLOUD.items()},
 }
-D_DEFAULT_URL = {SOURCE_OLLAMA: "http://localhost:11434", SOURCE_OPENAI: "http://localhost:1234/v1"}
+D_DEFAULT_URL = {SOURCE_OLLAMA: "http://localhost:11434", SOURCE_OPENAI: "http://localhost:1234/v1",
+                 **{source: d_cloud["url"] for source, d_cloud in D_CLOUD.items()}}
 
 MIN_CONTEXT = 2048
 RECIPE_CONTEXT = 8192  # the step-by-step work by recipes needs this or more
@@ -254,17 +280,54 @@ def take_gguf_context(file_name: str, memory_gb: Optional[float]) -> Optional[di
     return take_context_range(d_meta, size_gb, memory_gb)
 
 
-def _request_json(url: str, data: Optional[dict] = None, timeout: float = TIMEOUT_INFO) -> dict:
+def is_cloud(source: str) -> bool:
+    """The model runs at a cloud service: the data go to the internet."""
+    return source in D_CLOUD
+
+
+def take_api_key(source: str, api_key: str = "") -> str:
+    """The API key given, or else the one of the environment variable of the
+    cloud service (e.g. GEMINI_API_KEY)."""
+    api_key = (api_key or "").strip()
+    if api_key == "" and is_cloud(source):
+        api_key = os.environ.get(D_CLOUD[source]["env"], "").strip()
+    return api_key
+
+
+def form_internet_text(source: str) -> str:
+    """The warning shown for a cloud service."""
+    d_cloud = D_CLOUD[source]
+    return (f"The model runs at {d_cloud['name'].split(' (')[0]}, not on this computer: the questions, "
+            "the data of the opened file (parameters, results of the actions) and the answers are sent "
+            "to this service over the internet and may be kept there under its terms. Do not use it "
+            "for confidential data.")
+
+
+def _form_headers(api_key: str = "") -> dict:
+    d_headers = {"Content-Type": "application/json"}
+    if api_key:
+        d_headers["Authorization"] = f"Bearer {api_key}"
+    return d_headers
+
+
+def _form_http_error(error) -> ConnectionError:
+    message = error.read().decode("utf-8", errors="replace")[:500]
+    if error.code in (401, 403):
+        message += " Check the API key."
+    return ConnectionError(f"The server answered {error.code}: {message}")
+
+
+def _request_json(url: str, data: Optional[dict] = None, timeout: float = TIMEOUT_INFO,
+                  api_key: str = ""):
     body = None if data is None else json.dumps(data).encode("utf-8")
     request = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"},
+        url, data=body, headers=_form_headers(api_key),
         method="GET" if data is None else "POST")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        message = error.read().decode("utf-8", errors="replace")[:500]
-        raise ConnectionError(f"The server answered {error.code}: {message}") from error
+        raise _form_http_error(error) from error
     except (urllib.error.URLError, OSError) as error:
         raise ConnectionError(
             f"No connection to {url}: {getattr(error, 'reason', error)}. Is the server running?") from error
@@ -294,12 +357,17 @@ def _request_json_lines(url: str, data: dict, timeout: float = TIMEOUT_CHAT):
             f"No connection to {url}: {getattr(error, 'reason', error)}. Is the server running?") from error
 
 
-def list_server_models(source: str, url: str) -> List[str]:
+def list_server_models(source: str, url: str, api_key: str = "") -> List[str]:
     """Names of the models of the server. Raises ConnectionError."""
-    url = url.rstrip("/")
+    url = (url.strip() or D_DEFAULT_URL.get(source, "")).rstrip("/")
     if source == SOURCE_OLLAMA:
         return [d_model["name"] for d_model in _request_json(f"{url}/api/tags").get("models", [])]
-    return [d_model["id"] for d_model in _request_json(f"{url}/models").get("data", [])]
+    models_url = D_CLOUD.get(source, {}).get("models_url", f"{url}/models")
+    result = _request_json(models_url, api_key=take_api_key(source, api_key))
+    l_model = result.get("data", []) if isinstance(result, dict) else result  # GitHub: a list
+    # Gemini names its models "models/gemini-..."; the chat takes the short name
+    return sorted(str(d_model["id"]).removeprefix("models/") for d_model in l_model
+                  if isinstance(d_model, dict) and "id" in d_model)
 
 
 def take_ollama_capabilities(url: str, model: str) -> List[str]:
@@ -329,28 +397,41 @@ def take_ollama_context(url: str, model: str, memory_gb: Optional[float]) -> Opt
 
 
 class ServerModel:
-    """A chat model of Ollama or of an OpenAI-compatible server.
+    """A chat model of Ollama, of an OpenAI-compatible server or of a cloud
+    service (D_CLOUD, OpenAI-compatible too).
 
     settings: those of the assistant (n_ctx, max_tokens, temperature,
     thinking); the context n_ctx is given to Ollama as num_ctx.
+    api_key: sent as "Authorization: Bearer"; for a cloud service the
+    environment variable (D_CLOUD[source]["env"]) is taken when it is empty.
     on_thinking(text): set by the window, gets the thinking of the model as
     it goes ("" starts the thinking of a new reply)."""
 
-    def __init__(self, source: str, url: str, model: str, settings: Optional[dict] = None):
+    def __init__(self, source: str, url: str, model: str, settings: Optional[dict] = None,
+                 api_key: str = ""):
         from cryspy_editor.widgets.assistant import take_settings
-        if source not in (SOURCE_OLLAMA, SOURCE_OPENAI):
+        if source not in D_DEFAULT_URL:
             raise ValueError(f"Unknown model server '{source}'.")
         if model.strip() == "":
             raise ValueError("Give the name of the model of the server.")
         self.source = source
         self.url = (url.strip() or D_DEFAULT_URL[source]).rstrip("/")
         self.model = model.strip()
+        self.api_key = take_api_key(source, api_key)
+        if is_cloud(source) and self.api_key == "":
+            d_cloud = D_CLOUD[source]
+            raise ValueError(f"Give the API key of {d_cloud['name'].split(' (')[0]} (from "
+                             f"{d_cloud['key_page']}) or set the environment variable {d_cloud['env']}.")
         self.settings = take_settings(settings)
         self.model_path = ""  # no file: see model_name
-        list_server_models(source, self.url)  # fails now, not at the first question
+        # the JSON answer is asked by a schema; a server that refuses it is
+        # asked for any JSON, and then for a plain answer (see chat)
+        self.l_response_format = ["json_schema", "json_object", ""]
+        if not is_cloud(source):  # a cloud service lists hundreds of models: the first question tells
+            list_server_models(source, self.url, self.api_key)  # fails now, not at the first question
         # Ollama tells whether the model thinks (qwen3, deepseek-r1, ...); the
         # thinking of a server model of another kind is shown if it comes
-        self.flag_thinking_model = (source == SOURCE_OPENAI
+        self.flag_thinking_model = (source != SOURCE_OLLAMA
                                     or "thinking" in take_ollama_capabilities(self.url, self.model))
         self.on_thinking = None
 
@@ -361,6 +442,8 @@ class ServerModel:
 
     @property
     def model_name(self) -> str:
+        if is_cloud(self.source):
+            return f"{self.model} ({D_SOURCE_NAMES[self.source]}: the data go to the internet)"
         return f"{self.model} ({D_SOURCE_NAMES[self.source].split(' (')[0]}, {self.url})"
 
     def n_ctx(self) -> int:
@@ -388,10 +471,28 @@ class ServerModel:
             messages = add_thinking_rule(messages, self.settings["max_thinking_tokens"])
         data = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
                 "temperature": self.settings["temperature"]}
-        if flag_json and schema is not None:
-            data["response_format"] = {"type": "json_schema",
-                                       "json_schema": {"name": "reply", "schema": schema}}
-        result = _request_json(f"{self.url}/chat/completions", data, timeout=TIMEOUT_CHAT)
+        l_format = self.l_response_format if flag_json else [""]
+        for ind, response_format in enumerate(l_format):
+            if response_format == "json_schema" and schema is None:
+                response_format = "json_object"
+            if response_format == "json_schema":
+                data["response_format"] = {"type": "json_schema",
+                                           "json_schema": {"name": "reply", "schema": schema}}
+            elif response_format == "json_object":
+                data["response_format"] = {"type": "json_object"}
+            else:
+                data.pop("response_format", None)
+            try:
+                result = _request_json(f"{self.url}/chat/completions", data, timeout=TIMEOUT_CHAT,
+                                       api_key=self.api_key)
+            except ConnectionError as error:
+                # the server (or this model of it) may not take this format
+                if "answered 400" not in str(error) or ind == len(l_format) - 1:
+                    raise
+                continue
+            if flag_json:
+                self.l_response_format = l_format[ind:]  # the format taken is asked from now on
+            break
         d_message = result["choices"][0]["message"]
         thinking, answer = split_thinking(str(d_message.get("content") or ""))
         # LM Studio, vLLM and llama.cpp server give the thinking apart
@@ -468,4 +569,5 @@ def create_model(d_model: dict, settings: Optional[dict] = None):
     if source == SOURCE_GGUF:
         from cryspy_editor.widgets.assistant import LocalModel
         return LocalModel(d_model.get("model_path", ""), settings)
-    return ServerModel(source, d_model.get("url", ""), d_model.get("model", ""), settings)
+    return ServerModel(source, d_model.get("url", ""), d_model.get("model", ""), settings,
+                       api_key=d_model.get("api_key", ""))
