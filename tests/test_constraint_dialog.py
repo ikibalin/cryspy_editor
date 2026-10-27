@@ -9,6 +9,7 @@ from cryspy_editor.widgets.w_constraint_dialog import (
     COLUMN_USE,
     ConstraintDialog,
     is_constraint_supported,
+    is_soft_constraint_supported,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -79,3 +80,22 @@ def test_error_is_shown(qapp):
     finally:
         dialog.close()
     assert cryspy.take_constraints(obj) == ["x = 0.5"]
+
+
+@pytest.mark.skipif(not is_soft_constraint_supported(), reason="CrysPy without soft constraints")
+def test_add_soft_constraint(qapp):
+    obj = cryspy.str_to_globaln(RCIF)
+    dialog = ConstraintDialog(obj, flag_soft=True)
+    try:
+        assert dialog.windowTitle() == "Add soft constraint"
+        for path in ("crystal_feco.atom_site[Fe1].occupancy", "crystal_feco.atom_site[Co1].occupancy"):
+            dialog.table.item(take_row(dialog, path), COLUMN_USE).setCheckState(QtCore.Qt.Checked)
+        dialog.accept_if_valid()
+        assert dialog.result() != dialog.Accepted
+        assert "sigma" in dialog.label_error.text()
+        dialog.line_sigma.setText("0.02")
+        dialog.accept_if_valid()
+        assert dialog.result() == dialog.Accepted, dialog.label_error.text()
+    finally:
+        dialog.close()
+    assert cryspy.take_constraints(obj) == ["occ1 + occ2 = 1 (sigma 0.02)"]

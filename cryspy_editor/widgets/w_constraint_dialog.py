@@ -1,10 +1,13 @@
-"""Dialog to add a linear constraint between refined parameters (x+y=1).
+"""Dialog to add a constraint between refined parameters: hard (x+y=1 holds
+exactly) or soft (x+y=1 within sigma, added to chi-square).
 
 The parameters, their marks and the constraint loop are handled by CrysPy
 (cryspy.take_marked_parameters, cryspy.propose_mark, cryspy.add_constraint):
 the dialog only lets the user tick the parameters, edit their marks and
 write the equation.
 """
+import inspect
+
 import cryspy
 from PyQt5 import QtCore, QtWidgets
 
@@ -16,6 +19,13 @@ def is_constraint_supported() -> bool:
     return hasattr(cryspy, "add_constraint") and hasattr(cryspy, "take_marked_parameters")
 
 
+def is_soft_constraint_supported() -> bool:
+    """CrysPy knows soft constraints (add_constraint takes sigma)."""
+    if not is_constraint_supported():
+        return False
+    return "sigma" in inspect.signature(cryspy.add_constraint).parameters
+
+
 def format_number(value) -> str:
     try:
         return f"{float(value):.6g}"
@@ -24,23 +34,31 @@ def format_number(value) -> str:
 
 
 class ConstraintDialog(QtWidgets.QDialog):
-    """Tick the parameters, give them marks and write the equation."""
+    """Tick the parameters, give them marks and write the equation; a soft
+    constraint also has sigma."""
 
-    def __init__(self, cryspy_object, parent=None):
+    def __init__(self, cryspy_object, parent=None, flag_soft: bool = False):
         super().__init__(parent)
         self.cryspy_object = cryspy_object
+        self.flag_soft = flag_soft
         self.added_constraint = None
-        self.setWindowTitle("Add constraint")
+        self.setWindowTitle("Add soft constraint" if flag_soft else "Add constraint")
         self.resize(720, 520)
         self.l_parameter = [
             d_par for d_par in cryspy.take_marked_parameters(cryspy_object)
             if not d_par["constrained"]]
 
         layout = QtWidgets.QVBoxLayout(self)
-        label = QtWidgets.QLabel(
-            "Tick the parameters, check their marks and write a linear equation "
-            "of the marks, e.g. <b>x + y = 1</b>. The ticked parameters are refined; "
-            "during the refinement the equation holds exactly.")
+        if flag_soft:
+            text = ("Tick the parameters, check their marks and write an equation of "
+                    "the marks, e.g. <b>x + y = 1</b> or <b>sqrt(a**2 + b**2) = 2.5</b>, "
+                    "and its sigma. The ticked parameters are refined; ((left - right)/sigma)² "
+                    "is added to chi-square, so the equation holds within about sigma.")
+        else:
+            text = ("Tick the parameters, check their marks and write a linear equation "
+                    "of the marks, e.g. <b>x + y = 1</b>. The ticked parameters are refined; "
+                    "during the refinement the equation holds exactly.")
+        label = QtWidgets.QLabel(text)
         label.setWordWrap(True)
         layout.addWidget(label)
 
@@ -82,6 +100,11 @@ class ConstraintDialog(QtWidgets.QDialog):
         self.line_expression = QtWidgets.QLineEdit()
         self.line_expression.setPlaceholderText("x + y = 1")
         form.addRow("Equation:", self.line_expression)
+        self.line_sigma = QtWidgets.QLineEdit()
+        self.line_sigma.setPlaceholderText("0.01")
+        self.line_sigma.setToolTip("Allowed deviation of the equation, in its units")
+        if flag_soft:
+            form.addRow("Sigma:", self.line_sigma)
         layout.addLayout(form)
 
         self.label_error = QtWidgets.QLabel("")
@@ -181,9 +204,16 @@ class ConstraintDialog(QtWidgets.QDialog):
             return
         d_mark_path = {mark: path for mark, path in self.mark_paths().items()
                        if not mark.endswith("-")}
+        d_sigma = {}
+        if self.flag_soft:
+            try:
+                d_sigma["sigma"] = float(self.line_sigma.text().strip())
+            except ValueError:
+                self.label_error.setText("Write sigma as a positive number, e.g. 0.01.")
+                return
         try:
             self.added_constraint = cryspy.add_constraint(
-                self.cryspy_object, expression, d_mark_path)
+                self.cryspy_object, expression, d_mark_path, **d_sigma)
         except (cryspy.CrysPyError, ValueError) as error:
             self.label_error.setText(str(error))
             return
