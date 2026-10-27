@@ -34,33 +34,23 @@ def format_number(value) -> str:
 
 
 class ConstraintDialog(QtWidgets.QDialog):
-    """Tick the parameters, give them marks and write the equation; a soft
-    constraint also has sigma."""
+    """Tick the parameters, give them marks and write the equation; the
+    check box "Soft constraint" adds sigma (a restraint)."""
 
     def __init__(self, cryspy_object, parent=None, flag_soft: bool = False):
         super().__init__(parent)
         self.cryspy_object = cryspy_object
-        self.flag_soft = flag_soft
         self.added_constraint = None
-        self.setWindowTitle("Add soft constraint" if flag_soft else "Add constraint")
+        self.setWindowTitle("Add constraint")
         self.resize(720, 520)
         self.l_parameter = [
             d_par for d_par in cryspy.take_marked_parameters(cryspy_object)
             if not d_par["constrained"]]
 
         layout = QtWidgets.QVBoxLayout(self)
-        if flag_soft:
-            text = ("Tick the parameters, check their marks and write an equation of "
-                    "the marks, e.g. <b>x + y = 1</b> or <b>sqrt(a**2 + b**2) = 2.5</b>, "
-                    "and its sigma. The ticked parameters are refined; ((left - right)/sigma)² "
-                    "is added to chi-square, so the equation holds within about sigma.")
-        else:
-            text = ("Tick the parameters, check their marks and write a linear equation "
-                    "of the marks, e.g. <b>x + y = 1</b>. The ticked parameters are refined; "
-                    "during the refinement the equation holds exactly.")
-        label = QtWidgets.QLabel(text)
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        self.label_help = QtWidgets.QLabel("")
+        self.label_help.setWordWrap(True)
+        layout.addWidget(self.label_help)
 
         l_expression = cryspy.take_constraints(cryspy_object)
         if len(l_expression) > 0:
@@ -100,11 +90,17 @@ class ConstraintDialog(QtWidgets.QDialog):
         self.line_expression = QtWidgets.QLineEdit()
         self.line_expression.setPlaceholderText("x + y = 1")
         form.addRow("Equation:", self.line_expression)
+        self.check_soft = QtWidgets.QCheckBox("Soft constraint (restraint): holds within sigma")
+        self.check_soft.setToolTip(
+            "((left - right)/sigma)² is added to chi-square instead of holding the "
+            "equation exactly; any formula of the marks is allowed")
         self.line_sigma = QtWidgets.QLineEdit()
         self.line_sigma.setPlaceholderText("0.01")
         self.line_sigma.setToolTip("Allowed deviation of the equation, in its units")
-        if flag_soft:
+        if is_soft_constraint_supported():
+            form.addRow("", self.check_soft)
             form.addRow("Sigma:", self.line_sigma)
+        self.check_soft.toggled.connect(self.set_soft)
         layout.addLayout(form)
 
         self.label_error = QtWidgets.QLabel("")
@@ -120,6 +116,25 @@ class ConstraintDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
         self.flag_expression_edited = False
         self.line_expression.textEdited.connect(self.expression_edited)
+        self.check_soft.setChecked(flag_soft and is_soft_constraint_supported())
+        self.set_soft(self.check_soft.isChecked())
+
+    @property
+    def flag_soft(self) -> bool:
+        return self.check_soft.isChecked()
+
+    def set_soft(self, flag_soft: bool):
+        self.line_sigma.setEnabled(bool(flag_soft))
+        if flag_soft:
+            text = ("Tick the parameters, check their marks and write an equation of "
+                    "the marks, e.g. <b>x + y = 1</b> or <b>sqrt(a**2 + b**2) = 2.5</b>, "
+                    "and its sigma. The ticked parameters are refined; ((left - right)/sigma)² "
+                    "is added to chi-square, so the equation holds within about sigma.")
+        else:
+            text = ("Tick the parameters, check their marks and write a linear equation "
+                    "of the marks, e.g. <b>x + y = 1</b>. The ticked parameters are refined; "
+                    "during the refinement the equation holds exactly.")
+        self.label_help.setText(text)
 
     def expression_edited(self, *argv):
         self.flag_expression_edited = self.line_expression.text().strip() != ""

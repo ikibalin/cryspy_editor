@@ -85,9 +85,11 @@ def test_error_is_shown(qapp):
 @pytest.mark.skipif(not is_soft_constraint_supported(), reason="CrysPy without soft constraints")
 def test_add_soft_constraint(qapp):
     obj = cryspy.str_to_globaln(RCIF)
-    dialog = ConstraintDialog(obj, flag_soft=True)
+    dialog = ConstraintDialog(obj)
     try:
-        assert dialog.windowTitle() == "Add soft constraint"
+        assert not dialog.line_sigma.isEnabled()
+        dialog.check_soft.setChecked(True)
+        assert dialog.line_sigma.isEnabled() and "sigma" in dialog.label_help.text()
         for path in ("crystal_feco.atom_site[Fe1].occupancy", "crystal_feco.atom_site[Co1].occupancy"):
             dialog.table.item(take_row(dialog, path), COLUMN_USE).setCheckState(QtCore.Qt.Checked)
         dialog.accept_if_valid()

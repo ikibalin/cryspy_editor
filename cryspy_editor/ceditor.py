@@ -42,7 +42,6 @@ from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_constraint_dialog import (
     ConstraintDialog,
     is_constraint_supported,
-    is_soft_constraint_supported,
 )
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
@@ -1253,16 +1252,10 @@ class CMainWindow(QMainWindow):
         if isinstance(item, GlobalN) and is_constraint_supported():
             act_constraint = QtWidgets.QAction("Add constraint...", menu)
             act_constraint.setToolTip(
-                "Linear constraint between refined parameters, e.g. x + y = 1")
+                "Constraint between refined parameters, e.g. x + y = 1, "
+                "exact or soft (within sigma)")
             act_constraint.triggered.connect(self.add_constraint)
             menu.addAction(act_constraint)
-        if isinstance(item, GlobalN) and is_soft_constraint_supported():
-            act_soft = QtWidgets.QAction("Add soft constraint...", menu)
-            act_soft.setToolTip(
-                "Restraint between refined parameters: x + y = 1 within sigma, "
-                "added to chi-square")
-            act_soft.triggered.connect(self.add_soft_constraint)
-            menu.addAction(act_soft)
 
         if isinstance(item, (GlobalN, DataN, LoopN)):
             act_rename = QtWidgets.QAction("Rename", menu)
@@ -1452,11 +1445,7 @@ class CMainWindow(QMainWindow):
     @QtCore.pyqtSlot(
         bool,
     )
-    def add_soft_constraint(self, *argv):
-        """Dialog of a soft constraint between refined parameters."""
-        self.add_constraint(flag_soft=True)
-
-    def add_constraint(self, *argv, flag_soft: bool = False):
+    def add_constraint(self, *argv):
         """Dialog of a constraint between refined parameters."""
         rcif_object = self.rcif_object
         if not isinstance(rcif_object, GlobalN):
@@ -1465,12 +1454,11 @@ class CMainWindow(QMainWindow):
             text_before = rcif_object.to_cif()
         except Exception:
             text_before = None
-        dialog = ConstraintDialog(rcif_object, self, flag_soft=flag_soft)
+        dialog = ConstraintDialog(rcif_object, self)
         if dialog.exec_() != QtWidgets.QDialog.Accepted:
             return
         if text_before is not None:
-            self.history.push("add soft constraint" if flag_soft else "add constraint",
-                              text_before)
+            self.history.push("add constraint", text_before)
         self.renew_w_object_panel()
         self.text_edit.append(
             f"Constraint added: {dialog.added_constraint.expression:}")
