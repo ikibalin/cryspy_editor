@@ -21,15 +21,12 @@ from cryspy_editor.widgets.assistant import (
 )
 from cryspy_editor.widgets.assistant_commands import COMMAND_PREFIX, form_completions
 from cryspy_editor.widgets.assistant_models import (
-    D_CLOUD,
     D_DEFAULT_URL,
     D_SOURCE_NAMES,
     SOURCE_GGUF,
     SOURCE_OLLAMA,
     form_context_text,
-    form_internet_text,
     form_max_tokens_text,
-    is_cloud,
     list_server_models,
     recommend_max_tokens,
     take_gguf_context,
@@ -100,14 +97,6 @@ server): choose it in <b>Source</b>, give its address and pick the model
 (e.g. <code>ollama pull qwen2.5:7b-instruct</code> first). The assistant then
 works exactly as with a GGUF file; the server keeps the model in its memory,
 llama-cpp-python is not needed.</p>
-<p><b>Cloud services</b> (Google Gemini, GitHub Models, Groq, OpenRouter,
-Mistral): the model runs at the service, so a weak computer is enough and no
-file is downloaded; only a free API key is needed (the link is shown under
-the field). <b>The questions, the data of the opened file and the answers are
-then sent over the internet</b> to the service and may be kept there: do not
-use it for confidential data. The key is saved in the settings of CrysPy
-Editor in the user's folder; leave the field empty to take it from the
-environment variable shown instead.</p>
 <p><b>Thinking</b>: a thinking model (qwen3, deepseek-r1, ...) can think
 before each answer: it weighs the results and decides better, but slower. The
 thinking is shown in the assistant window apart from the answers (button
@@ -123,16 +112,11 @@ class ModelSettingsDialog(QtWidgets.QDialog):
     """Choose the model file and its parameters."""
 
     def __init__(self, model_path: str = "", settings: dict = None,
-                 parent=None, d_model: dict = None, d_api_keys: dict = None):
-        """d_api_keys: the API keys of the servers and cloud services by
-        source; the key of d_model (if any) is the one of its source."""
+                 parent=None, d_model: dict = None):
         super().__init__(parent)
         self.setWindowTitle("AI assistant: model settings")
         settings = take_settings(settings)
         d_model = dict(d_model) if d_model else {}
-        self.d_api_keys = dict(d_api_keys) if d_api_keys else {}
-        if d_model.get("api_key"):
-            self.d_api_keys[d_model.get("source", SOURCE_GGUF)] = d_model["api_key"]
         self.memory_gb = get_total_memory_gb()
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -166,18 +150,6 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.button_refresh.clicked.connect(self.refresh_server_models)
         layout_server_model.addWidget(self.button_refresh)
         form.addRow("Model of the server", layout_server_model)
-
-        self.line_api_key = QtWidgets.QLineEdit(self)
-        self.line_api_key.setEchoMode(QtWidgets.QLineEdit.PasswordEchoOnEdit)
-        form.addRow("API key", self.line_api_key)
-        self.label_api_key = QtWidgets.QLabel(self)
-        self.label_api_key.setWordWrap(True)
-        self.label_api_key.setOpenExternalLinks(True)
-        form.addRow("", self.label_api_key)
-        self.label_internet = QtWidgets.QLabel(self)
-        self.label_internet.setWordWrap(True)
-        self.label_internet.setStyleSheet("QLabel { color: #d9534f; font-weight: bold; }")
-        form.addRow("", self.label_internet)
 
         self.sb_threads = QtWidgets.QSpinBox(self)
         self.sb_threads.setRange(0, max(1, os.cpu_count() or 1))
@@ -242,11 +214,8 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         self.form = form
         self.l_gguf_fields = [layout_path, self.sb_threads, self.sb_gpu_layers]
         self.l_server_fields = [self.line_url, layout_server_model]
-        self.l_key_fields = [self.line_api_key, self.label_api_key]
         index = self.cb_source.findData(d_model.get("source", SOURCE_GGUF))
         self.cb_source.setCurrentIndex(max(index, 0))
-        self.source_shown = self.source()
-        self.line_api_key.setText(self.d_api_keys.get(self.source_shown, ""))
         self.cb_source.currentIndexChanged.connect(self.on_source_changed)
         self.on_source_changed(flag_set_context=False)
 
@@ -299,38 +268,13 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             self._set_row_visible(field, flag_gguf)
         for field in self.l_server_fields:
             self._set_row_visible(field, not flag_gguf)
-        flag_key = source not in (SOURCE_GGUF, SOURCE_OLLAMA)
-        for field in self.l_key_fields:
-            self._set_row_visible(field, flag_key)
-        self.label_internet.setVisible(is_cloud(source))
         if not flag_gguf and self.line_url.text().strip() in [""] + list(D_DEFAULT_URL.values()):
             self.line_url.setText(D_DEFAULT_URL[source])
-        if hasattr(self, "source_shown") and self.source_shown != source:
-            # each source keeps its key; a cloud service proposes its model
-            self.d_api_keys[self.source_shown] = self.line_api_key.text().strip()
-            self.line_api_key.setText(self.d_api_keys.get(source, ""))
-            l_default_model = [d_cloud["model"] for d_cloud in D_CLOUD.values()]
-            if is_cloud(source) and self.server_model() in [""] + l_default_model:
-                self.cb_server_model.clear()
-                self.cb_server_model.setEditText(D_CLOUD[source]["model"])
-            self.source_shown = source
-        if is_cloud(source):
-            d_cloud = D_CLOUD[source]
-            self.label_api_key.setText(
-                f'Get a free key at <a href="{d_cloud["key_page"]}">{d_cloud["key_page"]}</a>'
-                f'{" (" + d_cloud["key_text"] + ")" if "key_text" in d_cloud else ""}; '
-                f'empty: the environment variable {d_cloud["env"]} is taken.')
-            self.label_internet.setText(form_internet_text(source))
-        else:
-            self.label_api_key.setText("Only if the server asks for a key (sent as Authorization: Bearer).")
         self.update_context(flag_set_value=flag_set_context)
-
-    def api_key(self) -> str:
-        return self.line_api_key.text().strip()
 
     def refresh_server_models(self):
         try:
-            l_model = list_server_models(self.source(), self.line_url.text().strip(), self.api_key())
+            l_model = list_server_models(self.source(), self.line_url.text().strip())
         except ConnectionError as error:
             self.label_context.setText(str(error))
             return
@@ -352,15 +296,6 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         elif source == SOURCE_OLLAMA and self.server_model() != "":
             d_range = take_ollama_context(self.line_url.text().strip(), self.server_model(), self.memory_gb)
         self.update_thinking()
-        if is_cloud(source):
-            from cryspy_editor.widgets.assistant_models import MAX_RECOMMENDED_CONTEXT
-            self.label_context.setText(
-                f"The models of the cloud services take {MAX_RECOMMENDED_CONTEXT} tokens or more: "
-                "the questions are shortened to the context given here.")
-            if flag_set_value:
-                self.sb_n_ctx.setValue(MAX_RECOMMENDED_CONTEXT)
-                self.update_max_tokens()
-            return
         if d_range is None:
             self.label_context.setText(
                 "Choose the model to see its context range." if source in (SOURCE_GGUF, SOURCE_OLLAMA)
@@ -404,17 +339,9 @@ class ModelSettingsDialog(QtWidgets.QDialog):
         return self.cb_server_model.currentText().strip()
 
     def model_description(self) -> dict:
-        """'source', 'model_path', 'url', 'model', 'api_key' of the chosen model."""
+        """'source', 'model_path', 'url', 'model' of the chosen model."""
         return {"source": self.source(), "model_path": self.model_path(),
-                "url": self.line_url.text().strip(), "model": self.server_model(),
-                "api_key": self.api_key() if self.source() not in (SOURCE_GGUF, SOURCE_OLLAMA) else ""}
-
-    def api_keys(self) -> dict:
-        """The API keys given for all sources (empty ones left out)."""
-        d_api_keys = dict(self.d_api_keys)
-        d_api_keys[self.source()] = self.api_key()
-        return {source: key for source, key in d_api_keys.items()
-                if key and source not in (SOURCE_GGUF, SOURCE_OLLAMA)}
+                "url": self.line_url.text().strip(), "model": self.server_model()}
 
     def set_defaults(self):
         self.check_thinking.setChecked(DEFAULT_SETTINGS["thinking"])
@@ -441,14 +368,6 @@ class ModelSettingsDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(
                 self, "AI assistant", "Give the model of the server (List models shows them).")
             return
-        elif is_cloud(self.source()):
-            from cryspy_editor.widgets.assistant_models import take_api_key
-            d_cloud = D_CLOUD[self.source()]
-            if take_api_key(self.source(), self.api_key()) == "":
-                QtWidgets.QMessageBox.warning(
-                    self, "AI assistant", f"Give the API key (get it at {d_cloud['key_page']}) "
-                    f"or set the environment variable {d_cloud['env']}.")
-                return
         self.accept()
 
     def model_path(self) -> str:
@@ -895,12 +814,10 @@ class AssistantController(QObject):
         self.d_setup["assistant_window_visible"] = True
 
     def take_model_description(self) -> dict:
-        source = self.d_setup.get("llm_source", SOURCE_GGUF)
-        return {"source": source,
+        return {"source": self.d_setup.get("llm_source", SOURCE_GGUF),
                 "model_path": self.d_setup.get("llm_model_path", ""),
                 "url": self.d_setup.get("llm_server_url", ""),
-                "model": self.d_setup.get("llm_server_model", ""),
-                "api_key": self.d_setup.get("llm_api_keys", {}).get(source, "")}
+                "model": self.d_setup.get("llm_server_model", "")}
 
     def choose_model(self):
         if self.window.is_busy():
@@ -910,10 +827,9 @@ class AssistantController(QObject):
         dialog = ModelSettingsDialog(
             model_path=self.d_setup.get("llm_model_path", ""),
             settings=self.d_setup.get("llm_settings", None), parent=self.main_window,
-            d_model=self.take_model_description(), d_api_keys=self.d_setup.get("llm_api_keys", {}))
+            d_model=self.take_model_description())
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             self.d_setup["llm_settings"] = dialog.settings()
-            self.d_setup["llm_api_keys"] = dialog.api_keys()
             d_model = dialog.model_description()
             self.d_setup["llm_source"] = d_model["source"]
             if d_model["source"] == SOURCE_GGUF:
@@ -941,10 +857,6 @@ class AssistantController(QObject):
                 return
         elif d_model["model"] == "":
             return
-        elif is_cloud(d_model["source"]):
-            from cryspy_editor.widgets.assistant_models import take_api_key
-            if take_api_key(d_model["source"], d_model["api_key"]) == "":
-                return
         if bool(self.d_setup.get("assistant_window_visible", True)):
             self.window.show_window()
         self.load_model(d_model)

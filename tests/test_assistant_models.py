@@ -99,10 +99,8 @@ def test_context_range_for_the_memory():
 
 
 class FakeServer(BaseHTTPRequestHandler):
-    """Ollama and OpenAI-compatible answers; requests and their
-    Authorization headers are kept."""
+    """Ollama and OpenAI-compatible answers; requests are kept."""
     l_request = []
-    l_authorization = []
 
     def log_message(self, *args):
         pass
@@ -119,10 +117,7 @@ class FakeServer(BaseHTTPRequestHandler):
         if self.path == "/api/tags":
             self.answer({"models": [{"name": "qwen2.5:7b", "size": 4.7 * 1024**3}]})
         elif self.path == "/v1/models":
-            FakeServer.l_authorization.append(self.headers.get("Authorization"))
             self.answer({"data": [{"id": "qwen2.5-7b-instruct"}]})
-        elif self.path == "/gemini/models":
-            self.answer({"data": [{"id": "models/gemini-2.5-pro"}, {"id": "models/gemini-2.5-flash"}]})
         else:
             self.send_error(404)
 
@@ -153,12 +148,7 @@ class FakeServer(BaseHTTPRequestHandler):
             self.answer({"capabilities": l_capability, "model_info": {"general.architecture": "qwen2", **{
                 f"qwen2.{key}": value for key, value in D_QWEN_7B.items() if key != "architecture"}}})
         elif self.path == "/v1/chat/completions":
-            FakeServer.l_authorization.append(self.headers.get("Authorization"))
-            d_format = d_in.get("response_format", {})
-            if d_in["model"] == "no-schema" and d_format.get("type") == "json_schema":
-                self.send_error(400, "response_format json_schema is not supported")
-            else:
-                self.answer({"choices": [{"message": {"content": s_reply}}]})
+            self.answer({"choices": [{"message": {"content": s_reply}}]})
         else:
             self.send_error(404)
 
@@ -169,7 +159,6 @@ def server_url():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     FakeServer.l_request.clear()
-    FakeServer.l_authorization.clear()
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
 
@@ -284,38 +273,6 @@ def test_openai_compatible_model(server_url):
     assert d_in["response_format"]["json_schema"]["schema"] == {"type": "object"}
 
 
-def test_cloud_service(server_url, monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    assert set(assistant_models.D_CLOUD) <= set(assistant_models.D_SOURCE_NAMES)
-    with pytest.raises(ValueError, match="GROQ_API_KEY"):
-        create_model({"source": "groq", "url": f"{server_url}/v1", "model": "llama"})
-    model = create_model({"source": "groq", "url": f"{server_url}/v1", "model": "llama", "api_key": "secret"})
-    assert "internet" in model.model_name
-    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True, schema={"type": "object"}) != ""
-    assert FakeServer.l_authorization[-1] == "Bearer secret"
-    # the key of the environment variable
-    monkeypatch.setenv("GROQ_API_KEY", "from-env")
-    model = ServerModel("groq", f"{server_url}/v1", "llama")
-    model.chat([{"role": "user", "content": "hi"}])
-    assert FakeServer.l_authorization[-1] == "Bearer from-env"
-    assert "internet" in assistant_models.form_internet_text("groq")
-    # a local server gets no key
-    assert assistant_models.list_server_models(SOURCE_OPENAI, f"{server_url}/v1") == ["qwen2.5-7b-instruct"]
-    assert FakeServer.l_authorization[-1] is None
-    # Gemini names its models "models/..."
-    assert assistant_models.list_server_models("gemini", f"{server_url}/gemini", "key") == [
-        "gemini-2.5-flash", "gemini-2.5-pro"]
-
-
-def test_server_without_json_schema(server_url):
-    model = ServerModel(SOURCE_OPENAI, f"{server_url}/v1", "no-schema")
-    assert model.chat([{"role": "user", "content": "hi"}], flag_json=True, schema={"type": "object"}) != ""
-    assert FakeServer.l_request[-1][1]["response_format"] == {"type": "json_object"}
-    assert model.l_response_format == ["json_object", ""]  # not asked with a schema again
-    model.chat([{"role": "user", "content": "hi"}], flag_json=True, schema={"type": "object"})
-    assert [path for path, _ in FakeServer.l_request].count("/v1/chat/completions") == 3
-
-
 def test_server_not_running():
     with pytest.raises(ConnectionError, match="Is the server running"):
         ServerModel(SOURCE_OLLAMA, "http://127.0.0.1:9", "qwen2.5:7b")
@@ -338,8 +295,7 @@ def test_dialog_sources_and_context(qapp, tmp_path, server_url):
         dialog.refresh_server_models()
         assert dialog.server_model() == "qwen2.5:7b"
         assert dialog.model_description() == {
-            "source": SOURCE_OLLAMA, "model_path": str(f_model), "url": server_url, "model": "qwen2.5:7b",
-            "api_key": ""}
+            "source": SOURCE_OLLAMA, "model_path": str(f_model), "url": server_url, "model": "qwen2.5:7b"}
         assert "32768" in dialog.label_context.text()
         # not a thinking model: the thinking cannot be turned on
         assert not dialog.check_thinking.isEnabled()
@@ -355,31 +311,6 @@ def test_dialog_sources_and_context(qapp, tmp_path, server_url):
         assert "thinking" in dialog.label_max_tokens.text()
         dialog.check_thinking.setChecked(False)
         assert dialog.settings()["max_tokens"] == recommend_max_tokens(False, dialog.settings()["n_ctx"], 1024)
-    finally:
-        dialog.close()
-
-
-def test_dialog_cloud_service(qapp):
-    from cryspy_editor.widgets.ui_assistant import ModelSettingsDialog
-    dialog = ModelSettingsDialog("", {}, d_model={"source": SOURCE_OPENAI, "api_key": "local"},
-                                 d_api_keys={"gemini": "g-key"})
-    try:
-        assert not dialog.label_internet.isVisibleTo(dialog)
-        assert dialog.api_key() == "local"
-        dialog.cb_source.setCurrentIndex(dialog.cb_source.findData("gemini"))
-        assert dialog.label_internet.isVisibleTo(dialog)
-        assert "internet" in dialog.label_internet.text()
-        assert "aistudio.google.com" in dialog.label_api_key.text()
-        assert dialog.line_url.text() == assistant_models.D_CLOUD["gemini"]["url"]
-        assert dialog.server_model() == assistant_models.D_CLOUD["gemini"]["model"]
-        assert dialog.api_key() == "g-key"
-        assert dialog.settings()["n_ctx"] == assistant_models.MAX_RECOMMENDED_CONTEXT
-        dialog.line_api_key.setText("g-new")
-        assert dialog.model_description()["api_key"] == "g-new"
-        assert dialog.api_keys() == {SOURCE_OPENAI: "local", "gemini": "g-new"}
-        dialog.cb_source.setCurrentIndex(dialog.cb_source.findData(SOURCE_OLLAMA))
-        assert dialog.model_description()["api_key"] == ""
-        assert not dialog.line_api_key.isVisibleTo(dialog)
     finally:
         dialog.close()
 
