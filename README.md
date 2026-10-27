@@ -19,9 +19,10 @@ moved there at the first start.
 
 ## AI assistant (optional)
 
-CrysPy Editor can use a local language model to answer questions and work
-on the opened file. The model runs on your computer; nothing is sent to the
-internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
+CrysPy Editor can use a language model to answer questions and work on the
+opened file. A local model (GGUF file, Ollama) runs on your computer and
+nothing is sent to the internet; a cloud service (see below) sends the data
+over the internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
 lookup, list / refine / fix / set parameters by their paths, calculate,
 refine, show the model, add an atom, run CrysPy procedures. Questions such as
 "how to describe multipoles?" or "what should be used for thermal
@@ -81,7 +82,33 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
 model of [Ollama](https://ollama.com) (e.g. after `ollama pull qwen2.5:7b-instruct`)
 or of an OpenAI-compatible server (LM Studio, llama.cpp server, vLLM): choose it
 in **Source**, give the address of the server and pick the model (**List models**).
-Everything else works the same; llama-cpp-python is not needed then.
+Everything else works the same; llama-cpp-python is not needed then. Give
+the **API key** if the server asks for one.
+
+**Cloud services.** Without a powerful computer, choose in **Source** one of
+the cloud services: Google Gemini, GitHub Models, Groq, OpenRouter or Mistral.
+Nothing is installed or downloaded: only a free API key is needed, and the
+link to get it is shown under the field.
+
+| Service | Get the key | Environment variable |
+| --- | --- | --- |
+| Google Gemini | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
+| GitHub Models | https://github.com/settings/personal-access-tokens (permission Models: read) | `GITHUB_TOKEN` |
+| Groq | https://console.groq.com/keys | `GROQ_API_KEY` |
+| OpenRouter | https://openrouter.ai/keys | `OPENROUTER_API_KEY` |
+| Mistral | https://console.mistral.ai/api-keys | `MISTRAL_API_KEY` |
+
+The address and a model are filled in; **List models** shows the others.
+The key is saved in `settings.json` (see above); leave the field empty to take
+it from the environment variable instead. The free plans limit the number of
+requests per minute and per day.
+
+> **The data go to the internet.** With a cloud service the model does not
+> run on your computer: the questions, the data of the opened file
+> (parameters, results of the actions) and the answers are sent to the
+> service and may be kept there under its terms. Do not use it for
+> confidential or unpublished data; use a local model instead. The dialog
+> and the assistant window show this warning.
 
 **Thinking models.** A thinking model (qwen3, deepseek-r1, ...) can think
 before each answer: turn on **Thinking** in the model settings (it is offered
