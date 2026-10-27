@@ -39,6 +39,10 @@ L_ITEM_CLS = L_ITEM_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
+from cryspy_editor.widgets.w_constraint_dialog import (
+    ConstraintDialog,
+    is_constraint_supported,
+)
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
     form_tooltip,
@@ -1245,6 +1249,14 @@ class CMainWindow(QMainWindow):
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
 
+        if isinstance(item, GlobalN) and is_constraint_supported():
+            act_constraint = QtWidgets.QAction("Add constraint...", menu)
+            act_constraint.setToolTip(
+                "Constraint between refined parameters, e.g. x + y = 1, "
+                "exact or soft (within sigma)")
+            act_constraint.triggered.connect(self.add_constraint)
+            menu.addAction(act_constraint)
+
         if isinstance(item, (GlobalN, DataN, LoopN)):
             act_rename = QtWidgets.QAction("Rename", menu)
             act_rename.way_item = way_item
@@ -1433,6 +1445,24 @@ class CMainWindow(QMainWindow):
     @QtCore.pyqtSlot(
         bool,
     )
+    def add_constraint(self, *argv):
+        """Dialog of a constraint between refined parameters."""
+        rcif_object = self.rcif_object
+        if not isinstance(rcif_object, GlobalN):
+            return
+        try:
+            text_before = rcif_object.to_cif()
+        except Exception:
+            text_before = None
+        dialog = ConstraintDialog(rcif_object, self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        if text_before is not None:
+            self.history.push("add constraint", text_before)
+        self.renew_w_object_panel()
+        self.text_edit.append(
+            f"Constraint added: {dialog.added_constraint.expression:}")
+
     def add_item(self, *argv) -> NoReturn:
         """Add object."""
         sender = self.sender()
