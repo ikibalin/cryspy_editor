@@ -5,20 +5,9 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 import cryspy
 import cryspy_editor.widgets.ui_setting as ui_setting
 
-# class WEditCif(QtWidgets.QScrollArea):
-# a number as CrysPy writes it: 8.4542, -1e-3, 8.4542(55) or 8.4542()
-RE_NUMBER = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?(\(\d*\))?$")
-
 
 def normalize_tag(tag: str) -> str:
     return tag.strip().lower().replace(".", "_")
-
-
-def toggle_refinement(token: str) -> str:
-    """8.4542 -> 8.4542() (refined); 8.4542(55) or 8.4542() -> 8.4542."""
-    if "(" in token:
-        return token[:token.index("(")]
-    return token + "()"
 
 
 def find_tag_of_token(lines: list, ind_line: int, ind_token: int) -> Optional[str]:
@@ -50,13 +39,13 @@ def switch_value(token: str, choices) -> str:
     return new_value
 
 
-def toggle_refinement_in_text(text: str, position: int, refinable_tags: set,
-                              value_choices: dict = None):
+def switch_value_in_text(text: str, position: int, value_choices: dict):
     """(new_text, start, end, new_token) for a double click at position, or
     None if there is nothing to change there.
 
-    A refinable number is refined or fixed; a text value with allowed
-    values (value_choices: CIF tag -> values) gets the next allowed value."""
+    A text value with allowed values (value_choices: CIF tag -> values)
+    gets the next allowed value. Refinement is set in the window
+    Parameters, so a double click on a number selects it as usual."""
     lines = text.split("\n")
     ind_start_line = 0
     for ind_line, line in enumerate(lines):
@@ -77,12 +66,9 @@ def toggle_refinement_in_text(text: str, position: int, refinable_tags: set,
     if tag is None:
         return None
     tag = normalize_tag(tag)
-    if value_choices and tag in value_choices:
-        new_token = switch_value(token, value_choices[tag])
-    elif RE_NUMBER.match(token) is not None and tag in refinable_tags:
-        new_token = toggle_refinement(token)
-    else:
+    if not value_choices or tag not in value_choices:
         return None
+    new_token = switch_value(token, value_choices[tag])
     start += ind_start_line
     end += ind_start_line
     return text[:start] + new_token + text[end:], start, end, new_token
@@ -94,18 +80,11 @@ def take_value_choices(item) -> dict:
     return cryspy.take_value_choices(item)
 
 
-def take_refinable_tags(item) -> set:
-    """CIF tags of the parameters of an ItemN or LoopN that can be refined."""
-    return cryspy.take_refinable_cif_tags(item)
-
-
 class WEditCif(QtWidgets.QTextEdit):
     """WFunction class."""
 
-    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str="", s_info:str="", refinable_tags: set = None, value_choices: dict = None):
+    def __init__(self, text: str, rewrite_item: Callable, parent=None, text_placeholder:str="", s_info:str="", value_choices: dict = None):
         super(WEditCif, self).__init__(parent)
-        # double click on a number of these tags refines or fixes it
-        self.refinable_tags = refinable_tags if refinable_tags else set()
         # double click on a value of these tags gives the next allowed value
         self.value_choices = value_choices if value_choices else {}
 
@@ -125,14 +104,11 @@ class WEditCif(QtWidgets.QTextEdit):
         self.rewrite_item = rewrite_item
 
     def mouseDoubleClickEvent(self, event):
-        """A double click on a parameter that can be refined adds "()"
-        after it (refined) or removes the brackets (fixed value); on a
-        text value with allowed values (e.g. chi_type: Ciso, Cani) it puts
-        the next allowed value."""
+        """A double click on a text value with allowed values (e.g.
+        chi_type: Ciso, Cani) puts the next allowed value."""
         cursor = self.cursorForPosition(event.pos())
-        result = toggle_refinement_in_text(
-            self.toPlainText(), cursor.position(), self.refinable_tags,
-            self.value_choices)
+        result = switch_value_in_text(
+            self.toPlainText(), cursor.position(), self.value_choices)
         if result is None:
             super().mouseDoubleClickEvent(event)
             return

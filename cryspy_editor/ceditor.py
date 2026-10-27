@@ -39,6 +39,11 @@ L_ITEM_CLS = L_ITEM_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
+from cryspy_editor.widgets.w_constraint_dialog import (
+    ConstraintDialog,
+    is_constraint_supported,
+)
+from cryspy_editor.widgets.w_parameters_dialog import ParametersDialog
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
     form_tooltip,
@@ -47,7 +52,7 @@ from cryspy_editor.widgets.w_procedure_dialog import (
 )
 from cryspy_editor.widgets.w_object_panel import WObjectPanel
 from cryspy_editor.widgets.w_editcif import (
-    WEditCif, take_refinable_tags, take_value_choices)
+    WEditCif, take_value_choices)
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy_editor.widgets.cryspy_objects import (
@@ -546,6 +551,22 @@ class CMainWindow(QMainWindow):
         about = menu_options.addAction("About")
         about.triggered.connect(self.display_about)
 
+        # Menu Parameters: refinement flags, values, favorites, constraints
+        self.parameters_dialog = None
+        menu_parameters = self.menu_bar.addMenu("Parameters")
+        menu_parameters.setToolTipsVisible(True)
+        act_parameters = menu_parameters.addAction("Parameters...")
+        act_parameters.setShortcut("Ctrl+P")
+        act_parameters.setToolTip(
+            "All parameters with a filter: what to refine, values, favorites")
+        act_parameters.triggered.connect(self.show_parameters)
+        if is_constraint_supported():
+            act_constraint = menu_parameters.addAction("Add constraint...")
+            act_constraint.setToolTip(
+                "Constraint between refined parameters, e.g. x + y = 1, "
+                "exact or soft (within sigma)")
+            act_constraint.triggered.connect(self.add_constraint)
+
         # Menu CrysPy
         self.init_menu_cryspy()
 
@@ -834,6 +855,9 @@ class CMainWindow(QMainWindow):
 
         way_item = self.w_item_tabs.item_way_in_w_item_tabs
         self.renew_w_item_tabs(way_item)
+        parameters_dialog = getattr(self, "parameters_dialog", None)
+        if parameters_dialog is not None and parameters_dialog.isVisible():
+            parameters_dialog.refresh()
 
     def renew_w_item_tabs(self, way_item):
         # print("id(self.rcif_object): ", id(self.rcif_object))
@@ -897,7 +921,6 @@ class CMainWindow(QMainWindow):
                 parent=w_item_tabs,
                 text_placeholder=text_placeholder,
                 s_info=s_info,
-                refinable_tags=take_refinable_tags(item),
                 value_choices=take_value_choices(item),
             )
             # w_edit_cif.setToolTip(item.__doc__)
@@ -1245,6 +1268,14 @@ class CMainWindow(QMainWindow):
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
 
+        if isinstance(item, GlobalN) and is_constraint_supported():
+            act_constraint = QtWidgets.QAction("Add constraint...", menu)
+            act_constraint.setToolTip(
+                "Constraint between refined parameters, e.g. x + y = 1, "
+                "exact or soft (within sigma)")
+            act_constraint.triggered.connect(self.add_constraint)
+            menu.addAction(act_constraint)
+
         if isinstance(item, (GlobalN, DataN, LoopN)):
             act_rename = QtWidgets.QAction("Rename", menu)
             act_rename.way_item = way_item
@@ -1433,6 +1464,43 @@ class CMainWindow(QMainWindow):
     @QtCore.pyqtSlot(
         bool,
     )
+    def add_constraint(self, *argv):
+        """Dialog of a constraint between refined parameters."""
+        rcif_object = self.rcif_object
+        if not isinstance(rcif_object, GlobalN):
+            return
+        try:
+            text_before = rcif_object.to_cif()
+        except Exception:
+            text_before = None
+        dialog = ConstraintDialog(rcif_object, self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        if text_before is not None:
+            self.history.push("add constraint", text_before)
+        self.renew_w_object_panel()
+        self.text_edit.append(
+            f"Constraint added: {dialog.added_constraint.expression:}")
+
+    def show_parameters(self, *argv):
+        """Window of all parameters; it stays open next to the main window."""
+        self.apply_cif_edits()
+        if self.parameters_dialog is None:
+            self.parameters_dialog = ParametersDialog(
+                lambda: getattr(self, "rcif_object", None), self.d_setup, save_settings,
+                self.parameters_changed, self)
+        else:
+            self.parameters_dialog.refresh()
+        self.parameters_dialog.show()
+        self.parameters_dialog.raise_()
+        self.parameters_dialog.activateWindow()
+
+    def parameters_changed(self, label: str, text_before):
+        """A change made in the window Parameters."""
+        if text_before is not None:
+            self.history.push(label, text_before)
+        self.renew_w_object_panel()
+
     def add_item(self, *argv) -> NoReturn:
         """Add object."""
         sender = self.sender()

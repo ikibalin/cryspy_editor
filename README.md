@@ -37,7 +37,22 @@ questions are answered from the results of the actions. The window and the
 logic are the same as in the assistant of PyColl5; only the actions differ.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`
-   (or `pip install llama-cpp-python`).
+   (or `pip install llama-cpp-python`). It is needed only for a GGUF file;
+   with Ollama or another server (see below) skip this step.
+
+   PyPI has no ready wheel of llama-cpp-python, so pip compiles it during the
+   installation. Install a C/C++ compiler first:
+   - **Windows**: [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/),
+     workload "Desktop development with C++" (MSVC and the Windows SDK);
+     then open a new terminal and run `pip install cryspy_editor[ai]`;
+   - **macOS**: `xcode-select --install`;
+   - **Linux**: `gcc`, `g++` and `make` from the package manager
+     (e.g. `sudo apt install build-essential`).
+
+   The compilation takes several minutes. An error such as
+   `CMAKE_C_COMPILER not set` or `'nmake' ... no such file or directory`
+   means that no compiler was found: install it as above and repeat. If a
+   compiler cannot be installed, use Ollama instead (nothing to compile).
 2. Download once any instruct (chat) model in GGUF format, Q4_K_M
    quantization. The file should take no more than half of the memory:
 
