@@ -43,9 +43,13 @@ except ImportError:
 
 
 INSTALL_HINT = (
-    "The AI assistant needs the optional package llama-cpp-python.\n"
+    "A GGUF model file needs the optional package llama-cpp-python.\n"
     "Install it with:\n    pip install llama-cpp-python\n"
-    "or\n    pip install cryspy_editor[ai]"
+    "or\n    pip install cryspy_editor[ai]\n"
+    "PyPI has no ready wheel of it, so pip builds it with a C/C++ compiler\n"
+    "(on Windows: Visual Studio Build Tools, 'Desktop development with C++').\n"
+    "Without a compiler use Ollama (https://ollama.com) instead: choose\n"
+    "Ollama in Source of the model settings; llama-cpp-python is not needed."
 )
 
 MAX_HISTORY_MESSAGES = 10
