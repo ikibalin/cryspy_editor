@@ -1,6 +1,8 @@
 # cryspy_editor
  Editor for CrysPy library
 
+Download page: https://ikibalin.github.io/cryspy_editor/
+
 ## Start
 
 ```
@@ -16,6 +18,26 @@ Settings are kept in `settings.json` in the user's folder:
 `%APPDATA%\CrysPyEditor` on Windows, `~/Library/Application Support/CrysPyEditor`
 on macOS, `~/.config/cryspy_editor` on Linux. Settings of older versions are
 moved there at the first start.
+
+## Standalone program (no Python needed)
+
+Each release has ready programs in **Assets** on the
+[Releases page](https://github.com/ikibalin/cryspy_editor/releases):
+Python, CrysPy, Qt and llama-cpp-python are inside, nothing else to install.
+
+- **Windows**: `CrysPy-Editor-<version>-Windows-x64.zip`. Unpack it and run
+  `CrysPy Editor.exe` in the unpacked folder. On the first start
+  Windows SmartScreen may say "unknown publisher": **More info → Run anyway**.
+- **macOS** (Apple Silicon): `CrysPy-Editor-<version>-macOS-arm64.dmg`. Drag
+  **CrysPy Editor** to Applications. The program is not signed by Apple, so on
+  the first start use right click → **Open** → **Open** (or
+  System Settings → Privacy & Security → **Open Anyway**).
+- **Linux** (x86-64, glibc 2.35 or newer):
+  `CrysPy-Editor-<version>-Linux-x64.tar.gz`. Unpack it and run
+  `"CrysPy Editor/CrysPy Editor"`.
+
+GGUF models are not inside: choose a downloaded `.gguf` file in
+**AI assistant → Load model (GGUF file or Ollama)...**.
 
 ## AI assistant (optional)
 
@@ -124,5 +146,15 @@ step. "What can you do?" (or `help`, `?`) lists the recipes and the actions.
   `[scope] documentation`, `[scope] maintenance` or `[scope] significant`.
   The label decides the next version in the release draft.
 - The version comes from git tags (plain, e.g. `1.9.10`) via versioningit.
+- Download page: `site/index.html`, published on GitHub Pages by
+  `.github/workflows/pages.yml` when it changes on `main` (or by hand in
+  Actions). It reads the latest release from the GitHub API in the browser.
 - Tests: `pip install -e .[dev]`, then `python -m pytest`. Qt runs without a
   display in tests (`QT_QPA_PLATFORM=offscreen`).
+- Standalone programs: `.github/workflows/build-apps.yml` builds them with
+  PyInstaller (`packaging/cryspy_editor.spec`) on Windows, macOS and Linux
+  when a release is published and attaches them to the release; only the
+  3 newest releases keep these archives. It can also be started by hand in
+  Actions. Locally: `pip install .[ai] pyinstaller`,
+  then `pyinstaller packaging/cryspy_editor.spec`; the program is in `dist/`.
+  `cryspy-editor --self-test` checks a built program.
