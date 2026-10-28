@@ -90,6 +90,15 @@ RE_DONE = re.compile(
     r"|\b(appliqu|modifi|effectu|termin|enregistr)é|\b(angewendet|gesetzt|geändert|erledigt)\b",
     re.IGNORECASE)
 
+# an answer that announces the next step of the work ("I will check the
+# attributes..."): the request is not finished, the agent loop goes on
+RE_MORE = re.compile(
+    r"\b(I will|I'll|I am going to|I'm going to|let me|next,? I|now I|I need to|I have to)\s+(?!not\b)\w"
+    r"|^\s*(я\s+)?(проверю|посмотрю|добавлю|сделаю|найду|узнаю|определю)\b"
+    r"|\bсейчас\s+(я\s+)?(проверю|посмотрю|добавлю|сделаю|найду|узнаю|определю)\b"
+    r"|\b(je vais|ich werde)\b",
+    re.IGNORECASE)
+
 # n_threads = 0 means all cores but one; n_gpu_layers = -1 means all layers
 # on GPU (Metal on Apple Silicon, CUDA if llama-cpp-python is built with it)
 DEFAULT_SETTINGS = {
@@ -302,7 +311,8 @@ def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Call
     context of n_ctx tokens: first the oldest history is dropped (the
     system message and the last message stay), then the longest message is
     cut from its end; the system message (the actions and the rules of the
-    answer) only when the others are short."""
+    answer) only when the others are short, and in its middle, so that the
+    rules at its end stay."""
     budget = n_ctx - max_tokens - TOKENS_PER_MESSAGE * len(messages) - 16  # the chat template adds a few
     if budget <= 0:
         raise ValueError(
@@ -321,7 +331,11 @@ def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Call
         n_keep = max(0, int(len(content) * (1 - (excess + 8) / l_tokens[ind])) - 1)
         if n_keep == 0 or n_keep >= len(content):
             n_keep = len(content) // 2
-        messages[ind]["content"] = content[:n_keep] + "\n[...cut...]"
+        if ind == 0:  # the rules of the answer are at the end of the system message: the middle is cut
+            n_tail = min(len(content) // 4, n_keep // 2)
+            messages[0]["content"] = content[:n_keep - n_tail] + "\n[...cut...]\n" + content[len(content) - n_tail:]
+        else:
+            messages[ind]["content"] = content[:n_keep] + "\n[...cut...]"
         l_tokens[ind] = count_tokens(messages[ind]["content"])
         if len(content) < 16:
             break
@@ -366,6 +380,13 @@ def claims_done(answer: str) -> bool:
     an action made it (small models write "parameters refined" with no
     action)."""
     return bool(RE_DONE.search(answer or ""))
+
+
+def announces_more(answer: str) -> bool:
+    """The answer says what the assistant will do next instead of the
+    result ("I will check the attributes and add..."): small models answer
+    so after the first actions of a request that needs several."""
+    return bool(RE_MORE.search(answer or ""))
 
 
 class LocalModel:
@@ -642,6 +663,10 @@ class Assistant:
             l_todo = take_decision(raw)["actions"]
         # the answer was written before the results: not when an action failed
         flag_failed = any(result.startswith("Error") for _, _, result in l_action)
+        if self.dialog is None and not flag_failed and announces_more(answer) and "get_recipe" in D_TOOLS:
+            # "I will check ... and add ...": the work goes on step by step from these results
+            return self.ask_step_by_step(question, cryspy_object, [], on_action, on_step,
+                                         l_done=l_action, flag_changed=flag_object_changed)
         if flag_failed or self.dialog is not None:  # the questions are the answer
             answer = ""
         # a change is never reported without an action that made it
@@ -728,10 +753,13 @@ class Assistant:
 
     def ask_step_by_step(self, question: str, cryspy_object, l_first: list,
                          on_action: Optional[Callable] = None,
-                         on_step: Optional[Callable] = None) -> dict:
+                         on_step: Optional[Callable] = None, l_done: Optional[list] = None,
+                         flag_changed: bool = False) -> dict:
         """The request is done by the agent loop (assistant_agent.Agent):
         one action at a time, each chosen after the result of the previous
-        one. l_first: the actions chosen already (get_recipe). on_step(text):
+        one. l_first: the actions chosen already (get_recipe); l_done:
+        [(name, arguments, result)] of the actions done already for this
+        request (flag_changed: they changed the object). on_step(text):
         the steps are shown to the user as they go; the reply then has only
         the end (its "text"), the history of the chat keeps all."""
         self.flag_stop = False
@@ -746,7 +774,8 @@ class Assistant:
         agent = Agent(self.model, run_tool, l_action, take_json_object, max_steps=max_steps)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
-                        l_first=l_first, on_step=on_step)
+                        l_first=l_first, on_step=on_step, l_done=l_done)
+        out["flag_object_changed"] = out["flag_object_changed"] or flag_changed
         return self.form_agent_reply(agent, question, out, on_step)
 
     def resume_agent(self, answer: str, message: str, result: str, on_action: Optional[Callable] = None,

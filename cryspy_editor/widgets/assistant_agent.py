@@ -113,11 +113,14 @@ class Agent:
 
     def run(self, system_prompt: str, history: list, question: str, cryspy_object=None,
             on_action: Optional[Callable] = None, should_stop: Optional[Callable] = None,
-            l_first: Optional[list] = None, on_step: Optional[Callable] = None) -> dict:
+            l_first: Optional[list] = None, on_step: Optional[Callable] = None,
+            l_done: Optional[list] = None) -> dict:
         """Run the loop for the request.
 
         l_first: actions [(name, arguments)] already chosen by the model
         (e.g. get_recipe), done before the first call of the loop.
+        l_done: actions [(name, arguments, result)] done already for the
+        request; the model gets their results and goes on from them.
         on_step(text): called with the text of each step for the user when
         the step starts (its number, thought and action) and when its result
         comes, so that the user sees the course of the work and can stop it.
@@ -135,6 +138,13 @@ class Agent:
             "flag_object_changed": False, "n_error": 0, "cryspy_object": cryspy_object,
             "l_todo": [{"thought": "", "action": name, "arguments": arguments, "answer": ""}
                        for name, arguments in (l_first or [])]}
+        for action, arguments, result in (l_done or []):
+            messages.append({"role": "assistant", "content": json.dumps(
+                {"thought": "", "action": action, "arguments": arguments})})
+            self.state["l_call"].append((action, json.dumps(arguments, sort_keys=True, default=str)))
+            if on_step is not None:
+                on_step(form_step_start_text(len(self.state["l_step"]) + 1, "", action))
+            self._observe("", action, arguments, result, on_step)
         return self._loop(on_action, should_stop, on_step)
 
     def is_waiting(self) -> bool:
