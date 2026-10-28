@@ -55,6 +55,8 @@ from cryspy_editor.widgets.w_editcif import (
     WEditCif, take_value_choices)
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
+from cryspy_editor.widgets.w_structure_view import (
+    WStructureView, has_structure_view)
 from cryspy_editor.widgets.cryspy_objects import (
     cryspy_procedures_to_dictionary,
     check_function_to_auto_run,
@@ -1092,6 +1094,10 @@ class CMainWindow(QMainWindow):
                 if len(s_text) > 20:
                     s_text = s_text[:20] + "..."
                 w_item_tabs.addTab(widget, s_text)
+
+        # 3D view tab (crystal structure)
+        if has_structure_view(item):
+            w_item_tabs.addTab(WStructureView(item, parent=w_item_tabs), "3D view")
 
         # Report tab
         try:
