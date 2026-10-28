@@ -290,3 +290,12 @@ def test_recipe_used_inside_a_recipe_is_kept_in_full():
     l_content = [message["content"] for message in model.l_messages if message["role"] == "user"]
     assert any(inner in content for content in l_content)
     assert sum("[...cut...]" in content for content in l_content) >= 2  # older results of calc
+
+
+def test_fit_messages_keeps_the_rules_at_the_end_of_the_system_message():
+    from cryspy_editor.widgets.assistant import fit_messages
+    system = "actions " * 600 + "RULES OF THE ANSWER"
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": "question"}]
+    out = fit_messages(messages, 100, 900, lambda text: len(text) // 4)
+    assert "[...cut...]" in out[0]["content"] and out[0]["content"].endswith("RULES OF THE ANSWER")
+    assert out[0]["content"].startswith("actions ")

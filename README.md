@@ -144,7 +144,9 @@ reads its steps and works one action at a time, judging each result by
 chi_sq/n, R_F2 and the warnings of CrysPy. Each step is written in the chat
 as it starts and when its result comes; **Stop** ends the work, and at most
 "Maximal number of steps of the agent" actions (12 by default, in the model
-settings) are done for one request. The recipes
+settings) are done for one request. A request without a recipe goes on in
+the same way when the first answer of the model only says what it will do
+next ("I will check the attributes and add the multipoles"). The recipes
 for the experiments of the opened file (single crystal, powder, flip ratios,
 nuclear or magnetic crystal) are given to the model. **AI assistant →
 CookBook...** lists the recipes, shows their text and lets you write new ones
