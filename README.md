@@ -19,6 +19,13 @@ Settings are kept in `settings.json` in the user's folder:
 on macOS, `~/.config/cryspy_editor` on Linux. Settings of older versions are
 moved there at the first start.
 
+At startup CrysPy Editor asks GitHub (in the background, silently when
+offline) whether a newer release exists and then shows a window with a link
+to the [download page](https://ikibalin.github.io/cryspy_editor/) (and the
+`pip install --upgrade cryspy_editor` command for pip installations). The
+check is switched off by **Options → Check for new versions at startup**;
+**Options → Check for new version now** checks by hand.
+
 ## Standalone program (no Python needed)
 
 Each release has ready programs in **Assets** on the

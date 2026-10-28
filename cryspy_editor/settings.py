@@ -26,6 +26,8 @@ D_DEFAULT = {
     "recent_files": [],
     "font_size": 19,  # as in widgets/setup.internal of older versions
     "comment_character": "# ",
+    "check_for_updates": True,  # look for a new release at startup
+    "skipped_update_version": "",  # "Skip this version" in the dialog
 }
 
 # one dictionary for the whole program, loaded at first use

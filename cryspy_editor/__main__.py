@@ -47,6 +47,7 @@ def self_test() -> int:
     if os.environ.get("CRYSPY_EDITOR_REQUIRE_AI") and not assistant.flag_llama_cpp:
         print("self-test failed: llama-cpp-python is not available")
         return 1
+    os.environ["CRYSPY_EDITOR_NO_UPDATE_CHECK"] = "1"  # no dialog, no network
     app = QtWidgets.QApplication(sys.argv[:1])
     main_window = CMainWindow()
     main_window.close()
