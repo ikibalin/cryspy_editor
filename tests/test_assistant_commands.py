@@ -231,3 +231,29 @@ def test_model_gets_error_for_missing_arguments():
     obj = cryspy.str_to_globaln(RCIF)
     result, _ = assistant_tools.run_tool("set_parameter", obj, {"path": "cell.length_a"})
     assert isinstance(result, str) and result.startswith("Error")
+
+
+def test_input_field_has_several_lines(qapp):
+    from PyQt5 import QtCore
+    from PyQt5.QtTest import QTest
+    from cryspy_editor.widgets import ui_assistant
+    window = ui_assistant.AssistantWindow()
+    l_sent = []
+    window.input_line.returnPressed.disconnect()
+    window.input_line.returnPressed.connect(lambda: l_sent.append(window.input_line.text()))
+    try:
+        window.show()
+        field = window.input_line
+        height = field.height()
+        assert height >= 3 * field.fontMetrics().lineSpacing()
+        QTest.keyClicks(field, "first line")
+        QTest.keyClick(field, QtCore.Qt.Key_Return, QtCore.Qt.ShiftModifier)
+        QTest.keyClicks(field, "second line")
+        assert field.text() == "first line\nsecond line" and l_sent == []
+        field.setText("\n".join(f"line {ind}" for ind in range(20)))
+        qapp.processEvents()
+        assert field.height() > height  # grows with the text, up to N_LINES_MAX lines
+        QTest.keyClick(field, QtCore.Qt.Key_Return)
+        assert l_sent == [field.text()]
+    finally:
+        window.close()

@@ -445,6 +445,55 @@ class AskWorker(QObject):
                 model.on_thinking = None
 
 
+class AskEdit(QtWidgets.QPlainTextEdit):
+    """The request of the user in several lines (an algorithm described in
+    words is long): Enter sends it, Shift+Enter starts a new line, the
+    field grows with the text. It has the part of the QLineEdit API the
+    window uses: text, setText, returnPressed, textEdited (typing only) and
+    setCompleter (the list is filtered by the window, on_text_edited)."""
+
+    returnPressed = pyqtSignal()
+    textEdited = pyqtSignal(str)
+    N_LINES_MIN = 3
+    N_LINES_MAX = 10
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTabChangesFocus(True)
+        self.setToolTip("Enter sends the request, Shift+Enter starts a new line.")
+        self.document().contentsChanged.connect(self.fit_height)
+        self.fit_height()
+
+    def text(self) -> str:
+        return self.toPlainText()
+
+    def setText(self, text: str):
+        self.setPlainText(text)
+        self.moveCursor(QtGui.QTextCursor.End)
+
+    def setCompleter(self, completer: QtWidgets.QCompleter):
+        completer.setWidget(self)
+
+    def keyPressEvent(self, event):
+        if (event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter)
+                and not event.modifiers() & QtCore.Qt.ShiftModifier):
+            self.returnPressed.emit()
+            return
+        text = self.toPlainText()
+        super().keyPressEvent(event)
+        if self.toPlainText() != text:
+            self.textEdited.emit(self.toPlainText())
+
+    def fit_height(self):
+        """From N_LINES_MIN to N_LINES_MAX lines, as the text needs."""
+        n_line = int(self.document().size().height())
+        n_line = min(max(n_line, self.N_LINES_MIN), self.N_LINES_MAX)
+        margins = self.contentsMargins()
+        height = (n_line * self.fontMetrics().lineSpacing() + 2 * self.document().documentMargin()
+                  + margins.top() + margins.bottom() + 2)
+        self.setFixedHeight(int(height))
+
+
 class AssistantWindow(QtWidgets.QWidget):
     """Chat with the assistant in a window of its own. Closing hides it, so
     that the chat, the size and the position stay for the session."""
@@ -494,7 +543,7 @@ class AssistantWindow(QtWidgets.QWidget):
         self.splitter.setStretchFactor(1, 2)
         layout.addWidget(self.splitter)
 
-        self.input_line = QtWidgets.QLineEdit(self)
+        self.input_line = AskEdit(self)
         self.input_line.setPlaceholderText(PLACEHOLDER)
         self.input_line.returnPressed.connect(self.on_send)
         self.input_line.textEdited.connect(self.on_text_edited)
@@ -504,6 +553,8 @@ class AssistantWindow(QtWidgets.QWidget):
         self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.completer.setMaxVisibleItems(12)
         self.input_line.setCompleter(self.completer)
+        self.completer.activated[QtCore.QModelIndex].connect(
+            lambda index: self.input_line.setText(f"{index.data(QtCore.Qt.UserRole)} "))
         # Tab and Shift+Tab go through the proposed names instead of moving the focus
         self.input_line.installEventFilter(self)
         self.completer.popup().installEventFilter(self)
@@ -515,7 +566,7 @@ class AssistantWindow(QtWidgets.QWidget):
         self.button_stop.setToolTip("Stop the step-by-step work after the running action")
         self.button_stop.clicked.connect(self.on_stop)
         self.button_stop.setEnabled(False)
-        layout_input.addWidget(self.button_stop)
+        layout_input.addWidget(self.button_stop, 0, QtCore.Qt.AlignBottom)
         layout.addLayout(layout_input)
 
     def update_completions(self):
@@ -574,11 +625,21 @@ class AssistantWindow(QtWidgets.QWidget):
         index = self.completer.completionModel().index(row, 0)
         popup.setCurrentIndex(index)
         popup.scrollTo(index)
+        self.input_line.setText(index.data(QtCore.Qt.UserRole))
         return True
 
     def on_text_edited(self, text: str):
+        """Typing '@name' proposes the recipes and actions starting with it."""
         if text == COMMAND_PREFIX:
             self.update_completions()
+        popup = self.completer.popup()
+        if not text.startswith(COMMAND_PREFIX) or any(char.isspace() for char in text):
+            popup.hide()
+            return
+        self.completer.setCompletionPrefix(text)
+        if self.completer.completionCount() == 0:
+            popup.hide()
+        else:
             self.completer.complete()
 
     def take_assistant(self):
