@@ -163,6 +163,13 @@ model (turn on **Thinking**) works out such an algorithm better; give it a
 context of 8192 tokens or more. The assistant may ask you in the middle of
 other step-by-step work too, and goes on from your answers.
 
+**Recipes from recipes.** A step of a recipe may do a whole recipe of the
+CookBook: `Actions: use_recipe {"name": "refine_background"}`. So small
+recipes are bricks of bigger ones, and those of still bigger ones; the
+assistant does the steps of the inner recipe and goes on with the next step
+(without a model `run_recipe` does the same). CrysPy rejects a recipe that
+uses an unknown recipe or recipes that use each other in a circle.
+
 **Commands.** Type `@` in the input line to see the names of the recipes and
 of the actions with a short description (Tab and Shift+Tab go through them,
 Enter takes one), and run one directly, without the
