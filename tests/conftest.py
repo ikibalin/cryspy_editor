@@ -8,6 +8,11 @@ os.environ.setdefault("CRYSPY_EDITOR_NO_UPDATE_CHECK", "1")
 import pytest
 from PyQt5 import QtWidgets
 
+try:  # the 3D view: QtWebEngine must be loaded before QApplication
+    import PyQt5.QtWebEngineWidgets  # noqa: F401
+except ImportError:
+    pass
+
 
 @pytest.fixture(autouse=True)
 def settings_dir(tmp_path, monkeypatch):

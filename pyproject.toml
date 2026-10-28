@@ -17,10 +17,12 @@ classifiers = [
   'Programming Language :: Python :: 3.14',
 ]
 # cryspy[all]: the editor shows every visualization of CrysPy (matplotlib
-# plots, later the 3D crystal structure), which are optional extras there.
+# plots, the 3D view of crystal structures), which are optional extras there.
+# PyQtWebEngine shows the 3D view (a py3Dmol page).
 dependencies = [
   'cryspy[all]>=0.19.0',
   'pyqt5>=5.15',
+  'PyQtWebEngine>=5.15',
   'matplotlib',
   'numpy',
 ]

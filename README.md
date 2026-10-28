@@ -46,6 +46,15 @@ Python, CrysPy, Qt and llama-cpp-python are inside, nothing else to install.
 GGUF models are not inside: choose a downloaded `.gguf` file in
 **AI assistant → Load model (GGUF file or Ollama)...**.
 
+## 3D view of crystal structures
+
+Select a crystal block: the **3D view** tab shows its structure (atoms of the
+chosen number of unit cells, bonds, cell, axes and magnetic moments from
+`atom_site_moment` / mcif). Rotate with the left mouse button, zoom with the
+wheel. The settings panel on the right is made from
+`cryspy.StructureViewSettings`, the page itself by CrysPy (py3Dmol).
+3Dmol.js is bundled (`cryspy_editor/widgets/js`), so no internet is needed.
+
 ## AI assistant (optional)
 
 CrysPy Editor can use a local language model to answer questions and work
