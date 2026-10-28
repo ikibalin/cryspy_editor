@@ -72,7 +72,7 @@ ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply 
 # or a task whose next steps depend on the results
 STEP_BY_STEP = "work_step_by_step"
 WRITE_RECIPE = "get_recipe_guide"  # a recipe for the CookBook written from the words of the user
-AGENT_ACTIONS = ("get_recipe", STEP_BY_STEP, WRITE_RECIPE, ASK_ACTION)
+AGENT_ACTIONS = ("get_recipe", "use_recipe", STEP_BY_STEP, WRITE_RECIPE, ASK_ACTION)
 NO_MODEL = ("No model is loaded (AI assistant -> Load model). Without it type @name to run a recipe "
             "or an action of CrysPy, or ask 'what can you do?'.")
 NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "

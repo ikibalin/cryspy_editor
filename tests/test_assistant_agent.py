@@ -269,3 +269,24 @@ def test_fit_messages_cuts_the_system_message_last():
     out = fit_messages(messages, 100, 900, lambda text: len(text) // 4)
     assert out[0]["content"] == messages[0]["content"]
     assert out[-1]["content"].endswith("[...cut...]")
+
+
+def test_recipe_used_inside_a_recipe_is_kept_in_full():
+    """use_recipe (a recipe inside a recipe) gives a plan followed to the
+    end: its result is not shortened like the results of other actions."""
+    inner = "Recipe brick:\n" + "1. step: " + "x" * 2000
+
+    def run_tool(name, cryspy_object, arguments):
+        return (inner, False) if name == "use_recipe" else (f"{name} " + "y" * 600, False)
+
+    class RecordingModel(CountingModel):
+        def chat(self, messages, flag_json=False, schema=None):
+            self.l_messages = [dict(message) for message in messages]
+            return super().chat(messages, flag_json, schema)
+
+    model = RecordingModel([step("use_recipe", {"name": "brick"})] + [step("calc", {"n": n}) for n in range(4)]
+                           + [final("ok")])
+    Agent(model, run_tool, ["use_recipe", "calc"], take_json_object).run("system", [], "go")
+    l_content = [message["content"] for message in model.l_messages if message["role"] == "user"]
+    assert any(inner in content for content in l_content)
+    assert sum("[...cut...]" in content for content in l_content) >= 2  # older results of calc
