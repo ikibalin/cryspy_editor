@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CrysPy Editor</title>
+<meta name="description" content="CrysPy Editor: graphical editor for CrysPy (rcif files, refinement and MEM). Download for Windows, macOS and Linux.">
+<link rel="icon" href="logo.png">
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1d2330; --muted: #5c6577;
+    --line: #dde1e8; --accent: #1f6feb; --accent-text: #ffffff; --soft: #eaf1fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2;
+      --line: #2c3340; --accent: #4c8dff; --accent-text: #0b1220; --soft: #1d2a40;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 40px 16px 56px; }
+  header { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }
+  header img { width: 88px; height: auto; }
+  h1 { margin: 0; font-size: 2rem; line-height: 1.2; }
+  .tagline { margin: 4px 0 0; color: var(--muted); }
+  h2 { font-size: 1.25rem; margin: 36px 0 12px; }
+  a { color: var(--accent); }
+  .release { color: var(--muted); margin: 0 0 16px; }
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .card.mine { border-color: var(--accent); background: var(--soft); }
+  .card h3 { margin: 0; font-size: 1.1rem; }
+  .card .note { color: var(--muted); font-size: 0.9rem; flex: 1; }
+  .button {
+    display: inline-block; text-align: center; text-decoration: none; font-weight: 600;
+    background: var(--accent); color: var(--accent-text); border-radius: 8px; padding: 10px 14px;
+  }
+  .button.off { background: var(--line); color: var(--muted); pointer-events: none; }
+  .badge { font-size: 0.75rem; color: var(--accent); font-weight: 600; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  code {
+    background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+    padding: 1px 6px; font-size: 0.9em; overflow-wrap: anywhere;
+  }
+  footer { margin-top: 44px; color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 480px) {
+    header { flex-direction: column; align-items: flex-start; }
+    h1 { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="logo.png" alt="CrysPy Editor logo">
+    <div>
+      <h1>CrysPy Editor</h1>
+      <p class="tagline">Graphical editor for <a href="https://github.com/ikibalin/cryspy">CrysPy</a>:
+        rcif files, refinement of crystal and magnetic structures, MEM, local AI assistant.</p>
+    </div>
+  </header>
+
+  <h2>Download</h2>
+  <p class="release" id="release">Looking for the latest release…</p>
+  <div class="downloads" id="downloads">
+    <div class="card" data-os="windows">
+      <h3>Windows <span class="badge"></span></h3>
+      <div class="note">64-bit. Unpack the zip and run <code>CrysPy Editor.exe</code>.</div>
+      <a class="button off" href="#">Not available yet</a>
+    </div>
+    <div class="card" data-os="macos">
+      <h3>macOS <span class="badge"></span></h3>
+      <div class="note">Apple Silicon (M1 and newer). Open the dmg and drag CrysPy Editor to Applications.</div>
+      <a class="button off" href="#">Not available yet</a>
+    </div>
+    <div class="card" data-os="linux">
+      <h3>Linux <span class="badge"></span></h3>
+      <div class="note">x86-64, glibc 2.35 or newer. Unpack and run <code>CrysPy Editor/CrysPy Editor</code>.</div>
+      <a class="button off" href="#">Not available yet</a>
+    </div>
+  </div>
+
+  <h2>First start</h2>
+  <ul>
+    <li>Nothing else to install: Python, CrysPy, Qt and llama-cpp-python are inside.</li>
+    <li><b>Windows</b> may say “Windows protected your PC”: click <b>More info → Run anyway</b>.</li>
+    <li><b>macOS</b>: the program is not signed by Apple. Right click it → <b>Open</b> → <b>Open</b>,
+      or System Settings → Privacy &amp; Security → <b>Open Anyway</b>.</li>
+    <li>The AI assistant needs a chat model: choose a downloaded <code>.gguf</code> file or an Ollama model in
+      <b>AI assistant → Load model</b>. The model runs on your computer.</li>
+  </ul>
+
+  <h2>With Python</h2>
+  <p><code>pip install cryspy_editor</code> (add <code>[ai]</code> for the local AI assistant),
+    then run <code>cryspy-editor</code>. Package on <a href="https://pypi.org/project/cryspy_editor/">PyPI</a>.</p>
+
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://github.com/ikibalin/cryspy_editor/releases">All releases and release notes</a></li>
+    <li><a href="https://github.com/ikibalin/cryspy_editor">Source code</a> ·
+      <a href="https://github.com/ikibalin/cryspy_editor/issues">Report a problem</a></li>
+    <li><a href="https://github.com/ikibalin/cryspy">CrysPy library</a></li>
+  </ul>
+
+  <footer>CrysPy Editor by Iurii Kibalin · MIT license</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var REPO = "ikibalin/cryspy_editor";
+  var PATTERNS = { windows: /-Windows-.*\.zip$/, macos: /-macOS-.*\.dmg$/, linux: /-Linux-.*\.tar\.gz$/ };
+
+  function userOs() {
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+    var ua = navigator.userAgent || "";
+    if (/win/i.test(p) || /windows/i.test(ua)) return "windows";
+    if (/mac/i.test(p) || /mac os/i.test(ua)) return "macos";
+    if (/linux/i.test(p) || /linux/i.test(ua)) return "linux";
+    return "";
+  }
+
+  function megabytes(size) { return Math.round(size / 1048576) + " MB"; }
+
+  function show(release, latest) {
+    var date = new Date(release.published_at).toLocaleDateString(undefined,
+      { year: "numeric", month: "long", day: "numeric" });
+    var text = document.getElementById("release");
+    text.innerHTML = "";
+    text.appendChild(document.createTextNode("Version " + release.tag_name + ", " + date + ". "));
+    var notes = document.createElement("a");
+    notes.href = release.html_url;
+    notes.textContent = "Release notes";
+    text.appendChild(notes);
+    if (latest && latest.tag_name !== release.tag_name) {
+      text.appendChild(document.createTextNode(
+        " (the newest release " + latest.tag_name + " has no ready programs yet)"));
+    }
+    Object.keys(PATTERNS).forEach(function (os) {
+      var asset = release.assets.filter(function (a) { return PATTERNS[os].test(a.name); })[0];
+      var button = document.querySelector('.card[data-os="' + os + '"] .button');
+      if (!asset) return;
+      button.href = asset.browser_download_url;
+      button.textContent = "Download (" + megabytes(asset.size) + ")";
+      button.classList.remove("off");
+    });
+  }
+
+  var os = userOs();
+  if (os) {
+    var card = document.querySelector('.card[data-os="' + os + '"]');
+    card.classList.add("mine");
+    card.querySelector(".badge").textContent = "your system";
+  }
+
+  fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=20")
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (list) {
+      var stable = list.filter(function (r) { return !r.draft && !r.prerelease; });
+      var withApps = stable.filter(function (r) {
+        return r.assets.some(function (a) { return PATTERNS.windows.test(a.name) ||
+          PATTERNS.macos.test(a.name) || PATTERNS.linux.test(a.name); });
+      });
+      if (withApps.length) {
+        show(withApps[0], stable[0]);
+      } else {
+        document.getElementById("release").textContent = stable.length
+          ? "Latest release " + stable[0].tag_name + ". Ready programs will be attached from the next release; until then use pip below."
+          : "No releases yet.";
+      }
+    })
+    .catch(function () {
+      var text = document.getElementById("release");
+      text.innerHTML = 'Could not ask GitHub for the latest release. See the <a href="https://github.com/' +
+        REPO + '/releases/latest">latest release page</a>.';
+    });
+})();
+</script>
+</body>
+</html>
