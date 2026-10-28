@@ -592,17 +592,15 @@ def procedure_calc(s_line: str, d_np_table: dict):
             d_np_table[" table_commands"].append("")
         d_np_table["2Theta"] = np_tth
     elif s_name.replace("_", "").startswith("chisq"):
-        np_y_mod, flag_y_mod, name_y_mod = take_val(l_name[0], d_np_table)
+        np_y_mod, flag_y_mod, _ = take_val(l_name[0], d_np_table)
         if not flag_y_mod:
             raise ValueError(f"The column {l_name[0]:} is not defined")
         np_y_exp, flag_y_exp, name_y_exp = take_val(l_name[1], d_np_table)
         if not flag_y_exp:
             raise ValueError(f"The column {l_name[1]:} is not defined")
         if len(l_name) == 3:
-            np_y_sigma, flag_y_sigma, name_y_sigma = take_val(
-                l_name[2], d_np_table
-            )
-            if not flag_y_exp:
+            np_y_sigma, flag_y_sigma, _ = take_val(l_name[2], d_np_table)
+            if not flag_y_sigma:
                 raise ValueError(f"The column {l_name[2]:} is not defined")
         else:
             np_y_sigma = numpy.ones_like(np_y_mod)
@@ -882,21 +880,12 @@ def choose_func_equiv(s_command: str):
     return func_equiv
 
 
-def check_same_hkl(np_hkl_1, np_hkl_2):
-    return numpy.all(np_hkl_1 == np_hkl_2)
-
-
 def equiv_friedel(hkl):
     l_hkl = [
         (hkl[0], hkl[1], hkl[2]),
         (-hkl[0], -hkl[1], -hkl[2]),
     ]
     return l_hkl
-
-
-def check_friedel(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_friedel(np_hkl_2)
-    return np_hkl_1 in l_hkl
 
 
 def equiv_orto(hkl):
@@ -911,11 +900,6 @@ def equiv_orto(hkl):
         (-hkl[0], hkl[1], -hkl[2]),
     ]
     return l_hkl
-
-
-def check_ortho(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_orto(np_hkl_2)
-    return np_hkl_1 in l_hkl
 
 
 def equiv_tetra(hkl):
@@ -940,11 +924,6 @@ def equiv_tetra(hkl):
     return l_hkl
 
 
-def check_tetra(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_orto(np_hkl_2)
-    return np_hkl_1 in l_hkl
-
-
 def equiv_hex(hkl):
     hh = -(hkl[0] + hkl[1])
     l_hkl = [
@@ -962,11 +941,6 @@ def equiv_hex(hkl):
         (-hh, -hkl[0], hkl[2]),
     ]
     return l_hkl
-
-
-def check_hex(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_hex(np_hkl_2)
-    return (np_hkl_1[0], np_hkl_1[1], np_hkl_1[2]) in l_hkl
 
 
 def equiv_cubic(hkl):
@@ -1005,11 +979,6 @@ def equiv_cubic(hkl):
         (-hkl[0], hkl[2], -hkl[1]),
     ]
     return l_hkl
-
-
-def check_cubic(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_cubic(np_hkl_2)
-    return (np_hkl_1[0], np_hkl_1[1], np_hkl_1[2]) in l_hkl
 
 
 def evaluate_expression(expr: str, values: dict):
@@ -1115,7 +1084,6 @@ def take_val(s_input: str, d_np_table: dict):
 def group_by_hkl(l_hkl, func_equivalent):
     l_group_hkl_ind = []
     l_ind = list(range(len(l_hkl)))
-    flag_new_equiv = True
     num = len(l_hkl)
     for i_hkl, hkl_1 in enumerate(l_hkl):
         if i_hkl in l_ind:

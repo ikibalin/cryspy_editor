@@ -159,7 +159,6 @@ class CThread(QtCore.QThread):
     signal_start = QtCore.pyqtSignal()
     signal_end = QtCore.pyqtSignal()
     signal_refresh = QtCore.pyqtSignal()
-    signal_take_attributes = QtCore.pyqtSignal()
     signal_progress = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -167,17 +166,14 @@ class CThread(QtCore.QThread):
         self.message = None
         self.function = None
         self.arguments = None
-        self.output = None
         
         self.d_info = None
         # folder of the opened file: CrysPy procedures write their output
         # files (.den, sections, ...) to relative paths
         self.work_dir = None
-        self.function_run_calculations = None
         # called in the main thread just before the calculation starts,
         # e.g. to apply the text typed in the RCIF tab to the object
         self.functions_before_start = []
-        self.function_end_calculations = None
 
     def request_stop(self):
         """Stop the running calculation.

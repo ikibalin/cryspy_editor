@@ -30,12 +30,7 @@ from cryspy import (
     ChannelCol,
     str_to_globaln,
 )
-from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
-
-L_GLOBAL_CLS = L_GLOBAL_CLASS
-L_DATA_CLS = L_DATA_CLASS
-L_LOOP_CLS = L_LOOP_CLASS
-L_ITEM_CLS = L_ITEM_CLASS
+from cryspy import L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
@@ -844,7 +839,6 @@ class CMainWindow(QMainWindow):
             int(screen.width() * 1 / 4), int(screen.height() * 1 / 4)
         )
         self.info_width = int(screen.width() * 8.0 / 10.0)
-        self.info_height = int(screen.height() * 14.0 / 16.0)
         self.move(int(screen.width() / 10), int(screen.height() / 20))
         self.resize(
             int(screen.width() * 8.0 / 10.0),
@@ -1177,7 +1171,6 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         # self.text_edit.setLineWrapColumnOrWidth(648)
-        self.text_edit.rewrite_undo_last_line = False
 
         w_splitter.addWidget(self.text_edit)
 
@@ -1311,7 +1304,7 @@ class CMainWindow(QMainWindow):
                 menu_data = menu.addMenu("Add data block")
                 menu_data.setToolTipsVisible(True)
 
-                for cls_item in L_DATA_CLS:
+                for cls_item in L_DATA_CLASS:
                     prefix = cls_item.PREFIX
                     add_item = QtWidgets.QAction(f"{prefix :}", menu_data)
                     add_item.cls_item = cls_item
@@ -1322,7 +1315,7 @@ class CMainWindow(QMainWindow):
 
             menu_loop = menu.addMenu("Add loop block")
             menu_loop.setToolTipsVisible(True)
-            for cls_item in L_LOOP_CLS:
+            for cls_item in L_LOOP_CLASS:
                 prefix = cls_item.ITEM_CLASS.PREFIX
                 add_item = QtWidgets.QAction(f"{prefix :}", menu_loop)
                 add_item.cls_item = cls_item
@@ -1333,7 +1326,7 @@ class CMainWindow(QMainWindow):
 
             menu_item = menu.addMenu("Add item")
             menu_item.setToolTipsVisible(True)
-            for cls_item in L_ITEM_CLS:
+            for cls_item in L_ITEM_CLASS:
                 prefix = cls_item.PREFIX
                 add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
                 add_item.cls_item = cls_item

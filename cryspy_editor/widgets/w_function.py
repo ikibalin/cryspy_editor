@@ -136,11 +136,6 @@ class WFunction(QtWidgets.QFrame):
             self.run_function()
             self.w_cb_hide.setCheckState(2)
 
-    def is_defined(self):
-        """Is defined."""
-        return all([w_arg.attached_object is not None
-                    for w_arg in self.l_w_arg])
-
     def run_function(self) -> NoReturn:
         """Run function."""
         func = self.function_attached
@@ -272,19 +267,7 @@ class DropLabel(QtWidgets.QLineEdit):  # FIXME: remove to another file
         self.setStyleSheet("")
 
 
-def w_for_function(obj: Callable, layout_11: QtWidgets.QBoxLayout,
-                    layout_12: QtWidgets.QBoxLayout,
-                    layout_13: QtWidgets.QBoxLayout,
-                    layout_2: QtWidgets.QBoxLayout,
-                    layout_3: QtWidgets.QBoxLayout, w_output: QtWidgets.QWidget,
-                    thread: QtCore.QThread) -> NoReturn:  # FIXME delete it
-    """Widget for WFunction."""
-    w_out = WFunction()
-    w_out.set_function(obj, thread)
-    layout_11.addWidget(w_out)
-
-
-def del_layout(layout):  # FIXME delete it
+def del_layout(layout):
     """Delete all elements from layouts."""
     for i in reversed(range(layout.count())):
         if layout.itemAt(i).widget() is not None:
