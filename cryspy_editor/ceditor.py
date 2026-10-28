@@ -55,6 +55,7 @@ from cryspy_editor.widgets.w_editcif import (
     WEditCif, take_value_choices)
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
+from cryspy.procedure_assistant.parameters import take_parameter_records, is_number
 from cryspy_editor.widgets.cryspy_objects import (
     cryspy_procedures_to_dictionary,
     check_function_to_auto_run,
@@ -709,26 +710,20 @@ class CMainWindow(QMainWindow):
         self.text_edit.setText("\n".join(ls_text))
 
     def print_object_info(self):
+        """Refined parameters with the paths of the window Parameters."""
         try:
-            rcif_object = self.rcif_object
-            variable_names = rcif_object.get_variable_names()
-            ls_text = [f"\nNumber of variables is {len(variable_names):}.\n"]
-            if len(variable_names) > 0:
-                ls_text.append(f"   NAME                 VALUE      ERROR")
-            for name in variable_names:
-                value = rcif_object.get_variable_by_name(name)
-                name_sigma = [
-                    (
-                        name[ind]
-                        if ind < (len(name) - 1)
-                        else (name[ind][0] + "_sigma", name[ind][1])
-                    )
-                    for ind in range(len(name))
-                ]
-                sigma = rcif_object.get_variable_by_name(name_sigma)
+            l_record = [
+                record for record in take_parameter_records(self.rcif_object)
+                if is_number(record.value) and record.flag_refinement
+                and not record.flag_constraint]
+            ls_text = [f"\nNumber of variables is {len(l_record):}.\n"]
+            if len(l_record) > 0:
+                width = max(len(record.path) for record in l_record)
+                ls_text.append(f"   {'NAME':{width}}      VALUE      ERROR")
+            for record in l_record:
                 ls_text.append(
-                    f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}"
-                )
+                    f" - {record.path:{width}}  {float(record.value):9.5f}  "
+                    f"{record.sigma:9.5f}")
             self.text_edit.append("\n".join(ls_text))
         except Exception as e:
             self.show_error("Variables of the object are not shown", e)

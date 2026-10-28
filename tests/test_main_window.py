@@ -87,3 +87,20 @@ def test_cif_text_is_applied_before_run(window):
     window.cthread.start()
     assert window.cthread.wait(10000)
     assert l_value == [8.5]
+
+
+def test_refresh_lists_variables_with_parameter_paths(window):
+    """Refresh names the refined variables as the window Parameters does."""
+    from cryspy.procedure_assistant.parameters import take_parameter_records
+    window.d_setup["data_file_name"] = os.path.join(
+        DIR_EXAMPLES, "Fe3O4_5T_powder_1d", "main.rcif")
+    window.take_rcif_object_from_d_setup()
+    window.refresh_view()
+    text = window.text_edit.toPlainText()
+    n_variable = len(window.rcif_object.get_variable_names())
+    assert f"Number of variables is {n_variable}." in text
+    l_path = [record.path for record in take_parameter_records(window.rcif_object)
+              if record.flag_refinement and not record.flag_constraint]
+    assert len(l_path) == n_variable > 0
+    for path in l_path:
+        assert f" - {path} " in text
