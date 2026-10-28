@@ -66,6 +66,7 @@ MAX_STEPS = 6  # actions for one request
 MAX_RETRIES = 2  # the model corrects the actions with an error in their arguments
 N_MAX_RESULT = 3000  # characters of a result of a tool given to the model
 N_MAX_HISTORY = 2000  # characters of a reply kept in the chat history
+N_MIN_CUT_TOKENS = 64  # messages longer than this are cut before the system message
 ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply of the model
 # actions that start the agent loop (assistant_agent.py): a recipe of CrysPy,
 # or a task whose next steps depend on the results
@@ -217,7 +218,7 @@ the answers name the menus and windows of CrysPy Editor, never the actions.
 Answer in the language of the user. Never invent results: use the actions.
 Nothing is changed without an action: when no action does what the user
 asks, give no action and say that you cannot do it (and where in CrysPy
-Editor it is done); never write that something is done, applied or set.{s_recipe}
+Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{s_recipe}
 
 Respond ONLY with a JSON object:
 {{"actions": [{{"action": "<one of: {', '.join(take_action_names())}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
@@ -241,6 +242,18 @@ Examples (request: actions):
   [{{"action": "calculate_structure_factor", "arguments": {{"hkl": "5 0 3"}}}}]
 - download Al from COD and add it:
   [{{"action": "add_crystal_from_cod", "arguments": {{"formula": "Al"}}}}]{form_agent_examples()}"""
+
+
+def form_methods_rule() -> str:
+    """The rule for the methods of the objects (CrysPy tools list_methods,
+    call_method): an operation the user names that is not an action."""
+    if "call_method" not in D_TOOLS:
+        return ""
+    return """
+The data blocks, loops and items of the file have methods (e.g.
+define_background_points of a powder experiment): an operation the user names
+that is not an action is looked up with "list_methods" {"pattern": "<a word of
+it>"} and done with "call_method" {"method": "<name>", <its arguments>}."""
 
 
 def form_write_recipe_rule() -> str:
@@ -273,6 +286,10 @@ def form_agent_examples() -> str:
         s_out += """
 - analyse all the data of the file by the recipes:
   [{"action": "get_recipe", "arguments": {"name": "choose_recipes"}}]"""
+    if "call_method" in D_TOOLS:
+        s_out += """
+- define the background points of the powder experiments:
+  [{"action": "call_method", "arguments": {"method": "define_background_points"}}]"""
     if WRITE_RECIPE in D_TOOLS:
         s_out += f"""
 - write a recipe: fix all, refine the scale, then the positions, undo when R_F2 is worse:
@@ -284,7 +301,8 @@ def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Call
     """Shorten the messages so that the prompt and the answer fit the
     context of n_ctx tokens: first the oldest history is dropped (the
     system message and the last message stay), then the longest message is
-    cut from its end."""
+    cut from its end; the system message (the actions and the rules of the
+    answer) only when the others are short."""
     budget = n_ctx - max_tokens - TOKENS_PER_MESSAGE * len(messages) - 16  # the chat template adds a few
     if budget <= 0:
         raise ValueError(
@@ -296,7 +314,8 @@ def fit_messages(messages: list, max_tokens: int, n_ctx: int, count_tokens: Call
     while sum(l_tokens) > budget and len(messages) > 2:
         del messages[1], l_tokens[1]
     while sum(l_tokens) > budget:
-        ind = max(range(len(messages)), key=lambda i: l_tokens[i])
+        l_index = [i for i in range(1, len(messages)) if l_tokens[i] > N_MIN_CUT_TOKENS] or range(len(messages))
+        ind = max(l_index, key=lambda i: l_tokens[i])
         excess = sum(l_tokens) - budget
         content = messages[ind]["content"]
         n_keep = max(0, int(len(content) * (1 - (excess + 8) / l_tokens[ind])) - 1)

@@ -61,7 +61,11 @@ CrysPy Editor can use a local language model to answer questions and work
 on the opened file. The model runs on your computer; nothing is sent to the
 internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
 lookup, list / refine / fix / set parameters by their paths, calculate,
-refine, show the model, add an atom, run CrysPy procedures. Questions such as
+refine, show the model, add an atom, run CrysPy procedures and call the
+methods of the data blocks, loops and items of the file (e.g.
+`define_background_points` of a powder experiment: "define the background
+points"; the methods and their arguments come from CrysPy, `list_methods`,
+`call_method`). Questions such as
 "how to describe multipoles?" or "what should be used for thermal
 vibrations?" are answered from the help pages of CrysPy, which are shown in
 the answer. The same help is in **Options → CrysPy help...** (F1) without a
@@ -71,7 +75,9 @@ The assistant works in its own window, **AI Assistant / CrysPy Editor**,
 opened by **AI assistant → Show assistant**. One request may hold several
 actions (e.g. "fix everything, refine the cell and run the refinement"); a
 call with wrong arguments goes back to the model to be corrected, and
-questions are answered from the results of the actions. The window and the
+questions are answered from the results of the actions. The request field
+has several lines and grows with the text: Enter sends the request,
+Shift+Enter starts a new line. The window and the
 logic are the same as in the assistant of PyColl5; only the actions differ.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`

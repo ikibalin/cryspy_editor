@@ -245,3 +245,27 @@ def test_max_steps_in_model_settings(qapp):
         assert dialog.settings()["max_steps"] == assistant_agent.MAX_AGENT_STEPS
     finally:
         dialog.close()
+
+
+def test_recipe_is_kept_in_full_to_the_end():
+    """The recipe chosen before the loop is the plan of the whole work: it is
+    given in full and never shortened like the results of older actions."""
+    obj = cryspy.str_to_globaln(RCIF)
+    recipe_text = cryspy.call_assistant_tool(obj, "get_recipe", {"name": "refine_structure"})["text"]
+    l_step = [step("list_parameters", {"pattern": pattern}) for pattern in ("cell", "scale", "adp", "b_iso")]
+    assistant = make_assistant([reply(("get_recipe", {"name": "refine_structure"}))] + l_step + [final("done")])
+    assistant.model.llm._n_ctx = 16384  # the context is not the limit here
+    assistant.ask("refine the structure step by step", obj)
+    messages = assistant.model.llm.l_messages[-1]
+    content = next(message["content"] for message in messages if "Result of get_recipe" in message["content"])
+    assert recipe_text in content
+
+
+def test_fit_messages_cuts_the_system_message_last():
+    from cryspy_editor.widgets.assistant import fit_messages
+    messages = [{"role": "system", "content": "rules " * 200},
+                {"role": "user", "content": "question"},
+                {"role": "user", "content": "result " * 400}]
+    out = fit_messages(messages, 100, 900, lambda text: len(text) // 4)
+    assert out[0]["content"] == messages[0]["content"]
+    assert out[-1]["content"].endswith("[...cut...]")

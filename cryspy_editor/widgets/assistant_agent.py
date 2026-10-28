@@ -21,6 +21,7 @@ MAX_ERRORS_IN_ROW = 3  # failed actions one after another
 N_MAX_OBSERVATION = 1500  # characters of the result of the last actions
 N_MAX_OLD_OBSERVATION = 300  # characters of the results of older actions
 N_RECENT_OBSERVATIONS = 2  # the last observations given in full
+N_MAX_GUIDE = 3000  # characters of the result of the first actions (the recipe or the guide), kept to the end
 N_MAX_STEP_RESULT = 6  # lines of the result of an action shown to the user
 FINAL = "final"
 ASK_ACTION = "ask_user"  # the questions of the model to the user (a tool of CrysPy)
@@ -153,16 +154,23 @@ class Agent:
         return self._loop(on_action, should_stop, on_step)
 
     def _observe(self, thought: str, action: str, arguments: dict, result: str,
-                 on_step: Optional[Callable] = None):
-        """The result of an action: to the user, to the steps and to the model."""
+                 on_step: Optional[Callable] = None, flag_guide: bool = False):
+        """The result of an action: to the user, to the steps and to the model.
+
+        flag_guide: the result of an action chosen before the loop (the
+        recipe of get_recipe, the guide of get_recipe_guide): the model
+        follows it to the end, so it is given in full and never shortened."""
         state = self.state
         if on_step is not None:
             on_step(form_step_result_text(action, result))
         state["l_step"].append((thought, action, arguments, result))
         state["n_error"] = state["n_error"] + 1 if result.startswith("Error") else 0
+        n_max = N_MAX_GUIDE if flag_guide else N_MAX_OBSERVATION
         state["messages"].append({"role": "user", "content": (
-            f"Result of {action}:\n{cut_text(result, N_MAX_OBSERVATION)}\n\n"
+            f"Result of {action}:\n{cut_text(result, n_max)}\n\n"
             "Next action, or the final answer (JSON).")})
+        if flag_guide:
+            state["n_prefix"] = len(state["messages"])
 
     def _out(self, answer: str, stopped: str, dialog) -> dict:
         state = self.state
@@ -177,6 +185,7 @@ class Agent:
         while True:
             if should_stop is not None and should_stop():
                 return self._out("", f"Stopped by the user after {len(l_step)} actions.", None)
+            flag_guide = bool(l_todo)
             if l_todo:
                 step = l_todo.pop(0)
                 messages.append({"role": "assistant", "content": json.dumps(
@@ -213,7 +222,8 @@ class Agent:
                     return self._out("", "", result)
                 state["flag_object_changed"] = state["flag_object_changed"] or (
                     flag_changed and not result.startswith("Error"))
-            self._observe(step["thought"], action, arguments, result, on_step)
+            self._observe(step["thought"], action, arguments, result, on_step,
+                          flag_guide=flag_guide and not result.startswith("Error"))
             if state["n_error"] >= MAX_ERRORS_IN_ROW:
                 return self._out("", f"{MAX_ERRORS_IN_ROW} actions failed one after another.", None)
 
