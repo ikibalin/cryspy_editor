@@ -1102,7 +1102,12 @@ class CMainWindow(QMainWindow):
             self.show_error(f"Report of '{item.get_name()}' is not made", e)
 
         if report_html != "":
-            w_plain_text = QtWidgets.QLabel(w_item_tabs)
+            # wide tables (correlation matrix of many parameters) scroll
+            # instead of being cut or widening the window
+            w_scroll = QtWidgets.QScrollArea(w_item_tabs)
+            w_scroll.setWidgetResizable(True)
+            w_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+            w_plain_text = QtWidgets.QLabel(w_scroll)
             w_plain_text.setText(report_html)
             w_plain_text.setSizePolicy(
                 QtWidgets.QSizePolicy(
@@ -1110,12 +1115,13 @@ class CMainWindow(QMainWindow):
                     QtWidgets.QSizePolicy.Expanding,
                 )
             )
-            w_plain_text.setAlignment(QtCore.Qt.AlignTop)
+            w_plain_text.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
             w_plain_text.setWordWrap(True)
             w_plain_text.setTextInteractionFlags(
                 QtCore.Qt.TextSelectableByMouse
             )
-            w_item_tabs.addTab(w_plain_text, "View")
+            w_scroll.setWidget(w_plain_text)
+            w_item_tabs.addTab(w_scroll, "View")
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
