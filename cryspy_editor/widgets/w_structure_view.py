@@ -96,7 +96,14 @@ class WStructureView(QtWidgets.QWidget):
     def make_field_widget(self, field, value) -> QtWidgets.QWidget:
         meta = field.metadata
         name = field.name
-        if isinstance(value, bool):
+        unit = f" {meta['unit']}" if "unit" in meta else ""
+        if "choices" in meta:  # a choice among fixed strings
+            widget = QtWidgets.QComboBox(self)
+            widget.addItems([str(choice) for choice in meta["choices"]])
+            widget.setCurrentText(str(value))
+            widget.currentTextChanged.connect(
+                lambda v, n=name: self.set_setting(n, str(v)))
+        elif isinstance(value, bool):
             widget = QtWidgets.QCheckBox(self)
             widget.setChecked(value)
             widget.toggled.connect(lambda v, n=name: self.set_setting(n, bool(v)))
@@ -104,6 +111,7 @@ class WStructureView(QtWidgets.QWidget):
             widget = QtWidgets.QSpinBox(self)
             widget.setRange(int(meta.get("min", 0)), int(meta.get("max", 1000)))
             widget.setSingleStep(int(meta.get("step", 1)))
+            widget.setSuffix(unit)
             widget.setValue(value)
             widget.valueChanged.connect(lambda v, n=name: self.set_setting(n, int(v)))
         elif isinstance(value, float):
@@ -111,6 +119,7 @@ class WStructureView(QtWidgets.QWidget):
             widget.setDecimals(2)
             widget.setRange(float(meta.get("min", 0.)), float(meta.get("max", 100.)))
             widget.setSingleStep(float(meta.get("step", 0.1)))
+            widget.setSuffix(unit)
             widget.setValue(value)
             widget.valueChanged.connect(lambda v, n=name: self.set_setting(n, float(v)))
         else:

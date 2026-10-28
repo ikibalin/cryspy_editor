@@ -85,3 +85,21 @@ def test_change_of_setting_redraws(widget):
     widget.timer.stop()
     widget.redraw()
     assert read_page(widget).count("addArrow") >= n_atom
+
+
+def test_choices_and_units_from_field_metadata(widget):
+    @dataclasses.dataclass
+    class Settings:
+        mode: str = dataclasses.field(
+            default="b", metadata={"choices": ("a", "b", "c")})
+        scale: float = dataclasses.field(
+            default=1., metadata={"unit": "Å/μB", "min": 0., "max": 5.})
+
+    for field in dataclasses.fields(Settings):
+        value = getattr(Settings(), field.name)
+        made = widget.make_field_widget(field, value)
+        if field.name == "mode":
+            assert isinstance(made, QtWidgets.QComboBox)
+            assert made.currentText() == "b" and made.count() == 3
+        else:
+            assert made.suffix() == " Å/μB"
