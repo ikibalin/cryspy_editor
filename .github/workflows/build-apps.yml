@@ -92,7 +92,7 @@ jobs:
           ls -lh upload
 
       - name: Keep as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: CrysPy-Editor-${{ matrix.name }}
           path: upload/*
