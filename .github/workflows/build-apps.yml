@@ -1,0 +1,133 @@
+# Builds CrysPy Editor as a standalone program (Python, CrysPy, Qt and
+# llama-cpp-python inside) for Windows, macOS and Linux with PyInstaller.
+# On a published release the archives are attached to that release;
+# otherwise they are kept as workflow artifacts for 14 days. Only the 3
+# newest releases keep their archives.
+
+name: Build standalone apps
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/build-apps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write # upload the archives to the release
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows-x64
+          - os: macos-14 # Apple Silicon, llama.cpp with Metal
+            name: macOS-arm64
+          - os: ubuntu-22.04 # older glibc, runs on newer distributions too
+            name: Linux-x64
+    runs-on: ${{ matrix.os }}
+    name: build-${{ matrix.name }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      # llama.cpp for any CPU of the platform, not only for the CI machine
+      CMAKE_ARGS: -DGGML_NATIVE=OFF
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags for versioningit
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install system libraries for Qt
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0
+
+      - name: Install CrysPy Editor with the AI extra and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[ai] pyinstaller
+
+      - name: Build
+        run: pyinstaller --noconfirm --clean packaging/cryspy_editor.spec
+
+      - name: Self-test of the built program
+        run: |
+          case "$RUNNER_OS" in
+            macOS) exe="dist/CrysPy Editor.app/Contents/MacOS/CrysPy Editor" ;;
+            Windows) exe="dist/CrysPy Editor/CrysPy Editor.exe" ;;
+            *) exe="dist/CrysPy Editor/CrysPy Editor" ;;
+          esac
+          # the program must start from a read-only place (dmg, Program Files)
+          if [ "$RUNNER_OS" != "Windows" ]; then chmod -R a-w dist; fi
+          CRYSPY_EDITOR_REQUIRE_AI=1 "$exe" --self-test
+          if [ "$RUNNER_OS" != "Windows" ]; then chmod -R u+w dist; fi
+
+      - name: Pack
+        id: pack
+        run: |
+          version=$(python -c "from cryspy_editor import __version__; print(__version__)")
+          base="CrysPy-Editor-${version}-${{ matrix.name }}"
+          mkdir -p upload
+          case "$RUNNER_OS" in
+            macOS)
+              hdiutil create -volname "CrysPy Editor" -srcfolder "dist/CrysPy Editor.app" \
+                -ov -format UDZO "upload/${base}.dmg" ;;
+            Windows)
+              (cd dist && 7z a -tzip "../upload/${base}.zip" "CrysPy Editor") ;;
+            *)
+              tar -C dist -czf "upload/${base}.tar.gz" "CrysPy Editor" ;;
+          esac
+          ls -lh upload
+
+      - name: Keep as workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: CrysPy-Editor-${{ matrix.name }}
+          path: upload/*
+          retention-days: 14
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" upload/* --clobber
+
+  # Only the 3 newest releases keep their programs; older releases keep
+  # their notes and pip packages, but their archives are deleted.
+  prune-old-programs:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP: 3
+    steps:
+      - name: Delete programs of older releases
+        run: |
+          gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '.[] | select(.draft == false and .prerelease == false) | [.published_at, .id, .tag_name] | @tsv' \
+            | sort -r | tail -n +$((KEEP + 1)) \
+            | while IFS=$'\t' read -r published id tag; do
+                gh api "repos/${{ github.repository }}/releases/$id/assets?per_page=100" \
+                  --jq '.[] | select(.name | test("^CrysPy-Editor-.*-(Windows|macOS|Linux)-")) | [.id, .name] | @tsv' \
+                  | while IFS=$'\t' read -r asset_id name; do
+                      echo "release $tag: delete $name"
+                      gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$asset_id"
+                    done
+              done

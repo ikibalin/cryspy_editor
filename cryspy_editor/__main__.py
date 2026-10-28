@@ -15,9 +15,44 @@ def parse_arguments(l_argument=None):
         help="file to open; without it the last used file is opened")
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--self-test", action="store_true",
+        help="check that CrysPy, Qt and the AI backend work, then exit")
     # Qt options such as -platform are passed to QApplication
     args, l_qt_argument = parser.parse_known_args(l_argument)
     return args, l_qt_argument
+
+
+def self_test() -> int:
+    """Check the installation (used for the standalone builds); 0 if fine."""
+    import cryspy
+
+    print(f"CrysPy Editor {__version__}, CrysPy {cryspy.__version__}")
+    dir_simulation = os.path.join(
+        os.path.dirname(cryspy.__file__), "procedure_simulation")
+    l_text = []
+    for f_name in ("crystal_Ho2Ti2O7.rcif", "diffrn_sc.rcif"):
+        with open(os.path.join(dir_simulation, f_name), "r") as fid:
+            l_text.append(fid.read())
+    obj_global = cryspy.str_to_globaln("global_test\n" + "\n".join(l_text))
+    d_out = cryspy.rhochi_no_refinement(obj_global)
+    print(f"rhochi_no_refinement: chi_sq = {d_out['chi_sq']:.2f}")
+    print(f"help topics: {len(cryspy.help_topics())}")
+
+    from PyQt5 import QtWidgets
+    from cryspy_editor.ceditor import CMainWindow
+    from cryspy_editor.widgets import assistant
+
+    print(f"llama-cpp-python: {assistant.flag_llama_cpp}")
+    if os.environ.get("CRYSPY_EDITOR_REQUIRE_AI") and not assistant.flag_llama_cpp:
+        print("self-test failed: llama-cpp-python is not available")
+        return 1
+    app = QtWidgets.QApplication(sys.argv[:1])
+    main_window = CMainWindow()
+    main_window.close()
+    app.processEvents()
+    print("self-test passed")
+    return 0
 
 
 def main(l_argument=None):
@@ -25,6 +60,8 @@ def main(l_argument=None):
     if l_argument is None:
         l_argument = sys.argv[1:]
     args, l_qt_argument = parse_arguments(l_argument)
+    if args.self_test:
+        sys.exit(self_test())
     file_name = args.file_name
     if file_name is not None:
         file_name = os.path.abspath(file_name)
