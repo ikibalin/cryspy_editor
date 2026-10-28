@@ -146,6 +146,17 @@ or change those of CrysPy (New, Check, Save, Delete); your recipes are kept in
 the `recipes` folder next to the settings and replace the recipes of CrysPy
 with the same name.
 
+**Writing a recipe with the assistant.** Describe the algorithm in words
+("write a recipe: fix all, refine the scale, then the atomic positions and
+undo a step when R_F2 gets worse") and the assistant writes the recipe for
+the CookBook: it reads the format, asks you what is not clear (Q1, Q2, ...,
+answered in the chat; `cancel` stops), checks the text with CrysPy, shows it
+and saves it to your recipes when you agree (it asks before replacing a
+recipe of yours). Nothing in the opened file is changed meanwhile. A thinking
+model (turn on **Thinking**) works out such an algorithm better; give it a
+context of 8192 tokens or more. The assistant may ask you in the middle of
+other step-by-step work too, and goes on from your answers.
+
 **Commands.** Type `@` in the input line to see the names of the recipes and
 of the actions with a short description (Tab and Shift+Tab go through them,
 Enter takes one), and run one directly, without the

@@ -15,7 +15,13 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
-from cryspy_editor.widgets.assistant_agent import MAX_AGENT_STEPS, Agent, form_step_result_text, form_steps_text
+from cryspy_editor.widgets.assistant_agent import (
+    ASK_ACTION,
+    MAX_AGENT_STEPS,
+    Agent,
+    form_step_result_text,
+    form_steps_text,
+)
 from cryspy_editor.widgets.assistant_commands import (
     form_capabilities_text,
     is_capability_question,
@@ -64,7 +70,8 @@ ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply 
 # actions that start the agent loop (assistant_agent.py): a recipe of CrysPy,
 # or a task whose next steps depend on the results
 STEP_BY_STEP = "work_step_by_step"
-AGENT_ACTIONS = ("get_recipe", STEP_BY_STEP)
+WRITE_RECIPE = "get_recipe_guide"  # a recipe for the CookBook written from the words of the user
+AGENT_ACTIONS = ("get_recipe", STEP_BY_STEP, WRITE_RECIPE, ASK_ACTION)
 NO_MODEL = ("No model is loaded (AI assistant -> Load model). Without it type @name to run a recipe "
             "or an action of CrysPy, or ask 'what can you do?'.")
 NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
@@ -181,7 +188,7 @@ the steps of the user are followed, never a recipe instead of them. When the
 user only names the task (e.g. "refine the structure step by step"), give the
 single action "get_recipe" with the name of the recipe that fits. Recipes:
 {form_recipes_text()}
-When no recipe fits such a task, give the single action "{STEP_BY_STEP}" {{}}."""
+When no recipe fits such a task, give the single action "{STEP_BY_STEP}" {{}}.{form_write_recipe_rule()}"""
     s_state = "\nNo file is opened now."
     if cryspy_object is not None:
         l_name = [str(getattr(item, "data_name", type(item).__name__))
@@ -236,6 +243,16 @@ Examples (request: actions):
   [{{"action": "add_crystal_from_cod", "arguments": {{"formula": "Al"}}}}]{form_agent_examples()}"""
 
 
+def form_write_recipe_rule() -> str:
+    """The rule of the first reply for a request to write a recipe."""
+    if WRITE_RECIPE not in D_TOOLS:
+        return ""
+    return f"""
+When the user asks to write (compose, make) a recipe for the CookBook from an
+algorithm described in words, give the single action "{WRITE_RECIPE}" {{}}: the
+recipe is written step by step, with questions to the user when needed."""
+
+
 def take_action_names() -> list:
     """Names of the actions of the first reply of the model."""
     l_name = list(D_TOOLS)
@@ -256,6 +273,10 @@ def form_agent_examples() -> str:
         s_out += """
 - analyse all the data of the file by the recipes:
   [{"action": "get_recipe", "arguments": {"name": "choose_recipes"}}]"""
+    if WRITE_RECIPE in D_TOOLS:
+        s_out += f"""
+- write a recipe: fix all, refine the scale, then the positions, undo when R_F2 is worse:
+  [{{"action": "{WRITE_RECIPE}", "arguments": {{}}}}]"""
     return s_out
 
 
@@ -450,6 +471,7 @@ class Assistant:
         self.dialog: Optional[Dialog] = None  # questions of an action to the user
         self.flag_dialog_changed = False  # the action of the dialog changes the CrysPy object
         self.flag_stop = False  # set from the window (request_stop): the agent loop stops
+        self.agent: Optional[Agent] = None  # the agent loop that waits for the answers of the dialog
 
     @property
     def model_name(self) -> str:
@@ -462,6 +484,7 @@ class Assistant:
     def clear_history(self):
         self.history = []
         self.dialog = None
+        self.agent = None
 
     def request_stop(self):
         """Stop the step-by-step work after the running action (called
@@ -488,13 +511,16 @@ class Assistant:
             return f"Error: {e}"
         return result if isinstance(result, Dialog) else str(result)
 
-    def answer_dialog(self, answer: str, on_action: Optional[Callable] = None) -> dict:
+    def answer_dialog(self, answer: str, on_action: Optional[Callable] = None,
+                      on_step: Optional[Callable] = None) -> dict:
         """The answer of the user to the question of the dialog: read without
-        the model; the action is done when all values are known."""
+        the model; the action is done when all values are known. When the
+        dialog was asked by the agent loop (e.g. ask_user in the middle of
+        writing a recipe), the loop goes on with the result of the action."""
         dialog = self.dialog
         name, l_action = dialog.name, []
         if is_cancel(answer):
-            self.dialog = None
+            self.dialog, self.agent = None, None
             text = f"Stopped: {name} is not done."
         else:
             flag_taken, message = self.dialog.answer(answer)
@@ -507,6 +533,8 @@ class Assistant:
                     message = message.replace(f"\n{ALL_INFORMATION}", "")
                     s_intro = f"{result.intro}\n" if result.intro else ""
                     text = f"{message}\n{s_intro}{result.prompt()}"
+                elif self.agent is not None:
+                    return self.resume_agent(answer, message, result, on_action, on_step)
                 else:
                     l_action.append((name, dict(dialog.values), result))
                     text = f"{message}\n\n[{name}] {result}"
@@ -535,7 +563,7 @@ class Assistant:
         modified, "question": the assistant asks a question (a tool returned
         an assistant_dialog.Dialog); the next request is its answer}."""
         if self.dialog is not None:
-            return self.answer_dialog(question, on_action)
+            return self.answer_dialog(question, on_action, on_step)
         if is_capability_question(question):
             text = form_capabilities_text()
             self._remember(question, text)
@@ -694,14 +722,38 @@ class Assistant:
         l_action = list(D_TOOLS)
         if len(l_first) == 0:  # the steps of the user, not a recipe: no recipe in the middle of them
             l_action = [action for action in l_action if action != "get_recipe"]
+        elif l_first[0][0] == WRITE_RECIPE:  # writing a recipe changes nothing in the file
+            l_action = [action for action in l_action if not D_TOOLS[action].flag_object_changed]
         agent = Agent(self.model, run_tool, l_action, take_json_object, max_steps=max_steps)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
                         l_first=l_first, on_step=on_step)
+        return self.form_agent_reply(agent, question, out, on_step)
+
+    def resume_agent(self, answer: str, message: str, result: str, on_action: Optional[Callable] = None,
+                     on_step: Optional[Callable] = None) -> dict:
+        """The agent loop goes on after the user answered all questions of
+        its dialog: result is the text of the action done with the answers."""
+        agent, self.agent = self.agent, None
+        self.flag_stop = False
+        message = message.replace(f"\n{ALL_INFORMATION}", "")
+        if on_step is not None:
+            on_step(message)
+        out = agent.resume(result, flag_changed=self.flag_dialog_changed, on_action=on_action,
+                           should_stop=lambda: self.flag_stop, on_step=on_step)
+        reply = self.form_agent_reply(agent, answer, out, on_step)
+        if on_step is None:
+            reply["text"] = f"{message}\n\n{reply['text']}"
+        return reply
+
+    def form_agent_reply(self, agent: Agent, question: str, out: dict,
+                         on_step: Optional[Callable] = None) -> dict:
+        """The reply of the agent loop (Agent.run or resume); a loop that
+        asks the user waits in self.agent for the answers."""
         l_action = [(action, arguments, result) for _, action, arguments, result in out["steps"]]
         answer = out["answer"]
         if out["dialog"] is not None:
-            self.dialog = out["dialog"]
+            self.dialog, self.agent = out["dialog"], agent
             self.flag_dialog_changed = bool(getattr(D_TOOLS.get(self.dialog.name), "flag_object_changed", True))
             answer = ""
         elif not any(not str(result).startswith("Error") for _, _, result in l_action) and claims_done(answer):
@@ -715,7 +767,9 @@ class Assistant:
         text_all = "\n\n".join([s_steps] + ls_out if s_steps else ls_out) or "No answer: try to ask in other words."
         self._remember(question, text_all)
         text = text_all
-        if on_step is not None:  # the steps are shown already
+        if self.agent is not None:  # the questions of the dialog are the reply
+            text = self.dialog.start() if on_step is not None else text_all
+        elif on_step is not None:  # the steps are shown already
             text = "\n\n".join(ls_out) or ("Done." if out["steps"] else text_all)
         return {"text": text, "actions": l_action, "flag_object_changed": out["flag_object_changed"],
                 "question": self.is_asking()}
