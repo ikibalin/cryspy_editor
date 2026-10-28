@@ -110,3 +110,12 @@ def test_window_without_file_is_empty(qapp):
         assert not window.menu_recent.isEnabled()
     finally:
         window.close()
+
+
+def test_self_test_option():
+    # the standalone builds run it in CI to check the bundled program
+    result = subprocess.run(
+        [sys.executable, "-m", "cryspy_editor", "--self-test"],
+        capture_output=True, text=True, timeout=300)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "self-test passed" in result.stdout
