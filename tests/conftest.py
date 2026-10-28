@@ -2,6 +2,8 @@
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# no requests to GitHub for a new version from the tests
+os.environ.setdefault("CRYSPY_EDITOR_NO_UPDATE_CHECK", "1")
 
 import pytest
 from PyQt5 import QtWidgets

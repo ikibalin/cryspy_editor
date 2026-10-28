@@ -68,6 +68,7 @@ from cryspy_editor.cl_thread import CThread
 from cryspy_editor.history import RcifHistory
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
+from cryspy_editor import update_check
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
@@ -330,6 +331,7 @@ class CMainWindow(QMainWindow):
         self.take_rcif_object_from_d_setup()
         self.print_object_info()
         self.assistant_controller.autoload_model()
+        self.start_update_check()
 
     def write(self):
         out_terminal = getattr(self.cthread, "out_terminal", None)
@@ -548,6 +550,18 @@ class CMainWindow(QMainWindow):
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
 
+        menu_options.addSeparator()
+        self.action_check_updates = menu_options.addAction(
+            "Check for new versions at startup")
+        self.action_check_updates.setCheckable(True)
+        self.action_check_updates.setChecked(
+            bool(self.d_setup.get("check_for_updates", True)))
+        self.action_check_updates.toggled.connect(
+            self.set_check_for_updates)
+        check_now = menu_options.addAction("Check for new version now")
+        check_now.triggered.connect(
+            lambda x: self.start_update_check(flag_manual=True))
+
         about = menu_options.addAction("About")
         about.triggered.connect(self.display_about)
 
@@ -590,6 +604,96 @@ class CMainWindow(QMainWindow):
             "About CrysPy",
             f"Versions:\n CrysPy Editor - {cryspy_editor_version:} \n CrysPy library - {cryspy_version:}",
         )
+
+    def set_check_for_updates(self, flag: bool):
+        self.d_setup["check_for_updates"] = bool(flag)
+        save_settings()
+
+    def start_update_check(self, flag_manual: bool = False):
+        """Look for a newer release on GitHub in the background.
+
+        At startup it is silent when there is nothing new or no internet;
+        by the menu (flag_manual) it always reports the result."""
+        if not flag_manual:
+            if not self.d_setup.get("check_for_updates", True):
+                return
+            if update_check.is_check_disabled_by_environment():
+                return
+        checker = getattr(self, "update_checker", None)
+        if checker is not None and not checker.is_done():
+            return
+        if flag_manual:
+            function = update_check.fetch_latest_release
+        else:
+            function = update_check.check_for_update
+        self.update_checker = update_check.UpdateChecker(
+            cryspy_editor_version, function)
+        self.update_checker_manual = flag_manual
+        self.update_checker.start()
+        self.timer_update_check = QtCore.QTimer(self)
+        self.timer_update_check.timeout.connect(self.end_update_check)
+        self.timer_update_check.start(300)
+
+    def end_update_check(self):
+        checker = self.update_checker
+        if not checker.is_done():
+            return
+        self.timer_update_check.stop()
+        d_release = checker.result
+        if self.update_checker_manual:
+            if d_release is None:
+                QtWidgets.QMessageBox.warning(
+                    self, "New version",
+                    "GitHub cannot be reached. Check the internet "
+                    "connection or open the download page:\n"
+                    f"{update_check.URL_DOWNLOAD_PAGE}")
+            elif update_check.is_newer(d_release["version"],
+                                       cryspy_editor_version):
+                self.show_new_version(d_release, flag_manual=True)
+            else:
+                QtWidgets.QMessageBox.information(
+                    self, "New version",
+                    f"CrysPy Editor {cryspy_editor_version} is the latest "
+                    "version.")
+            return
+        if d_release is None:
+            return
+        if d_release["version"] == self.d_setup.get(
+                "skipped_update_version", ""):
+            return
+        self.show_new_version(d_release)
+
+    def show_new_version(self, d_release: dict, flag_manual: bool = False):
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("New version of CrysPy Editor")
+        box.setIcon(QtWidgets.QMessageBox.Information)
+        box.setTextFormat(QtCore.Qt.RichText)
+        box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        box.setText(update_check.form_message(
+            d_release, cryspy_editor_version))
+        b_download = box.addButton(
+            "Open download page", QtWidgets.QMessageBox.AcceptRole)
+        b_skip = None
+        if not flag_manual:
+            b_skip = box.addButton(
+                "Skip this version", QtWidgets.QMessageBox.RejectRole)
+        box.addButton("Later", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(b_download)
+        check_box = QtWidgets.QCheckBox(
+            "Do not check for new versions at startup")
+        check_box.setChecked(not self.d_setup.get("check_for_updates", True))
+        box.setCheckBox(check_box)
+        for label in box.findChildren(QtWidgets.QLabel):
+            label.setOpenExternalLinks(True)
+        box.exec_()
+        if box.clickedButton() is b_download:
+            QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl(update_check.URL_DOWNLOAD_PAGE))
+        elif b_skip is not None and box.clickedButton() is b_skip:
+            self.d_setup["skipped_update_version"] = d_release["version"]
+        # the menu item follows the check box and saves the settings
+        self.action_check_updates.setChecked(not check_box.isChecked())
+        save_settings()
 
     def refresh_view(self):
         self.text_edit.setText("")
