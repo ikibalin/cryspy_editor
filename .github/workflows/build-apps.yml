@@ -72,7 +72,10 @@ jobs:
             Windows) exe="dist/CrysPy Editor/CrysPy Editor.exe" ;;
             *) exe="dist/CrysPy Editor/CrysPy Editor" ;;
           esac
+          # the program must start from a read-only place (dmg, Program Files)
+          if [ "$RUNNER_OS" != "Windows" ]; then chmod -R a-w dist; fi
           CRYSPY_EDITOR_REQUIRE_AI=1 "$exe" --self-test
+          if [ "$RUNNER_OS" != "Windows" ]; then chmod -R u+w dist; fi
 
       - name: Pack
         id: pack

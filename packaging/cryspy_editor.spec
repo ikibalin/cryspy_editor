@@ -57,6 +57,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
+    runtime_hooks=[os.path.join(DIR_SPEC, "rthook_cryspy_packages.py")],
     excludes=["tkinter", "PySide2", "PySide6", "PyQt6", "IPython", "pytest"],
     noarchive=False,
 )
