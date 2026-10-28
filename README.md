@@ -1,6 +1,8 @@
 # cryspy_editor
  Editor for CrysPy library
 
+Download page: https://ikibalin.github.io/cryspy_editor/
+
 ## Start
 
 ```
@@ -144,6 +146,9 @@ step. "What can you do?" (or `help`, `?`) lists the recipes and the actions.
   `[scope] documentation`, `[scope] maintenance` or `[scope] significant`.
   The label decides the next version in the release draft.
 - The version comes from git tags (plain, e.g. `1.9.10`) via versioningit.
+- Download page: `site/index.html`, published on GitHub Pages by
+  `.github/workflows/pages.yml` when it changes on `main` (or by hand in
+  Actions). It reads the latest release from the GitHub API in the browser.
 - Tests: `pip install -e .[dev]`, then `python -m pytest`. Qt runs without a
   display in tests (`QT_QPA_PLATFORM=offscreen`).
 - Standalone programs: `.github/workflows/build-apps.yml` builds them with
