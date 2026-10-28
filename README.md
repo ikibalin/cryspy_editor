@@ -148,7 +148,8 @@ step. "What can you do?" (or `help`, `?`) lists the recipes and the actions.
   display in tests (`QT_QPA_PLATFORM=offscreen`).
 - Standalone programs: `.github/workflows/build-apps.yml` builds them with
   PyInstaller (`packaging/cryspy_editor.spec`) on Windows, macOS and Linux
-  when a release is published and attaches them to the release; it can also
-  be started by hand in Actions. Locally: `pip install .[ai] pyinstaller`,
+  when a release is published and attaches them to the release; only the
+  3 newest releases keep these archives. It can also be started by hand in
+  Actions. Locally: `pip install .[ai] pyinstaller`,
   then `pyinstaller packaging/cryspy_editor.spec`; the program is in `dist/`.
   `cryspy-editor --self-test` checks a built program.
