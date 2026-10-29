@@ -17,6 +17,7 @@ from PyQt5.QtGui import QIcon
 import matplotlib.pyplot as plt
 
 from importlib import import_module
+import cryspy
 from cryspy_editor.widgets.ui_setting import is_dark_mode
 from cryspy import (
     load_file,
@@ -714,6 +715,12 @@ class CMainWindow(QMainWindow):
                 if is_number(record.value) and record.flag_refinement
                 and not record.flag_constraint]
             ls_text = [f"\nNumber of variables is {len(l_record):}.\n"]
+            if hasattr(cryspy, "report_refined_parameters"):
+                # the same lines as after a refinement (cryspy#144)
+                report = cryspy.report_refined_parameters(self.rcif_object)
+                self.text_edit.append("\n".join(ls_text + [report]))
+                return
+            # TODO: remove after the release of CrysPy with cryspy#144
             if len(l_record) > 0:
                 width = max(len(record.path) for record in l_record)
                 ls_text.append(f"   {'NAME':{width}}      VALUE      ERROR")
