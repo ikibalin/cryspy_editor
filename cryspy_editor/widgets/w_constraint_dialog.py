@@ -6,24 +6,11 @@ The parameters, their marks and the constraint loop are handled by CrysPy
 the dialog only lets the user tick the parameters, edit their marks and
 write the equation.
 """
-import inspect
 
 import cryspy
 from PyQt5 import QtCore, QtWidgets
 
 COLUMN_USE, COLUMN_MARK, COLUMN_PATH, COLUMN_VALUE = range(4)
-
-
-def is_constraint_supported() -> bool:
-    """CrysPy knows the loop of constraints."""
-    return hasattr(cryspy, "add_constraint") and hasattr(cryspy, "take_marked_parameters")
-
-
-def is_soft_constraint_supported() -> bool:
-    """CrysPy knows soft constraints (add_constraint takes sigma)."""
-    if not is_constraint_supported():
-        return False
-    return "sigma" in inspect.signature(cryspy.add_constraint).parameters
 
 
 def format_number(value) -> str:
@@ -97,9 +84,8 @@ class ConstraintDialog(QtWidgets.QDialog):
         self.line_sigma = QtWidgets.QLineEdit()
         self.line_sigma.setPlaceholderText("0.01")
         self.line_sigma.setToolTip("Allowed deviation of the equation, in its units")
-        if is_soft_constraint_supported():
-            form.addRow("", self.check_soft)
-            form.addRow("Sigma:", self.line_sigma)
+        form.addRow("", self.check_soft)
+        form.addRow("Sigma:", self.line_sigma)
         self.check_soft.toggled.connect(self.set_soft)
         layout.addLayout(form)
 
@@ -116,7 +102,7 @@ class ConstraintDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
         self.flag_expression_edited = False
         self.line_expression.textEdited.connect(self.expression_edited)
-        self.check_soft.setChecked(flag_soft and is_soft_constraint_supported())
+        self.check_soft.setChecked(flag_soft)
         self.set_soft(self.check_soft.isChecked())
 
     @property

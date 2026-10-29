@@ -1,19 +1,13 @@
 """Dialog "Add constraint..." of the object tree: marks and the loop of
 constraints are made by CrysPy."""
 import cryspy
-import pytest
 from PyQt5 import QtCore
 
 from cryspy_editor.widgets.w_constraint_dialog import (
     COLUMN_MARK,
     COLUMN_USE,
     ConstraintDialog,
-    is_constraint_supported,
-    is_soft_constraint_supported,
 )
-
-pytestmark = pytest.mark.skipif(
-    not is_constraint_supported(), reason="CrysPy without the loop of constraints")
 
 RCIF = """global_
 
@@ -82,7 +76,6 @@ def test_error_is_shown(qapp):
     assert cryspy.take_constraints(obj) == ["x = 0.5"]
 
 
-@pytest.mark.skipif(not is_soft_constraint_supported(), reason="CrysPy without soft constraints")
 def test_add_soft_constraint(qapp):
     obj = cryspy.str_to_globaln(RCIF)
     dialog = ConstraintDialog(obj)

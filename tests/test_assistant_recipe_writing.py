@@ -7,12 +7,10 @@ import cryspy
 import pytest
 
 from cryspy_editor.widgets.assistant_dialog import Dialog, Question
-from cryspy_editor.widgets.assistant_tools import D_TOOLS
 
 from test_assistant import RCIF, make_assistant, reply
 from test_assistant_agent import final, step
 
-pytestmark = pytest.mark.skipif("ask_user" not in D_TOOLS, reason="CrysPy without ask_user")
 
 RECIPE = """Recipe scale_then_positions: Scale factor, then atomic positions
 Requests: refine the scale and then the positions

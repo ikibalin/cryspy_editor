@@ -35,10 +35,7 @@ from cryspy import L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
-from cryspy_editor.widgets.w_constraint_dialog import (
-    ConstraintDialog,
-    is_constraint_supported,
-)
+from cryspy_editor.widgets.w_constraint_dialog import ConstraintDialog
 from cryspy_editor.widgets.w_parameters_dialog import ParametersDialog
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
@@ -573,12 +570,11 @@ class CMainWindow(QMainWindow):
         act_parameters.setToolTip(
             "All parameters with a filter: what to refine, values, favorites")
         act_parameters.triggered.connect(self.show_parameters)
-        if is_constraint_supported():
-            act_constraint = menu_parameters.addAction("Add constraint...")
-            act_constraint.setToolTip(
-                "Constraint between refined parameters, e.g. x + y = 1, "
-                "exact or soft (within sigma)")
-            act_constraint.triggered.connect(self.add_constraint)
+        act_constraint = menu_parameters.addAction("Add constraint...")
+        act_constraint.setToolTip(
+            "Constraint between refined parameters, e.g. x + y = 1, "
+            "exact or soft (within sigma)")
+        act_constraint.triggered.connect(self.add_constraint)
 
         # Menu CrysPy
         self.init_menu_cryspy()
@@ -715,19 +711,8 @@ class CMainWindow(QMainWindow):
                 if is_number(record.value) and record.flag_refinement
                 and not record.flag_constraint]
             ls_text = [f"\nNumber of variables is {len(l_record):}.\n"]
-            if hasattr(cryspy, "report_refined_parameters"):
-                # the same lines as after a refinement (cryspy#144)
-                report = cryspy.report_refined_parameters(self.rcif_object)
-                self.text_edit.append("\n".join(ls_text + [report]))
-                return
-            # TODO: remove after the release of CrysPy with cryspy#144
-            if len(l_record) > 0:
-                width = max(len(record.path) for record in l_record)
-                ls_text.append(f"   {'NAME':{width}}      VALUE      ERROR")
-            for record in l_record:
-                ls_text.append(
-                    f" - {record.path:{width}}  {float(record.value):9.5f}  "
-                    f"{record.sigma:9.5f}")
+            # the same lines as after a refinement
+            ls_text.append(cryspy.report_refined_parameters(self.rcif_object))
             self.text_edit.append("\n".join(ls_text))
         except Exception as e:
             self.show_error("Variables of the object are not shown", e)
@@ -1379,7 +1364,7 @@ class CMainWindow(QMainWindow):
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
 
-        if isinstance(item, GlobalN) and is_constraint_supported():
+        if isinstance(item, GlobalN):
             act_constraint = QtWidgets.QAction("Add constraint...", menu)
             act_constraint.setToolTip(
                 "Constraint between refined parameters, e.g. x + y = 1, "

@@ -54,3 +54,11 @@ def test_index_hkl_in_range_has_no_symmetry():
     assert index_hkl.shape == (3, 182)
     l_hkl = [tuple(hkl) for hkl in index_hkl.T.tolist()]
     assert (1, 0, 0) in l_hkl and (-1, 0, 0) in l_hkl
+
+
+def test_chi_sq_of_columns():
+    d_np_table = run_table(
+        "calc chi_sq Ical Iexp sIexp\ncalc chi_sq_per_n Ical Iexp sIexp\n\n"
+        " Ical Iexp sIexp\n 10 11 1\n 20 18 2\n 5 5 0.5\n")
+    assert d_np_table["ChiSq for Iexp"][0] == pytest.approx(2.)
+    assert d_np_table["ChiSq per N for Iexp"][0] == pytest.approx(2./3.)

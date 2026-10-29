@@ -136,7 +136,6 @@ def test_favorites_on_top_and_filter(qapp):
 
 def test_menu_of_main_window(qapp, monkeypatch, tmp_path):
     from cryspy_editor.ceditor import CMainWindow
-    from cryspy_editor.widgets.w_constraint_dialog import is_constraint_supported
     monkeypatch.chdir(tmp_path)
     window = CMainWindow()
     try:
@@ -144,7 +143,7 @@ def test_menu_of_main_window(qapp, monkeypatch, tmp_path):
                     if action.text() == "Parameters")
         l_text = [action.text() for action in menu.actions()]
         assert "Parameters..." in l_text
-        assert ("Add constraint..." in l_text) == is_constraint_supported()
+        assert "Add constraint..." in l_text
 
         window.rcif_object = cryspy.str_to_globaln(RCIF)
         window.history.clear()

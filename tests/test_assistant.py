@@ -430,10 +430,7 @@ def test_no_answer_that_it_is_done_after_an_error():
 
 
 def test_prompt_tells_how_to_call_methods_of_objects():
-    from cryspy_editor.widgets.assistant_tools import D_TOOLS
     from cryspy_editor.widgets.assistant import form_system_prompt
-    if "call_method" not in D_TOOLS:
-        pytest.skip("CrysPy without list_methods and call_method")
     prompt = form_system_prompt(None)
     assert '"list_methods" {"pattern"' in prompt and '"action": "call_method"' in prompt
 

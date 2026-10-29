@@ -740,12 +740,7 @@ class Assistant:
             if on_step is not None:
                 on_step(f"Step {step_name}: {status}\n{form_step_result_text(step_name, text)}")
 
-        try:
-            result = run_recipe(cryspy_object, name, callback=show_step)
-        except TypeError:  # a CrysPy without the callback
-            result = run_recipe(cryspy_object, name)
-            if on_step is not None:
-                on_step(form_steps_text([("", step_name, {}, text) for step_name, _, text in result["steps"]]))
+        result = run_recipe(cryspy_object, name, callback=show_step)
         text = f"No model is loaded: the recipe {name} was run as it is written.\n{result['text']}"
         self._remember(question, text)
         return {"text": text, "actions": [(name, {}, result["text"])], "flag_object_changed": True,

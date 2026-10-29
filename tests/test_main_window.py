@@ -17,22 +17,6 @@ L_EXAMPLE = sorted(
     if not f_name.endswith("_calc.rcif"))
 
 
-def cryspy_reads_compact_space_group_names() -> bool:
-    """CrysPy before ikibalin/cryspy#143 fails on "Ia-3d" written without
-    spaces (UnboundLocalError 'centrosymmetry' in SpaceGroup)."""
-    import warnings
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return cryspy.SpaceGroup(name_hm_alt="Ia-3d").it_number == 230
-    except Exception:
-        return False
-
-
-SET_KNOWN_FAILURE = set() if cryspy_reads_compact_space_group_names() else {
-    os.path.join("DyAlO3", "test2", "main.rcif")}
-
-
 def test_version():
     assert isinstance(cryspy_editor.__version__, str)
 
@@ -58,8 +42,6 @@ def test_window_starts(window):
     "file_name", L_EXAMPLE,
     ids=[os.path.relpath(f, DIR_EXAMPLES) for f in L_EXAMPLE])
 def test_open_example(window, file_name):
-    if os.path.relpath(file_name, DIR_EXAMPLES) in SET_KNOWN_FAILURE:
-        pytest.xfail("CrysPy cannot read the space group of this file")
     window.d_setup["data_file_name"] = file_name
     window.take_rcif_object_from_d_setup()
     assert len(window.rcif_object.items) > 0
