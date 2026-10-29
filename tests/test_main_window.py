@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+import cryspy
 import cryspy_editor
 from cryspy_editor.ceditor import CMainWindow
 
@@ -14,9 +15,22 @@ L_EXAMPLE = sorted(
     f_name for f_name in glob.glob(
         os.path.join(DIR_EXAMPLES, "**", "*.rcif"), recursive=True)
     if not f_name.endswith("_calc.rcif"))
-# CrysPy fails on the space group of this old file (UnboundLocalError
-# 'centrosymmetry' in SpaceGroup.form_object_by_it_number_it_coordinate_system_code)
-SET_KNOWN_FAILURE = {os.path.join("DyAlO3", "test2", "main.rcif")}
+
+
+def cryspy_reads_compact_space_group_names() -> bool:
+    """CrysPy before ikibalin/cryspy#143 fails on "Ia-3d" written without
+    spaces (UnboundLocalError 'centrosymmetry' in SpaceGroup)."""
+    import warnings
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return cryspy.SpaceGroup(name_hm_alt="Ia-3d").it_number == 230
+    except Exception:
+        return False
+
+
+SET_KNOWN_FAILURE = set() if cryspy_reads_compact_space_group_names() else {
+    os.path.join("DyAlO3", "test2", "main.rcif")}
 
 
 def test_version():
@@ -53,6 +67,19 @@ def test_open_example(window, file_name):
     assert "ERROR" not in window.text_edit.toPlainText()
 
 
+def test_fe3o4_example_calculates():
+    """The example uses the current tags (_pd_meas_intensity_plus/_minus)
+    and its parameters give the goodness of fit written in the file."""
+    rcif_object = cryspy.load_file(
+        os.path.join(DIR_EXAMPLES, "Fe3O4_5T_powder_1d", "main.rcif"))
+    pd = rcif_object.items[0]
+    assert pd.pd_meas.items[0].is_attribute("intensity_plus")
+    d_out = cryspy.rhochi_no_refinement(rcif_object)
+    chi_sq_per_n = d_out["chi_sq"] / d_out["n_point"]
+    assert chi_sq_per_n == pytest.approx(
+        pd.refine_ls.goodness_of_fit_all, rel=0.01)
+
+
 def test_help_dialog(qapp):
     from cryspy_editor.widgets import help_dialog
     dialog = help_dialog.HelpDialog()
@@ -75,7 +102,7 @@ def test_cif_text_is_applied_before_run(window):
               for ind in range(window.w_item_tabs.count())
               if isinstance(window.w_item_tabs.widget(ind), WEditCif)][0]
     w_edit.setPlainText(w_edit.toPlainText().replace(
-        "_cell_length_a 8.45420", "_cell_length_a 8.50000"))
+        "_cell_length_a 8.45329", "_cell_length_a 8.50000"))
     l_value = []
 
     def procedure(rcif_object):

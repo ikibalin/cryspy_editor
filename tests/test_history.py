@@ -46,7 +46,7 @@ def test_go_back_after_run(qapp, monkeypatch, tmp_path):
         actions = window.menu_history.actions()
         assert len(actions) == 1 and "before change cell" in actions[0].text()
         actions[0].trigger()
-        assert "_cell_length_a 8.454" in window.rcif_object.to_cif()
+        assert "_cell_length_a 8.453" in window.rcif_object.to_cif()
         # going back is kept too and can be undone
         assert len(window.history) == 2
         assert "_cell_length_a 9.0" in window.history.entries[-1].text

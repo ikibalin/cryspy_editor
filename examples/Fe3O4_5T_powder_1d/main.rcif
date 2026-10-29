@@ -9,9 +9,9 @@ data_Fe3O4
 _space_group_name_H-M_alt "F d -3 m"
 _space_group_IT_coordinate_system_code 2
 
-_cell_length_a 8.45420(55)
-_cell_length_b 8.45421
-_cell_length_c 8.45421
+_cell_length_a 8.45329(65)
+_cell_length_b 8.45329
+_cell_length_c 8.45329
 _cell_angle_alpha 90.00
 _cell_angle_beta 90.00
 _cell_angle_gamma 90.00
@@ -51,8 +51,8 @@ _atom_site_susceptibility_chi_33
 _atom_site_susceptibility_chi_12
 _atom_site_susceptibility_chi_13
 _atom_site_susceptibility_chi_23
-Fe3A   Cani   -3.9731(88)   -3.97309   -3.97309   0.00000   0.00000   0.00000  
-Fe3B   Cani   3.6833(72)    3.68337    3.68337    0.00000   0.00000   0.00000  
+Fe3A   Cani   -3.992(27)    -3.99199   -3.99199   0.00000   0.00000   0.00000  
+Fe3B   Cani   3.694(22)     3.69412    3.69412    0.00000   0.00000   0.00000  
 
 loop_
 _atom_site_scat_label
@@ -66,15 +66,15 @@ Fe3B   Fe3+   2.0   1.0
 data_pnd
 _setup_wavelength 2.4000
 _setup_field 1.00
-_setup_offset_2theta -0.4008(27)
+_setup_offset_2theta -0.4103(29)
 
 _pd_instr_resolution_U 16.97760
-_pd_instr_resolution_V -0.593(21)
+_pd_instr_resolution_V -0.470(22)
 _pd_instr_resolution_W 0.57631
 _pd_instr_resolution_X 0.00000
 _pd_instr_resolution_Y 0.00000
 
-_diffrn_radiation_polarization 0.6539(22)
+_diffrn_radiation_polarization 0.6541(22)
 _diffrn_radiation_efficiency 1.0
 
 _chi2_sum True
@@ -98,12 +98,12 @@ loop_
 _phase_label
 _phase_scale
 _phase_igsize
-Fe3O4   0.34974(74)   0.0  
+Fe3O4   0.35009(77)   0.0  
 
 loop_
 _pd_background_2theta
 _pd_background_intensity
-4.5    256.0       
-40.0   255.03(41)  
-65.0   387.12(65)  
-80.0   278(1)      
+4.5    441.0       
+40.0   520.81(92)  
+65.0   768.0(13)   
+80.0   605(13)     
