@@ -23,8 +23,6 @@ for package in ("cryspy", "cryspy_editor", "pycifstar", "py3Dmol"):
     datas += d
     binaries += b
     hiddenimports += h
-# GIMP sources of the icons are not needed at run time
-datas = [(src, dst) for (src, dst) in datas if not src.endswith(".xcf")]
 # __version__ is read by importlib.metadata
 datas += copy_metadata("cryspy") + copy_metadata("cryspy_editor")
 

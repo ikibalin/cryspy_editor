@@ -146,10 +146,6 @@ class ConstraintDialog(QtWidgets.QDialog):
                 self.table.item(i_row, COLUMN_USE).checkState() != QtCore.Qt.Checked
             self.table.setRowHidden(i_row, flag_hide)
 
-    def take_marks_in_use(self) -> set:
-        return {self.table.item(i_row, COLUMN_MARK).text().strip().rstrip("-+")
-                for i_row in self.checked_rows()}
-
     def item_changed(self, item):
         if item.column() != COLUMN_USE:
             if item.column() == COLUMN_MARK:

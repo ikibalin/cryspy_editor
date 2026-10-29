@@ -135,12 +135,6 @@ class WTextEdit(QtWidgets.QTextEdit):
         ch = self.document().characterAt(pos)
         return bool(ch) and not ch.isspace()
 
-    def show_replace_dialog(self):
-        cursor = self.te_table.textCursor()
-        s_val = cursor.selectedText().split("\u2029")[0].strip()
-        dialog = ReplaceDialog(self.te_table, s_val)
-        dialog.exec_()
-
     def upload_font_size(self):
         current_font = self.font()
         font_size = ui_setting.get_font_size()
@@ -275,8 +269,6 @@ class WTextEdit(QtWidgets.QTextEdit):
         if len(l_inline) > 0:
             self.append(S_COMMENT + " PARAMETERS\n")
         bold_format = QtGui.QTextCharFormat()
-
-        normal_format = QtGui.QTextCharFormat()
         for line in l_inline:
             l_hh = line.split(":")
 
@@ -386,42 +378,3 @@ class WTextEdit(QtWidgets.QTextEdit):
             ax.set_ylabel(d_val["name_y"] + ", " + d_val["name_y2"])
             ax.legend()
         fig.show()
-
-
-class ReplaceDialog(QtWidgets.QDialog):
-    def __init__(self, text_edit, s_replce: str = ""):
-        super().__init__()
-        self.text_edit = text_edit
-        self.init_ui(s_replce=s_replce)
-
-    def init_ui(self, s_replce: str = ""):
-        self.setWindowTitle("Replace Text")
-        layout = QtWidgets.QVBoxLayout()
-
-        self.find_label = QtWidgets.QLabel("Find:")
-        self.find_input = QtWidgets.QLineEdit()
-        self.find_input.setText(s_replce)
-        self.replace_label = QtWidgets.QLabel("Replace with:")
-        self.replace_input = QtWidgets.QLineEdit()
-        self.replace_button = QtWidgets.QPushButton("Replace")
-
-        layout.addWidget(self.find_label)
-        layout.addWidget(self.find_input)
-        layout.addWidget(self.replace_label)
-        layout.addWidget(self.replace_input)
-        layout.addWidget(self.replace_button)
-
-        self.setLayout(layout)
-
-        self.replace_button.clicked.connect(self.replace_text)
-
-    def replace_text(self):
-        find_text = self.find_input.text()
-        replace_text = self.replace_input.text()
-        text = self.text_edit.toPlainText()
-        new_text = text.replace(find_text, replace_text)
-
-        self.text_edit.setTextBackgroundColor(transform_color(L_COLOR[0]))
-        self.text_edit.setTextColor(transform_color(L_COLOR[-1]))
-        self.text_edit.setPlainText(new_text)
-        self.close()
