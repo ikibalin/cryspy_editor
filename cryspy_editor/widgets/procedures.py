@@ -6,6 +6,8 @@ from cryspy.A_functions_base.structure_factor import \
     calc_index_hkl_multiplicity_in_range
 from cryspy.A_functions_base.symmetry_elements import \
     calc_equivalent_reflections
+from cryspy.A_functions_base.function_1_agreement_factors import \
+    calc_chi_sq_by_signal
 from cryspy.A_functions_base.unit_cell import \
     calc_sthovl_by_unit_cell_parameters
 from cryspy_editor.widgets.colors import (
@@ -609,9 +611,7 @@ def procedure_calc(s_line: str, d_np_table: dict):
         else:
             np_y_sigma = numpy.ones_like(np_y_mod)
 
-        np_chisq = numpy.sum(
-            numpy.power((np_y_mod - np_y_exp) / np_y_sigma, 2)
-        )
+        np_chisq, _ = calc_chi_sq_by_signal(np_y_exp, np_y_sigma, np_y_mod)
         if s_name.replace("_", "") == "chisq":
             s_name = f"ChiSq for {name_y_exp:}"
         else:  # chi_sq per n
