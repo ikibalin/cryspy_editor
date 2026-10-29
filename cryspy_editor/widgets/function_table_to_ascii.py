@@ -33,7 +33,6 @@ def transform_d_np_table_to_table(D_NP_TABLE):
         return ls_res
     n_row = D_NP_TABLE[l_table_name[0]].shape[0]
     lls_out = [[] for _ in range(n_row+1)]
-    n_default = 0
     D_DIGIT_NUMBER = get_d_digit_number()
     l_key_name = D_DIGIT_NUMBER.keys()
     l_digit_float = [D_DIGIT_NUMBER[val_head] if val_head in l_key_name else 5 for val_head in l_table_name]
@@ -50,14 +49,4 @@ def transform_d_np_table_to_table(D_NP_TABLE):
             lls_out[i_row+1].append(s_val.rjust(n_col))
     
     ls_res.extend([s_fill+s_fill.join(ls_out) for ls_out in lls_out])
-    return ls_res
-
-
-def transform_d_np_table_to_lines(D_NP_TABLE):
-    ls_res = []
-    ls_res.extend(transform_d_np_table_to_comments(D_NP_TABLE))
-    ls_res.extend(transform_d_np_table_to_inline(D_NP_TABLE))
-    ls_res.extend(transform_d_np_table_to_expression(D_NP_TABLE))
-    ls_res.extend(transform_d_np_table_to_table(D_NP_TABLE))
-
     return ls_res

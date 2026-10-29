@@ -54,7 +54,9 @@ class Question:
     """One value asked from the user.
 
     key: name of the value in Dialog.values;
-    text: what is asked, e.g. "the unit cell parameters";
+    text: what is asked, e.g. "the unit cell parameters", or a whole
+    question ending with '?' (e.g. of the model: "Which parameters are
+    refined after the scale?"), asked as it is written;
     read(answer) -> value: raises ValueError (TypeError, KeyError) when the
     answer is not understood;
     proposal: value known already (e.g. from the data), the user confirms it
@@ -71,6 +73,9 @@ class Question:
     hint: str = ""
     skip: Optional[Callable[[dict], bool]] = None
     describe: Callable[[Any], str] = str
+
+    def is_whole_question(self) -> bool:
+        return self.text.rstrip().endswith("?")
 
     def is_skipped(self, values: dict) -> bool:
         if self.skip is None:
@@ -131,6 +136,8 @@ class Dialog:
             return (f"Q{n}: Am I right that {question.text} is {s_proposal}? "
                     f"Answer yes or give the correct value{s_hint}.")
         s_hint = f" ({question.hint})" if question.hint else ""
+        if question.is_whole_question():
+            return f"Q{n}: {question.text.rstrip()}{s_hint}"
         return f"Q{n}: What is {question.text}{s_hint}?"
 
     def answer(self, text: str) -> tuple:
@@ -151,7 +158,10 @@ class Dialog:
                     self.l_dropped.append(question.key)
                     return False, "Then give the correct value."
                 return False, f"Not understood: {e}"
-            message = f"Thank you: {question.text} is {question.describe(value)}."
+            if question.is_whole_question():
+                message = f"Thank you: {question.describe(value)}."
+            else:
+                message = f"Thank you: {question.text} is {question.describe(value)}."
         self.values[question.key] = value
         self.n_asked += 1
         if self.is_done():

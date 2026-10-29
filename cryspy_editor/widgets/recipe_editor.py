@@ -18,7 +18,9 @@ WINDOW_TITLE = "AI assistant: CookBook (recipes)"
 S_INFO = ("A recipe is the steps of an analysis that the assistant follows one action at "
           "a time. Write it in the format below (get_help 'recipe' explains it); 'Actions' "
           "are tool calls of CrysPy. Saving a recipe of CrysPy makes your copy, which "
-          "replaces it; delete the copy to use the recipe of CrysPy again.")
+          "replaces it; delete the copy to use the recipe of CrysPy again. The AI "
+          "assistant writes a recipe too: describe the algorithm in words in its chat "
+          "('write a recipe: ...').")
 
 
 def take_user_recipe_folder() -> str:

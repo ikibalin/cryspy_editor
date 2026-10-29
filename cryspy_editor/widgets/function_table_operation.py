@@ -251,7 +251,6 @@ def redefine_inline_parameters(d_np_table):
 def xy_to_plot(D_NP_TABLE):
     l_name = D_NP_TABLE[" table_names"]
 
-    l_commands = D_NP_TABLE[" table_commands"]
     D_OUT = {"x": [], "y": [], "name_x": "", "name_y": ""}
 
     np_y, flag_y, name_y = take_val("y", D_NP_TABLE)

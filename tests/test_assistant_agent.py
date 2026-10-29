@@ -245,3 +245,57 @@ def test_max_steps_in_model_settings(qapp):
         assert dialog.settings()["max_steps"] == assistant_agent.MAX_AGENT_STEPS
     finally:
         dialog.close()
+
+
+def test_recipe_is_kept_in_full_to_the_end():
+    """The recipe chosen before the loop is the plan of the whole work: it is
+    given in full and never shortened like the results of older actions."""
+    obj = cryspy.str_to_globaln(RCIF)
+    recipe_text = cryspy.call_assistant_tool(obj, "get_recipe", {"name": "refine_structure"})["text"]
+    l_step = [step("list_parameters", {"pattern": pattern}) for pattern in ("cell", "scale", "adp", "b_iso")]
+    assistant = make_assistant([reply(("get_recipe", {"name": "refine_structure"}))] + l_step + [final("done")])
+    assistant.model.llm._n_ctx = 16384  # the context is not the limit here
+    assistant.ask("refine the structure step by step", obj)
+    messages = assistant.model.llm.l_messages[-1]
+    content = next(message["content"] for message in messages if "Result of get_recipe" in message["content"])
+    assert recipe_text in content
+
+
+def test_fit_messages_cuts_the_system_message_last():
+    from cryspy_editor.widgets.assistant import fit_messages
+    messages = [{"role": "system", "content": "rules " * 200},
+                {"role": "user", "content": "question"},
+                {"role": "user", "content": "result " * 400}]
+    out = fit_messages(messages, 100, 900, lambda text: len(text) // 4)
+    assert out[0]["content"] == messages[0]["content"]
+    assert out[-1]["content"].endswith("[...cut...]")
+
+
+def test_recipe_used_inside_a_recipe_is_kept_in_full():
+    """use_recipe (a recipe inside a recipe) gives a plan followed to the
+    end: its result is not shortened like the results of other actions."""
+    inner = "Recipe brick:\n" + "1. step: " + "x" * 2000
+
+    def run_tool(name, cryspy_object, arguments):
+        return (inner, False) if name == "use_recipe" else (f"{name} " + "y" * 600, False)
+
+    class RecordingModel(CountingModel):
+        def chat(self, messages, flag_json=False, schema=None):
+            self.l_messages = [dict(message) for message in messages]
+            return super().chat(messages, flag_json, schema)
+
+    model = RecordingModel([step("use_recipe", {"name": "brick"})] + [step("calc", {"n": n}) for n in range(4)]
+                           + [final("ok")])
+    Agent(model, run_tool, ["use_recipe", "calc"], take_json_object).run("system", [], "go")
+    l_content = [message["content"] for message in model.l_messages if message["role"] == "user"]
+    assert any(inner in content for content in l_content)
+    assert sum("[...cut...]" in content for content in l_content) >= 2  # older results of calc
+
+
+def test_fit_messages_keeps_the_rules_at_the_end_of_the_system_message():
+    from cryspy_editor.widgets.assistant import fit_messages
+    system = "actions " * 600 + "RULES OF THE ANSWER"
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": "question"}]
+    out = fit_messages(messages, 100, 900, lambda text: len(text) // 4)
+    assert "[...cut...]" in out[0]["content"] and out[0]["content"].endswith("RULES OF THE ANSWER")
+    assert out[0]["content"].startswith("actions ")

@@ -427,3 +427,37 @@ def test_no_answer_that_it_is_done_after_an_error():
     result = assistant.ask("set no_such_parameter to 1 and say what is loaded", cryspy.str_to_globaln(RCIF))
     assert any(text.startswith("Error") for _, _, text in result["actions"]), result["text"]
     assert "refined" not in result["text"]
+
+
+def test_prompt_tells_how_to_call_methods_of_objects():
+    from cryspy_editor.widgets.assistant import form_system_prompt
+    prompt = form_system_prompt(None)
+    assert '"list_methods" {"pattern"' in prompt and '"action": "call_method"' in prompt
+
+
+def test_answer_announcing_the_next_step_goes_on_step_by_step():
+    """'I will check the attributes and add...' after the first action is not
+    the end: the agent loop goes on from its result."""
+    assistant = make_assistant([
+        reply(("summarize_object", {}), answer="I will check the attributes of the cell and then set it."),
+        json.dumps({"thought": "see the cell", "action": "describe_category", "arguments": {"name": "cell"}}),
+        json.dumps({"thought": "done", "action": "final", "answer": "The cell has length_a, length_b, ..."})])
+    l_step = []
+    result = assistant.ask("show what the cell needs", cryspy.str_to_globaln(RCIF), on_step=l_step.append)
+    assert [action for action, _, _ in result["actions"]] == ["summarize_object", "describe_category"]
+    assert result["text"] == "The cell has length_a, length_b, ..."
+    # the model goes on from the result of the first action, which is not done again
+    messages = assistant.model.llm.l_messages[1]
+    assert messages[-1]["content"].startswith("Result of summarize_object:")
+    assert l_step[0].startswith("Step 1") and "summarize_object" in l_step[0]
+
+
+@pytest.mark.parametrize("answer, flag_more", [
+    ("I will check the attributes required for adding multipoles.", True),
+    ("Let me look at the atoms first.", True),
+    ("Сейчас проверю атомы и добавлю мультиполи.", True),
+    ("I will not change the file.", False),
+    ("The cell is cubic, a = 5 Å.", False),
+])
+def test_announces_more(answer, flag_more):
+    assert assistant_module.announces_more(answer) is flag_more

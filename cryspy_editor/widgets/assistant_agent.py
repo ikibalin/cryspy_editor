@@ -21,8 +21,13 @@ MAX_ERRORS_IN_ROW = 3  # failed actions one after another
 N_MAX_OBSERVATION = 1500  # characters of the result of the last actions
 N_MAX_OLD_OBSERVATION = 300  # characters of the results of older actions
 N_RECENT_OBSERVATIONS = 2  # the last observations given in full
+N_MAX_GUIDE = 5000  # characters of a recipe or of the guide of recipes, kept to the end
+# actions whose result is a plan the model follows to the end: a recipe (also
+# one used inside a recipe) or the guide for writing recipes (tools of CrysPy)
+GUIDE_ACTIONS = ("get_recipe", "use_recipe", "get_recipe_guide")
 N_MAX_STEP_RESULT = 6  # lines of the result of an action shown to the user
 FINAL = "final"
+ASK_ACTION = "ask_user"  # the questions of the model to the user (a tool of CrysPy)
 
 AGENT_RULES = """Work step by step: respond with ONE JSON object for ONE action:
 {"thought": "<one short sentence: what the last result shows and why this action>",
@@ -36,6 +41,9 @@ recipe was taken with get_recipe, follow its steps. Judge each step by the
 change of chi_sq/n (R_F2 for single crystals) and the warnings in the results;
 undo_refinement returns to the state before a refinement that made it worse. Report only what the results show, with numbers;
 never claim a step that was not done."""
+ASK_RULE = """When the request is not clear or only the user knows something (which
+parameters, a condition, a choice), ask with the action "ask_user" (all the
+questions of the moment at once) and go on from the answers."""
 
 
 def form_step_schema(l_action: List[str]) -> dict:
@@ -72,11 +80,12 @@ def cut_text(text: str, n_max: int) -> str:
     return text if len(text) <= n_max else text[:n_max] + "\n[...cut...]"
 
 
-def shorten_old_observations(messages: list, n_prefix: int):
+def shorten_old_observations(messages: list, n_prefix: int, l_keep: tuple = ()):
     """Keep the last observations in full and the start of older ones:
-    the context of a small model is short."""
+    the context of a small model is short. The messages of l_keep (the
+    recipes) are kept in full."""
     l_index = [ind for ind in range(n_prefix, len(messages))
-               if messages[ind]["role"] == "user"]
+               if messages[ind]["role"] == "user" and ind not in l_keep]
     for ind in l_index[:-N_RECENT_OBSERVATIONS]:
         messages[ind] = dict(messages[ind], content=cut_text(messages[ind]["content"], N_MAX_OLD_OBSERVATION))
 
@@ -87,7 +96,9 @@ class Agent:
     model: an object with chat(messages, flag_json, schema) -> str;
     run_tool(name, obj, arguments) -> (result, flag_object_changed): the
     result is text (an error starts with "Error") or a Dialog (questions to
-    the user: the loop stops and the assistant asks them);
+    the user: the loop waits, the assistant asks them, and resume goes on
+    with the result of the action done with the answers, so the model may
+    ask in the middle of its work, e.g. with the action ask_user);
     l_action: names of the actions the model may call;
     take_json_object(text) -> dict or None;
     max_steps: the most actions for one request."""
@@ -102,47 +113,107 @@ class Agent:
 
     def run(self, system_prompt: str, history: list, question: str, cryspy_object=None,
             on_action: Optional[Callable] = None, should_stop: Optional[Callable] = None,
-            l_first: Optional[list] = None, on_step: Optional[Callable] = None) -> dict:
+            l_first: Optional[list] = None, on_step: Optional[Callable] = None,
+            l_done: Optional[list] = None) -> dict:
         """Run the loop for the request.
 
         l_first: actions [(name, arguments)] already chosen by the model
         (e.g. get_recipe), done before the first call of the loop.
+        l_done: actions [(name, arguments, result)] done already for the
+        request; the model gets their results and goes on from them.
         on_step(text): called with the text of each step for the user when
         the step starts (its number, thought and action) and when its result
         comes, so that the user sees the course of the work and can stop it.
 
         Returns {"steps": [(thought, action, arguments, result)], "answer",
         "flag_object_changed", "dialog": a Dialog when an action asks the
-        user, "stopped": the reason the loop ended without an answer}."""
-        messages = [{"role": "system", "content": f"{system_prompt}\n\n{AGENT_RULES}"}]
+        user (the loop waits: resume goes on after the answers), "stopped":
+        the reason the loop ended without an answer}."""
+        s_rules = f"{AGENT_RULES}\n{ASK_RULE}" if ASK_ACTION in self.l_action else AGENT_RULES
+        messages = [{"role": "system", "content": f"{system_prompt}\n\n{s_rules}"}]
         messages.extend(history)
         messages.append({"role": "user", "content": question})
-        n_prefix = len(messages)
+        self.state = {
+            "messages": messages, "n_prefix": len(messages), "l_keep": [], "l_step": [], "l_call": [],
+            "flag_object_changed": False, "n_error": 0, "cryspy_object": cryspy_object,
+            "l_todo": [{"thought": "", "action": name, "arguments": arguments, "answer": ""}
+                       for name, arguments in (l_first or [])]}
+        for action, arguments, result in (l_done or []):
+            messages.append({"role": "assistant", "content": json.dumps(
+                {"thought": "", "action": action, "arguments": arguments})})
+            self.state["l_call"].append((action, json.dumps(arguments, sort_keys=True, default=str)))
+            if on_step is not None:
+                on_step(form_step_start_text(len(self.state["l_step"]) + 1, "", action))
+            self._observe("", action, arguments, result, on_step)
+        return self._loop(on_action, should_stop, on_step)
+
+    def is_waiting(self) -> bool:
+        """True when an action asked the user and the loop waits for resume."""
+        return getattr(self, "state", None) is not None and self.state.get("waiting", False)
+
+    def resume(self, result: str, flag_changed: bool = False, on_action: Optional[Callable] = None,
+               should_stop: Optional[Callable] = None, on_step: Optional[Callable] = None) -> dict:
+        """Go on after the user answered the questions of an action: result
+        is the text of the action done with the answers (an Error when the
+        user stopped it). The model gets it as the observation of the action
+        and decides the next one, as in run (the same return)."""
+        state = self.state
+        state["waiting"] = False
+        thought, action, arguments, _ = state["l_step"].pop()
+        state["flag_object_changed"] = state["flag_object_changed"] or (
+            flag_changed and not result.startswith("Error"))
+        self._observe(thought, action, arguments, result, on_step)
+        if state["n_error"] >= MAX_ERRORS_IN_ROW:
+            return self._out("", f"{MAX_ERRORS_IN_ROW} actions failed one after another.", None)
+        return self._loop(on_action, should_stop, on_step)
+
+    def _observe(self, thought: str, action: str, arguments: dict, result: str,
+                 on_step: Optional[Callable] = None):
+        """The result of an action: to the user, to the steps and to the model.
+
+        The result of a GUIDE_ACTIONS action (a recipe, also one used
+        inside the recipe, or the guide of recipes) is followed to the end,
+        so it is given in full and never shortened."""
+        state = self.state
+        if on_step is not None:
+            on_step(form_step_result_text(action, result))
+        state["l_step"].append((thought, action, arguments, result))
+        state["n_error"] = state["n_error"] + 1 if result.startswith("Error") else 0
+        flag_guide = action in GUIDE_ACTIONS and not str(result).startswith("Error")
+        n_max = N_MAX_GUIDE if flag_guide else N_MAX_OBSERVATION
+        state["messages"].append({"role": "user", "content": (
+            f"Result of {action}:\n{cut_text(result, n_max)}\n\n"
+            "Next action, or the final answer (JSON).")})
+        if flag_guide:
+            state["l_keep"].append(len(state["messages"]) - 1)
+
+    def _out(self, answer: str, stopped: str, dialog) -> dict:
+        state = self.state
+        return {"steps": list(state["l_step"]), "answer": answer,
+                "flag_object_changed": state["flag_object_changed"], "dialog": dialog, "stopped": stopped}
+
+    def _loop(self, on_action: Optional[Callable] = None, should_stop: Optional[Callable] = None,
+              on_step: Optional[Callable] = None) -> dict:
+        state = self.state
+        messages, l_step, l_call, l_todo = state["messages"], state["l_step"], state["l_call"], state["l_todo"]
         schema = form_step_schema(self.l_action)
-        l_step, l_call = [], []
-        flag_object_changed, n_error, answer, stopped, dialog = False, 0, "", "", None
-        l_todo = [{"thought": "", "action": name, "arguments": arguments, "answer": ""}
-                  for name, arguments in (l_first or [])]
         while True:
             if should_stop is not None and should_stop():
-                stopped = f"Stopped by the user after {len(l_step)} actions."
-                break
+                return self._out("", f"Stopped by the user after {len(l_step)} actions.", None)
             if l_todo:
                 step = l_todo.pop(0)
                 messages.append({"role": "assistant", "content": json.dumps(
                     {"thought": step["thought"], "action": step["action"], "arguments": step["arguments"]})})
             else:
                 if len(l_step) >= self.max_steps:
-                    stopped = (f"The limit of {self.max_steps} actions is reached (Maximal number of "
-                               "steps of the agent in the model settings).")
-                    break
-                shorten_old_observations(messages, n_prefix)
+                    return self._out("", (f"The limit of {self.max_steps} actions is reached (Maximal number "
+                                          "of steps of the agent in the model settings)."), None)
+                shorten_old_observations(messages, state["n_prefix"], tuple(state["l_keep"]))
                 raw = self.model.chat(messages, flag_json=True, schema=schema)
                 messages.append({"role": "assistant", "content": raw})
                 step = take_step_reply(raw, self.take_json_object)
             if step["action"] == FINAL:
-                answer = step["answer"]
-                break
+                return self._out(step["answer"], "", None)
             action, arguments = step["action"], step["arguments"]
             if on_step is not None:
                 on_step(form_step_start_text(len(l_step) + 1, step["thought"], action))
@@ -157,26 +228,17 @@ class Agent:
                 l_call.append(key)
                 if on_action is not None:
                     on_action(action)
-                result, flag_changed = self.run_tool(action, cryspy_object, arguments)
-                if not isinstance(result, str):  # a Dialog: the user answers its questions
-                    dialog = result
+                result, flag_changed = self.run_tool(action, state["cryspy_object"], arguments)
+                if not isinstance(result, str):  # a Dialog: the user answers, then resume
+                    # its questions are the reply to the user, not a step result
                     l_step.append((step["thought"], action, arguments, result.start()))
-                    if on_step is not None:
-                        on_step(form_step_result_text(action, result.start()))
-                    break
-                flag_object_changed = flag_object_changed or (flag_changed and not result.startswith("Error"))
-            if on_step is not None:
-                on_step(form_step_result_text(action, result))
-            l_step.append((step["thought"], action, arguments, result))
-            n_error = n_error + 1 if result.startswith("Error") else 0
-            if n_error >= MAX_ERRORS_IN_ROW:
-                stopped = f"{MAX_ERRORS_IN_ROW} actions failed one after another."
-                break
-            messages.append({"role": "user", "content": (
-                f"Result of {action}:\n{cut_text(result, N_MAX_OBSERVATION)}\n\n"
-                "Next action, or the final answer (JSON).")})
-        return {"steps": l_step, "answer": answer, "flag_object_changed": flag_object_changed,
-                "dialog": dialog, "stopped": stopped}
+                    state["waiting"] = True
+                    return self._out("", "", result)
+                state["flag_object_changed"] = state["flag_object_changed"] or (
+                    flag_changed and not result.startswith("Error"))
+            self._observe(step["thought"], action, arguments, result, on_step)
+            if state["n_error"] >= MAX_ERRORS_IN_ROW:
+                return self._out("", f"{MAX_ERRORS_IN_ROW} actions failed one after another.", None)
 
 
 def form_step_start_text(number: int, thought: str, action: str) -> str:

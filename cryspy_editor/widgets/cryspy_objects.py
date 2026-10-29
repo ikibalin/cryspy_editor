@@ -4,8 +4,7 @@ Define actions and toolbars for procedures
 # import logging
 from typing import List, Callable
 
-from cryspy import GlobalN, DataN, LoopN, ItemN, file_to_globaln, load_packages, \
-    L_FUNCTION, L_GLOBAL_CLASS, L_DATA_CLASS, L_LOOP_CLASS, L_ITEM_CLASS
+from cryspy import GlobalN, DataN, LoopN, ItemN, load_packages, L_FUNCTION
 load_packages()
 from cryspy import L_FUNCTION_ADD
 
@@ -52,12 +51,6 @@ def get_plot_functions_for_data_loop_item(l_func_external: list):
     return l_plot_data, l_plot_loop, l_plot_item
 
 
-def cryspy_classes_to_dictionary():
-    d_classes = {"GlobalN": GlobalN, "DataN": DataN, "LoopN": LoopN, "ItemN": ItemN,
-        "global": L_GLOBAL_CLASS, "data": L_DATA_CLASS, "loop": L_LOOP_CLASS, "item": L_ITEM_CLASS}
-    return d_classes
-
-
 def check_function_reserved_for_cryspy_editor(func: Callable):
     if not("__code__" in dir(func)):
         return False
@@ -89,13 +82,13 @@ def check_function_for_procedure(func: Callable):
         return False
     n_row_need = func.__code__.co_argcount
 
-    d_annotations = func.__annotations__
+    # a copy without "return": pop("return") on func.__annotations__
+    # removed the return type of CrysPy procedures for good
+    d_annotations = {name: annotation for name, annotation
+                     in func.__annotations__.items() if name != "return"}
     n_globaln = 0
     f_defined_types, f_items = True, False
     f_basic = False
-    block_name = ""
-    if "return" in d_annotations.keys():
-        obj_return = d_annotations.pop("return")
 
     if len(d_annotations.items()) != n_row_need:
         f_defined_types = False
@@ -142,12 +135,12 @@ def check_function_to_auto_run(func: Callable):
     """
     n_row_need = func.__code__.co_argcount
 
-    d_annotations = func.__annotations__
+    # a copy without "return": pop("return") on func.__annotations__
+    # removed the return type of CrysPy procedures for good
+    d_annotations = {name: annotation for name, annotation
+                     in func.__annotations__.items() if name != "return"}
     n_globaln = 0
     f_defined_types = True
-    block_name = ""
-    if "return" in d_annotations.keys():
-        obj_return = d_annotations.pop("return")
 
     if len(d_annotations.items()) != n_row_need:
         f_defined_types = False

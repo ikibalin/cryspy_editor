@@ -19,6 +19,13 @@ Settings are kept in `settings.json` in the user's folder:
 on macOS, `~/.config/cryspy_editor` on Linux. Settings of older versions are
 moved there at the first start.
 
+At startup CrysPy Editor asks GitHub (in the background, silently when
+offline) whether a newer release exists and then shows a window with a link
+to the [download page](https://ikibalin.github.io/cryspy_editor/) (and the
+`pip install --upgrade cryspy_editor` command for pip installations). The
+check is switched off by **Options → Check for new versions at startup**;
+**Options → Check for new version now** checks by hand.
+
 ## Standalone program (no Python needed)
 
 Each release has ready programs in **Assets** on the
@@ -39,13 +46,26 @@ Python, CrysPy, Qt and llama-cpp-python are inside, nothing else to install.
 GGUF models are not inside: choose a downloaded `.gguf` file in
 **AI assistant → Load model (GGUF file or Ollama)...**.
 
+## 3D view of crystal structures
+
+Select a crystal block: the **3D view** tab shows its structure (atoms of the
+chosen number of unit cells, bonds, cell, axes and magnetic moments from
+`atom_site_moment` / mcif). Rotate with the left mouse button, zoom with the
+wheel. The settings panel on the right is made from
+`cryspy.StructureViewSettings`, the page itself by CrysPy (py3Dmol).
+3Dmol.js is bundled (`cryspy_editor/widgets/js`), so no internet is needed.
+
 ## AI assistant (optional)
 
 CrysPy Editor can use a local language model to answer questions and work
 on the opened file. The model runs on your computer; nothing is sent to the
 internet. It calls the tools of CrysPy (`cryspy.assistant_tools()`): help
 lookup, list / refine / fix / set parameters by their paths, calculate,
-refine, show the model, add an atom, run CrysPy procedures. Questions such as
+refine, show the model, add an atom, run CrysPy procedures and call the
+methods of the data blocks, loops and items of the file (e.g.
+`define_background_points` of a powder experiment: "define the background
+points"; the methods and their arguments come from CrysPy, `list_methods`,
+`call_method`). Questions such as
 "how to describe multipoles?" or "what should be used for thermal
 vibrations?" are answered from the help pages of CrysPy, which are shown in
 the answer. The same help is in **Options → CrysPy help...** (F1) without a
@@ -55,7 +75,9 @@ The assistant works in its own window, **AI Assistant / CrysPy Editor**,
 opened by **AI assistant → Show assistant**. One request may hold several
 actions (e.g. "fix everything, refine the cell and run the refinement"); a
 call with wrong arguments goes back to the model to be corrected, and
-questions are answered from the results of the actions. The window and the
+questions are answered from the results of the actions. The request field
+has several lines and grows with the text: Enter sends the request,
+Shift+Enter starts a new line. The window and the
 logic are the same as in the assistant of PyColl5; only the actions differ.
 
 1. Install the optional dependency: `pip install cryspy_editor[ai]`
@@ -122,13 +144,33 @@ reads its steps and works one action at a time, judging each result by
 chi_sq/n, R_F2 and the warnings of CrysPy. Each step is written in the chat
 as it starts and when its result comes; **Stop** ends the work, and at most
 "Maximal number of steps of the agent" actions (12 by default, in the model
-settings) are done for one request. The recipes
+settings) are done for one request. A request without a recipe goes on in
+the same way when the first answer of the model only says what it will do
+next ("I will check the attributes and add the multipoles"). The recipes
 for the experiments of the opened file (single crystal, powder, flip ratios,
 nuclear or magnetic crystal) are given to the model. **AI assistant →
 CookBook...** lists the recipes, shows their text and lets you write new ones
 or change those of CrysPy (New, Check, Save, Delete); your recipes are kept in
 the `recipes` folder next to the settings and replace the recipes of CrysPy
 with the same name.
+
+**Writing a recipe with the assistant.** Describe the algorithm in words
+("write a recipe: fix all, refine the scale, then the atomic positions and
+undo a step when R_F2 gets worse") and the assistant writes the recipe for
+the CookBook: it reads the format, asks you what is not clear (Q1, Q2, ...,
+answered in the chat; `cancel` stops), checks the text with CrysPy, shows it
+and saves it to your recipes when you agree (it asks before replacing a
+recipe of yours). Nothing in the opened file is changed meanwhile. A thinking
+model (turn on **Thinking**) works out such an algorithm better; give it a
+context of 8192 tokens or more. The assistant may ask you in the middle of
+other step-by-step work too, and goes on from your answers.
+
+**Recipes from recipes.** A step of a recipe may do a whole recipe of the
+CookBook: `Actions: use_recipe {"name": "refine_background"}`. So small
+recipes are bricks of bigger ones, and those of still bigger ones; the
+assistant does the steps of the inner recipe and goes on with the next step
+(without a model `run_recipe` does the same). CrysPy rejects a recipe that
+uses an unknown recipe or recipes that use each other in a circle.
 
 **Commands.** Type `@` in the input line to see the names of the recipes and
 of the actions with a short description (Tab and Shift+Tab go through them,

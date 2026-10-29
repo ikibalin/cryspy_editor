@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+import cryspy
 import cryspy_editor
 from cryspy_editor.ceditor import CMainWindow
 
@@ -14,9 +15,6 @@ L_EXAMPLE = sorted(
     f_name for f_name in glob.glob(
         os.path.join(DIR_EXAMPLES, "**", "*.rcif"), recursive=True)
     if not f_name.endswith("_calc.rcif"))
-# CrysPy fails on the space group of this old file (UnboundLocalError
-# 'centrosymmetry' in SpaceGroup.form_object_by_it_number_it_coordinate_system_code)
-SET_KNOWN_FAILURE = {os.path.join("DyAlO3", "test2", "main.rcif")}
 
 
 def test_version():
@@ -44,13 +42,24 @@ def test_window_starts(window):
     "file_name", L_EXAMPLE,
     ids=[os.path.relpath(f, DIR_EXAMPLES) for f in L_EXAMPLE])
 def test_open_example(window, file_name):
-    if os.path.relpath(file_name, DIR_EXAMPLES) in SET_KNOWN_FAILURE:
-        pytest.xfail("CrysPy cannot read the space group of this file")
     window.d_setup["data_file_name"] = file_name
     window.take_rcif_object_from_d_setup()
     assert len(window.rcif_object.items) > 0
     assert window.w_object_panel.topLevelItemCount() > 0
     assert "ERROR" not in window.text_edit.toPlainText()
+
+
+def test_fe3o4_example_calculates():
+    """The example uses the current tags (_pd_meas_intensity_plus/_minus)
+    and its parameters give the goodness of fit written in the file."""
+    rcif_object = cryspy.load_file(
+        os.path.join(DIR_EXAMPLES, "Fe3O4_5T_powder_1d", "main.rcif"))
+    pd = rcif_object.items[0]
+    assert pd.pd_meas.items[0].is_attribute("intensity_plus")
+    d_out = cryspy.rhochi_no_refinement(rcif_object)
+    chi_sq_per_n = d_out["chi_sq"] / d_out["n_point"]
+    assert chi_sq_per_n == pytest.approx(
+        pd.refine_ls.goodness_of_fit_all, rel=0.01)
 
 
 def test_help_dialog(qapp):
@@ -75,7 +84,7 @@ def test_cif_text_is_applied_before_run(window):
               for ind in range(window.w_item_tabs.count())
               if isinstance(window.w_item_tabs.widget(ind), WEditCif)][0]
     w_edit.setPlainText(w_edit.toPlainText().replace(
-        "_cell_length_a 8.45420", "_cell_length_a 8.50000"))
+        "_cell_length_a 8.45329", "_cell_length_a 8.50000"))
     l_value = []
 
     def procedure(rcif_object):
@@ -87,3 +96,20 @@ def test_cif_text_is_applied_before_run(window):
     window.cthread.start()
     assert window.cthread.wait(10000)
     assert l_value == [8.5]
+
+
+def test_refresh_lists_variables_with_parameter_paths(window):
+    """Refresh names the refined variables as the window Parameters does."""
+    from cryspy.procedure_assistant.parameters import take_parameter_records
+    window.d_setup["data_file_name"] = os.path.join(
+        DIR_EXAMPLES, "Fe3O4_5T_powder_1d", "main.rcif")
+    window.take_rcif_object_from_d_setup()
+    window.refresh_view()
+    text = window.text_edit.toPlainText()
+    n_variable = len(window.rcif_object.get_variable_names())
+    assert f"Number of variables is {n_variable}." in text
+    l_path = [record.path for record in take_parameter_records(window.rcif_object)
+              if record.flag_refinement and not record.flag_constraint]
+    assert len(l_path) == n_variable > 0
+    for path in l_path:
+        assert f" - {path} " in text

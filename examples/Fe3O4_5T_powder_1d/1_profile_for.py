@@ -1,12 +1,11 @@
+"""Refinement of the example, for profiling with 1_profile.py:
+
+    python 1_profile.py 1_profile_for.py
+"""
 import os
-import pycifstar
-from cryspy.scripts.cl_rhochi import RhoChi
 
-f_dir = os.path.dirname(__file__)
-f_rcif = os.path.join(f_dir, "main.rcif")
+import cryspy
 
-STR_FROM_CIF = str(pycifstar.to_global(f_rcif))
-
-_obj = RhoChi.from_cif(STR_FROM_CIF)
-_obj.apply_constraint()
-d_res = _obj.refine()
+f_dir = os.path.dirname(os.path.abspath(__file__))
+rcif_object = cryspy.load_file(os.path.join(f_dir, "main.rcif"))
+d_res = cryspy.rhochi_rietveld_refinement(rcif_object)

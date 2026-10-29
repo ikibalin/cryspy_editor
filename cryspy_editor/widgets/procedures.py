@@ -1,9 +1,15 @@
+import functools
+
 import numpy
-from cryspy_editor.widgets.from_cryspy import (
-    calc_sthovl_by_unit_cell_parameters,
-    calc_index_hkl_in_range,
-    calc_unit_cell_parameters_and_u_by_ub,
-)
+import cryspy
+from cryspy.A_functions_base.structure_factor import \
+    calc_index_hkl_multiplicity_in_range
+from cryspy.A_functions_base.symmetry_elements import \
+    calc_equivalent_reflections
+from cryspy.A_functions_base.function_1_agreement_factors import \
+    calc_chi_sq_by_signal
+from cryspy.A_functions_base.unit_cell import \
+    calc_sthovl_by_unit_cell_parameters
 from cryspy_editor.widgets.colors import (
     L_COLOR_TABLE,
     L_COLOR,
@@ -567,7 +573,7 @@ def procedure_calc(s_line: str, d_np_table: dict):
             [d_np_table[name] for name in l_necessary_inline], dtype=float
         )
         unit_cell_parameters[3:] = numpy.radians(unit_cell_parameters[3:])
-        np_sthovl = calc_sthovl_by_unit_cell_parameters(
+        np_sthovl, _ = calc_sthovl_by_unit_cell_parameters(
             np_hkl, unit_cell_parameters
         )
     if s_name == "sthovl":
@@ -592,24 +598,20 @@ def procedure_calc(s_line: str, d_np_table: dict):
             d_np_table[" table_commands"].append("")
         d_np_table["2Theta"] = np_tth
     elif s_name.replace("_", "").startswith("chisq"):
-        np_y_mod, flag_y_mod, name_y_mod = take_val(l_name[0], d_np_table)
+        np_y_mod, flag_y_mod, _ = take_val(l_name[0], d_np_table)
         if not flag_y_mod:
             raise ValueError(f"The column {l_name[0]:} is not defined")
         np_y_exp, flag_y_exp, name_y_exp = take_val(l_name[1], d_np_table)
         if not flag_y_exp:
             raise ValueError(f"The column {l_name[1]:} is not defined")
         if len(l_name) == 3:
-            np_y_sigma, flag_y_sigma, name_y_sigma = take_val(
-                l_name[2], d_np_table
-            )
-            if not flag_y_exp:
+            np_y_sigma, flag_y_sigma, _ = take_val(l_name[2], d_np_table)
+            if not flag_y_sigma:
                 raise ValueError(f"The column {l_name[2]:} is not defined")
         else:
             np_y_sigma = numpy.ones_like(np_y_mod)
 
-        np_chisq = numpy.sum(
-            numpy.power((np_y_mod - np_y_exp) / np_y_sigma, 2)
-        )
+        np_chisq, _ = calc_chi_sq_by_signal(np_y_exp, np_y_sigma, np_y_mod)
         if s_name.replace("_", "") == "chisq":
             s_name = f"ChiSq for {name_y_exp:}"
         else:  # chi_sq per n
@@ -681,7 +683,8 @@ def procedure_generate_hkl(s_line: str, d_np_table: dict):
     np_hkl = calc_index_hkl_in_range(
         sthovl_min, sthovl_max, unit_cell_parameters
     )
-    sthovl = calc_sthovl_by_unit_cell_parameters(np_hkl, unit_cell_parameters)
+    sthovl, _ = calc_sthovl_by_unit_cell_parameters(
+        np_hkl, unit_cell_parameters)
     for name in d_np_table[" table_names"]:
         del d_np_table[name]
     d_np_table[" table_names"] = ["H", "K", "L", "sthovl"]
@@ -847,169 +850,63 @@ def calc_unit_cell_by_ub(d_np_table):
             + ", ".join(l_necessary_inline)
         )
     else:
-        m_ub = numpy.array(
-            [float(numpy.array(d_np_table[name],dtype=float).squeeze()) for name in l_necessary_inline_2],
-            dtype=float,
-        )
-        unit_cell_parameters, m_u = calc_unit_cell_parameters_and_u_by_ub(m_ub)
+        orient_matrix = cryspy.DiffrnOrientMatrix(**{
+            name[len("_diffrn_orient_matrix_"):]: float(numpy.array(
+                d_np_table[name], dtype=float).squeeze())
+            for name in l_necessary_inline_2})
+        orient_matrix.form_object()
+        cell = orient_matrix.cell
     d_np_table[" inline_names"].extend(l_necessary_inline)
-    for i_name, name in enumerate(l_necessary_inline):
-        d_np_table[name] = [
-            float(unit_cell_parameters[i_name]),
-        ]
-        if i_name in [3, 4, 5]:
-            d_np_table[name] = [
-                float(numpy.degrees(numpy.array(d_np_table[name],dtype=float).squeeze())),
-            ]
+    for name, value in zip(l_necessary_inline, (
+            cell.length_a, cell.length_b, cell.length_c,
+            cell.angle_alpha, cell.angle_beta, cell.angle_gamma)):
+        d_np_table[name] = [float(value), ]
     return
 
 
+def calc_index_hkl_in_range(sthovl_min, sthovl_max, unit_cell_parameters):
+    """All hkl with sthovl_min <= sin(theta)/lambda <= sthovl_max, sorted by
+    sin(theta)/lambda (CrysPy with the identity as the only symmetry)."""
+    symm_elem_identity = numpy.array(
+        [0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1], dtype=int)[:, numpy.newaxis]
+    translation_elem_zero = numpy.array([0, 0, 0, 1], dtype=int)[:, numpy.newaxis]
+    index_hkl, _ = calc_index_hkl_multiplicity_in_range(
+        float(numpy.squeeze(sthovl_min)), float(numpy.squeeze(sthovl_max)),
+        numpy.asarray(unit_cell_parameters, dtype=float).reshape(6),
+        symm_elem_identity,
+        translation_elem_zero, False)
+    return index_hkl
+
+
+# Laue classes of the table commands: friedel -1, orto mmm, tetra 4/mmm,
+# hex 6/m, cubic m-3m (international number of a space group of the class)
+D_IT_NUMBER_LAUE_CLASS = {"f": 2, "o": 47, "t": 123, "h": 175, "c": 221}
+
+
 def choose_func_equiv(s_command: str):
-    if s_command.startswith("f"):
-        func_equiv = equiv_friedel
-    elif s_command.startswith("o"):
-        func_equiv = equiv_orto
-    elif s_command.startswith("t"):
-        func_equiv = equiv_tetra
-    elif s_command.startswith("h"):
-        func_equiv = equiv_hex
-    elif s_command.startswith("c"):
-        func_equiv = equiv_cubic
-    else:
-        func_equiv = lambda x: [
-            x,
-        ]
-    return func_equiv
+    """Function giving the hkl equivalent to the given one by the Laue class
+    named in the command (first letter), or only the hkl itself."""
+    it_number = D_IT_NUMBER_LAUE_CLASS.get(s_command[:1])
+    if it_number is None:
+        return lambda x: [x, ]
+    return functools.partial(take_equivalent_hkl, it_number=it_number)
 
 
-def check_same_hkl(np_hkl_1, np_hkl_2):
-    return numpy.all(np_hkl_1 == np_hkl_2)
+@functools.lru_cache(maxsize=None)
+def take_symmetry_of_space_group(it_number: int):
+    space_group = cryspy.SpaceGroup(it_number=it_number)
+    return (space_group.reduced_space_group_symop.get_symm_elems(),
+            bool(space_group.centrosymmetry))
 
 
-def equiv_friedel(hkl):
-    l_hkl = [
-        (hkl[0], hkl[1], hkl[2]),
-        (-hkl[0], -hkl[1], -hkl[2]),
-    ]
-    return l_hkl
-
-
-def check_friedel(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_friedel(np_hkl_2)
-    return np_hkl_1 in l_hkl
-
-
-def equiv_orto(hkl):
-    l_hkl = [
-        (hkl[0], hkl[1], hkl[2]),
-        (-hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], hkl[1], -hkl[2]),
-        (-hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], -hkl[2]),
-    ]
-    return l_hkl
-
-
-def check_ortho(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_orto(np_hkl_2)
-    return np_hkl_1 in l_hkl
-
-
-def equiv_tetra(hkl):
-    l_hkl = [
-        (hkl[0], hkl[1], hkl[2]),
-        (-hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], hkl[1], -hkl[2]),
-        (-hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], -hkl[2]),
-        (hkl[1], hkl[0], hkl[2]),
-        (-hkl[1], -hkl[0], -hkl[2]),
-        (-hkl[1], hkl[0], hkl[2]),
-        (hkl[1], -hkl[0], hkl[2]),
-        (hkl[1], hkl[0], -hkl[2]),
-        (-hkl[1], -hkl[0], hkl[2]),
-        (hkl[1], -hkl[0], -hkl[2]),
-        (-hkl[1], hkl[0], -hkl[2]),
-    ]
-    return l_hkl
-
-
-def check_tetra(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_orto(np_hkl_2)
-    return np_hkl_1 in l_hkl
-
-
-def equiv_hex(hkl):
-    hh = -(hkl[0] + hkl[1])
-    l_hkl = [
-        (hkl[0], hkl[1], hkl[2]),
-        (hkl[1], hh, hkl[2]),
-        (hh, hkl[0], hkl[2]),
-        (hkl[0], hkl[1], -hkl[2]),
-        (hkl[1], hh, -hkl[2]),
-        (hh, hkl[0], -hkl[2]),
-        (-hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[1], -hh, -hkl[2]),
-        (-hh, -hkl[0], -hkl[2]),
-        (-hkl[0], -hkl[1], hkl[2]),
-        (-hkl[1], -hh, hkl[2]),
-        (-hh, -hkl[0], hkl[2]),
-    ]
-    return l_hkl
-
-
-def check_hex(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_hex(np_hkl_2)
-    return (np_hkl_1[0], np_hkl_1[1], np_hkl_1[2]) in l_hkl
-
-
-def equiv_cubic(hkl):
-    l_hkl = [
-        (hkl[0], hkl[1], hkl[2]),
-        (-hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], hkl[1], -hkl[2]),
-        (-hkl[0], -hkl[1], hkl[2]),
-        (hkl[0], -hkl[1], -hkl[2]),
-        (-hkl[0], hkl[1], -hkl[2]),
-        (hkl[1], hkl[0], hkl[2]),
-        (-hkl[1], -hkl[0], -hkl[2]),
-        (-hkl[1], hkl[0], hkl[2]),
-        (hkl[1], -hkl[0], hkl[2]),
-        (hkl[1], hkl[0], -hkl[2]),
-        (-hkl[1], -hkl[0], hkl[2]),
-        (hkl[1], -hkl[0], -hkl[2]),
-        (-hkl[1], hkl[0], -hkl[2]),
-        (hkl[2], hkl[1], hkl[0]),
-        (-hkl[2], -hkl[1], -hkl[0]),
-        (-hkl[2], hkl[1], hkl[0]),
-        (hkl[2], -hkl[1], hkl[0]),
-        (hkl[2], hkl[1], -hkl[0]),
-        (-hkl[2], -hkl[1], hkl[0]),
-        (hkl[2], -hkl[1], -hkl[0]),
-        (-hkl[2], hkl[1], -hkl[0]),
-        (hkl[0], hkl[2], hkl[1]),
-        (-hkl[0], -hkl[2], -hkl[1]),
-        (-hkl[0], hkl[2], hkl[1]),
-        (hkl[0], -hkl[2], hkl[1]),
-        (hkl[0], hkl[2], -hkl[1]),
-        (-hkl[0], -hkl[2], hkl[1]),
-        (hkl[0], -hkl[2], -hkl[1]),
-        (-hkl[0], hkl[2], -hkl[1]),
-    ]
-    return l_hkl
-
-
-def check_cubic(np_hkl_1, np_hkl_2):
-    l_hkl = equiv_cubic(np_hkl_2)
-    return (np_hkl_1[0], np_hkl_1[1], np_hkl_1[2]) in l_hkl
+def take_equivalent_hkl(hkl, it_number: int) -> list:
+    """Equivalent hkl by the point group of the space group (CrysPy)."""
+    reduced_symm_elems, centrosymmetry = take_symmetry_of_space_group(it_number)
+    index_hkl = numpy.array(hkl).reshape(3, 1)
+    index_hkl_equivalent = calc_equivalent_reflections(
+        index_hkl, reduced_symm_elems, centrosymmetry)[:, 0, :]
+    return [tuple(hkl_equivalent) for hkl_equivalent
+            in index_hkl_equivalent.T.tolist()]
 
 
 def evaluate_expression(expr: str, values: dict):
@@ -1115,7 +1012,6 @@ def take_val(s_input: str, d_np_table: dict):
 def group_by_hkl(l_hkl, func_equivalent):
     l_group_hkl_ind = []
     l_ind = list(range(len(l_hkl)))
-    flag_new_equiv = True
     num = len(l_hkl)
     for i_hkl, hkl_1 in enumerate(l_hkl):
         if i_hkl in l_ind:

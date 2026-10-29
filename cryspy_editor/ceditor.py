@@ -17,6 +17,7 @@ from PyQt5.QtGui import QIcon
 import matplotlib.pyplot as plt
 
 from importlib import import_module
+import cryspy
 from cryspy_editor.widgets.ui_setting import is_dark_mode
 from cryspy import (
     load_file,
@@ -30,19 +31,11 @@ from cryspy import (
     ChannelCol,
     str_to_globaln,
 )
-from cryspy import L_GLOBAL_CLASS, L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
-
-L_GLOBAL_CLS = L_GLOBAL_CLASS
-L_DATA_CLS = L_DATA_CLASS
-L_LOOP_CLS = L_LOOP_CLASS
-L_ITEM_CLS = L_ITEM_CLASS
+from cryspy import L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 
 
 from cryspy_editor.widgets.w_function import WFunction
-from cryspy_editor.widgets.w_constraint_dialog import (
-    ConstraintDialog,
-    is_constraint_supported,
-)
+from cryspy_editor.widgets.w_constraint_dialog import ConstraintDialog
 from cryspy_editor.widgets.w_parameters_dialog import ParametersDialog
 from cryspy_editor.widgets.w_procedure_dialog import (
     ProcedureDialog,
@@ -55,6 +48,9 @@ from cryspy_editor.widgets.w_editcif import (
     WEditCif, take_value_choices)
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
+from cryspy.procedure_assistant.parameters import take_parameter_records, is_number
+from cryspy_editor.widgets.w_structure_view import (
+    WStructureView, has_structure_view)
 from cryspy_editor.widgets.cryspy_objects import (
     cryspy_procedures_to_dictionary,
     check_function_to_auto_run,
@@ -68,6 +64,7 @@ from cryspy_editor.cl_thread import CThread
 from cryspy_editor.history import RcifHistory
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
+from cryspy_editor import update_check
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
@@ -330,6 +327,7 @@ class CMainWindow(QMainWindow):
         self.take_rcif_object_from_d_setup()
         self.print_object_info()
         self.assistant_controller.autoload_model()
+        self.start_update_check()
 
     def write(self):
         out_terminal = getattr(self.cthread, "out_terminal", None)
@@ -548,6 +546,18 @@ class CMainWindow(QMainWindow):
         add_user_scripts = menu_options.addAction("User scripts")
         add_user_scripts.triggered.connect(self.user_scripts)
 
+        menu_options.addSeparator()
+        self.action_check_updates = menu_options.addAction(
+            "Check for new versions at startup")
+        self.action_check_updates.setCheckable(True)
+        self.action_check_updates.setChecked(
+            bool(self.d_setup.get("check_for_updates", True)))
+        self.action_check_updates.toggled.connect(
+            self.set_check_for_updates)
+        check_now = menu_options.addAction("Check for new version now")
+        check_now.triggered.connect(
+            lambda x: self.start_update_check(flag_manual=True))
+
         about = menu_options.addAction("About")
         about.triggered.connect(self.display_about)
 
@@ -560,12 +570,11 @@ class CMainWindow(QMainWindow):
         act_parameters.setToolTip(
             "All parameters with a filter: what to refine, values, favorites")
         act_parameters.triggered.connect(self.show_parameters)
-        if is_constraint_supported():
-            act_constraint = menu_parameters.addAction("Add constraint...")
-            act_constraint.setToolTip(
-                "Constraint between refined parameters, e.g. x + y = 1, "
-                "exact or soft (within sigma)")
-            act_constraint.triggered.connect(self.add_constraint)
+        act_constraint = menu_parameters.addAction("Add constraint...")
+        act_constraint.setToolTip(
+            "Constraint between refined parameters, e.g. x + y = 1, "
+            "exact or soft (within sigma)")
+        act_constraint.triggered.connect(self.add_constraint)
 
         # Menu CrysPy
         self.init_menu_cryspy()
@@ -591,6 +600,96 @@ class CMainWindow(QMainWindow):
             f"Versions:\n CrysPy Editor - {cryspy_editor_version:} \n CrysPy library - {cryspy_version:}",
         )
 
+    def set_check_for_updates(self, flag: bool):
+        self.d_setup["check_for_updates"] = bool(flag)
+        save_settings()
+
+    def start_update_check(self, flag_manual: bool = False):
+        """Look for a newer release on GitHub in the background.
+
+        At startup it is silent when there is nothing new or no internet;
+        by the menu (flag_manual) it always reports the result."""
+        if not flag_manual:
+            if not self.d_setup.get("check_for_updates", True):
+                return
+            if update_check.is_check_disabled_by_environment():
+                return
+        checker = getattr(self, "update_checker", None)
+        if checker is not None and not checker.is_done():
+            return
+        if flag_manual:
+            function = update_check.fetch_latest_release
+        else:
+            function = update_check.check_for_update
+        self.update_checker = update_check.UpdateChecker(
+            cryspy_editor_version, function)
+        self.update_checker_manual = flag_manual
+        self.update_checker.start()
+        self.timer_update_check = QtCore.QTimer(self)
+        self.timer_update_check.timeout.connect(self.end_update_check)
+        self.timer_update_check.start(300)
+
+    def end_update_check(self):
+        checker = self.update_checker
+        if not checker.is_done():
+            return
+        self.timer_update_check.stop()
+        d_release = checker.result
+        if self.update_checker_manual:
+            if d_release is None:
+                QtWidgets.QMessageBox.warning(
+                    self, "New version",
+                    "GitHub cannot be reached. Check the internet "
+                    "connection or open the download page:\n"
+                    f"{update_check.URL_DOWNLOAD_PAGE}")
+            elif update_check.is_newer(d_release["version"],
+                                       cryspy_editor_version):
+                self.show_new_version(d_release, flag_manual=True)
+            else:
+                QtWidgets.QMessageBox.information(
+                    self, "New version",
+                    f"CrysPy Editor {cryspy_editor_version} is the latest "
+                    "version.")
+            return
+        if d_release is None:
+            return
+        if d_release["version"] == self.d_setup.get(
+                "skipped_update_version", ""):
+            return
+        self.show_new_version(d_release)
+
+    def show_new_version(self, d_release: dict, flag_manual: bool = False):
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("New version of CrysPy Editor")
+        box.setIcon(QtWidgets.QMessageBox.Information)
+        box.setTextFormat(QtCore.Qt.RichText)
+        box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        box.setText(update_check.form_message(
+            d_release, cryspy_editor_version))
+        b_download = box.addButton(
+            "Open download page", QtWidgets.QMessageBox.AcceptRole)
+        b_skip = None
+        if not flag_manual:
+            b_skip = box.addButton(
+                "Skip this version", QtWidgets.QMessageBox.RejectRole)
+        box.addButton("Later", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(b_download)
+        check_box = QtWidgets.QCheckBox(
+            "Do not check for new versions at startup")
+        check_box.setChecked(not self.d_setup.get("check_for_updates", True))
+        box.setCheckBox(check_box)
+        for label in box.findChildren(QtWidgets.QLabel):
+            label.setOpenExternalLinks(True)
+        box.exec_()
+        if box.clickedButton() is b_download:
+            QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl(update_check.URL_DOWNLOAD_PAGE))
+        elif b_skip is not None and box.clickedButton() is b_skip:
+            self.d_setup["skipped_update_version"] = d_release["version"]
+        # the menu item follows the check box and saves the settings
+        self.action_check_updates.setChecked(not check_box.isChecked())
+        save_settings()
+
     def refresh_view(self):
         self.text_edit.setText("")
         self.print_welcome()
@@ -605,26 +704,15 @@ class CMainWindow(QMainWindow):
         self.text_edit.setText("\n".join(ls_text))
 
     def print_object_info(self):
+        """Refined parameters with the paths of the window Parameters."""
         try:
-            rcif_object = self.rcif_object
-            variable_names = rcif_object.get_variable_names()
-            ls_text = [f"\nNumber of variables is {len(variable_names):}.\n"]
-            if len(variable_names) > 0:
-                ls_text.append(f"   NAME                 VALUE      ERROR")
-            for name in variable_names:
-                value = rcif_object.get_variable_by_name(name)
-                name_sigma = [
-                    (
-                        name[ind]
-                        if ind < (len(name) - 1)
-                        else (name[ind][0] + "_sigma", name[ind][1])
-                    )
-                    for ind in range(len(name))
-                ]
-                sigma = rcif_object.get_variable_by_name(name_sigma)
-                ls_text.append(
-                    f" - {name[-1][0]:15}  {value:9.5f}  {sigma:9.5f}"
-                )
+            l_record = [
+                record for record in take_parameter_records(self.rcif_object)
+                if is_number(record.value) and record.flag_refinement
+                and not record.flag_constraint]
+            ls_text = [f"\nNumber of variables is {len(l_record):}.\n"]
+            # the same lines as after a refinement
+            ls_text.append(cryspy.report_refined_parameters(self.rcif_object))
             self.text_edit.append("\n".join(ls_text))
         except Exception as e:
             self.show_error("Variables of the object are not shown", e)
@@ -743,7 +831,6 @@ class CMainWindow(QMainWindow):
             int(screen.width() * 1 / 4), int(screen.height() * 1 / 4)
         )
         self.info_width = int(screen.width() * 8.0 / 10.0)
-        self.info_height = int(screen.height() * 14.0 / 16.0)
         self.move(int(screen.width() / 10), int(screen.height() / 20))
         self.resize(
             int(screen.width() * 8.0 / 10.0),
@@ -989,6 +1076,10 @@ class CMainWindow(QMainWindow):
                     s_text = s_text[:20] + "..."
                 w_item_tabs.addTab(widget, s_text)
 
+        # 3D view tab (crystal structure)
+        if has_structure_view(item):
+            w_item_tabs.addTab(WStructureView(item, parent=w_item_tabs), "3D view")
+
         # Report tab
         try:
             report_html = item.report_html()
@@ -997,7 +1088,12 @@ class CMainWindow(QMainWindow):
             self.show_error(f"Report of '{item.get_name()}' is not made", e)
 
         if report_html != "":
-            w_plain_text = QtWidgets.QLabel(w_item_tabs)
+            # wide tables (correlation matrix of many parameters) scroll
+            # instead of being cut or widening the window
+            w_scroll = QtWidgets.QScrollArea(w_item_tabs)
+            w_scroll.setWidgetResizable(True)
+            w_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+            w_plain_text = QtWidgets.QLabel(w_scroll)
             w_plain_text.setText(report_html)
             w_plain_text.setSizePolicy(
                 QtWidgets.QSizePolicy(
@@ -1005,12 +1101,13 @@ class CMainWindow(QMainWindow):
                     QtWidgets.QSizePolicy.Expanding,
                 )
             )
-            w_plain_text.setAlignment(QtCore.Qt.AlignTop)
+            w_plain_text.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
             w_plain_text.setWordWrap(True)
             w_plain_text.setTextInteractionFlags(
                 QtCore.Qt.TextSelectableByMouse
             )
-            w_item_tabs.addTab(w_plain_text, "View")
+            w_scroll.setWidget(w_plain_text)
+            w_item_tabs.addTab(w_scroll, "View")
 
         if w_item_tabs.count() == 0:
             q_label = QtWidgets.QLabel(
@@ -1066,7 +1163,6 @@ class CMainWindow(QMainWindow):
         # self.text_edit.setLineWrapMode(QtWidgets.QTextEdit.FixedPixelWidth)
         # self.text_edit.setFont(QtGui.QFont("Courier", 8, QtGui.QFont.Normal))
         # self.text_edit.setLineWrapColumnOrWidth(648)
-        self.text_edit.rewrite_undo_last_line = False
 
         w_splitter.addWidget(self.text_edit)
 
@@ -1200,7 +1296,7 @@ class CMainWindow(QMainWindow):
                 menu_data = menu.addMenu("Add data block")
                 menu_data.setToolTipsVisible(True)
 
-                for cls_item in L_DATA_CLS:
+                for cls_item in L_DATA_CLASS:
                     prefix = cls_item.PREFIX
                     add_item = QtWidgets.QAction(f"{prefix :}", menu_data)
                     add_item.cls_item = cls_item
@@ -1211,7 +1307,7 @@ class CMainWindow(QMainWindow):
 
             menu_loop = menu.addMenu("Add loop block")
             menu_loop.setToolTipsVisible(True)
-            for cls_item in L_LOOP_CLS:
+            for cls_item in L_LOOP_CLASS:
                 prefix = cls_item.ITEM_CLASS.PREFIX
                 add_item = QtWidgets.QAction(f"{prefix :}", menu_loop)
                 add_item.cls_item = cls_item
@@ -1222,7 +1318,7 @@ class CMainWindow(QMainWindow):
 
             menu_item = menu.addMenu("Add item")
             menu_item.setToolTipsVisible(True)
-            for cls_item in L_ITEM_CLS:
+            for cls_item in L_ITEM_CLASS:
                 prefix = cls_item.PREFIX
                 add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
                 add_item.cls_item = cls_item
@@ -1268,7 +1364,7 @@ class CMainWindow(QMainWindow):
                     add_item.triggered.connect(self.add_item)
                     menu_item.addAction(add_item)
 
-        if isinstance(item, GlobalN) and is_constraint_supported():
+        if isinstance(item, GlobalN):
             act_constraint = QtWidgets.QAction("Add constraint...", menu)
             act_constraint.setToolTip(
                 "Constraint between refined parameters, e.g. x + y = 1, "
