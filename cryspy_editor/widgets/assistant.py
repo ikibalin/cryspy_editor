@@ -113,11 +113,13 @@ DEFAULT_SETTINGS = {
 }
 
 # (minimal RAM in GB, models, approximate size of the Q4_K_M file); the
-# step-by-step work by recipes needs a general instruct model of 7B or more
+# step-by-step work by recipes needs a general instruct model of 7B or more;
+# a thinking model (Qwen3: <think> in its template) plans the steps better
 L_RECOMMENDED_MODELS = (
     (0, "Qwen2.5-3B-Instruct (single requests only: too weak for recipes)", "2 GB"),
-    (8, "Qwen2.5-7B-Instruct", "4.7 GB"),
-    (16, "Qwen2.5-14B-Instruct", "9 GB"),
+    (8, "Qwen2.5-7B-Instruct, or the thinking Qwen3-8B (better plans, slower)", "4.7-5 GB"),
+    (16, "Qwen3-14B (thinking), or Qwen2.5-14B-Instruct", "9 GB"),
+    (32, "Qwen3-30B-A3B (thinking; mixture of experts: as fast as an 8B model)", "18 GB"),
 )
 
 
