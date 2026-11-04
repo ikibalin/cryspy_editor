@@ -1298,34 +1298,19 @@ class CMainWindow(QMainWindow):
 
                 for cls_item in L_DATA_CLASS:
                     prefix = cls_item.PREFIX
-                    add_item = QtWidgets.QAction(f"{prefix :}", menu_data)
-                    add_item.cls_item = cls_item
-                    add_item.way_item = way_item
-                    add_item.setToolTip(cls_item.__doc__)
-                    add_item.triggered.connect(self.add_item)
-                    menu_data.addAction(add_item)
+                    self.add_action_new_item(menu_data, prefix, cls_item, way_item)
 
             menu_loop = menu.addMenu("Add loop block")
             menu_loop.setToolTipsVisible(True)
             for cls_item in L_LOOP_CLASS:
                 prefix = cls_item.ITEM_CLASS.PREFIX
-                add_item = QtWidgets.QAction(f"{prefix :}", menu_loop)
-                add_item.cls_item = cls_item
-                add_item.way_item = way_item
-                add_item.setToolTip(cls_item.__doc__)
-                add_item.triggered.connect(self.add_item)
-                menu_loop.addAction(add_item)
+                self.add_action_new_item(menu_loop, prefix, cls_item, way_item)
 
             menu_item = menu.addMenu("Add item")
             menu_item.setToolTipsVisible(True)
             for cls_item in L_ITEM_CLASS:
                 prefix = cls_item.PREFIX
-                add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
-                add_item.cls_item = cls_item
-                add_item.way_item = way_item
-                add_item.setToolTip(cls_item.__doc__)
-                add_item.triggered.connect(self.add_item)
-                menu_item.addAction(add_item)
+                self.add_action_new_item(menu_item, prefix, cls_item, way_item)
 
         elif isinstance(item, (GlobalN, DataN)):
             menu_item = menu.addMenu("Add")
@@ -1340,12 +1325,7 @@ class CMainWindow(QMainWindow):
                         prefix = cls_item.PREFIX
                     else:
                         prefix = cls_item.ITEM_CLASS.PREFIX
-                    add_item = QtWidgets.QAction(f"{prefix:}", menu_item)
-                    add_item.cls_item = cls_item
-                    add_item.way_item = way_item
-                    add_item.setToolTip(cls_item.__doc__)
-                    add_item.triggered.connect(self.add_item)
-                    menu_item.addAction(add_item)
+                    self.add_action_new_item(menu_item, prefix, cls_item, way_item)
             menu_item.addSeparator()
             for cls_item in item.CLASSES_OPTIONAL:
                 if (
@@ -1357,12 +1337,7 @@ class CMainWindow(QMainWindow):
                         prefix = cls_item.PREFIX
                     else:
                         prefix = cls_item.ITEM_CLASS.PREFIX
-                    add_item = QtWidgets.QAction(f"{prefix :}", menu_item)
-                    add_item.cls_item = cls_item
-                    add_item.way_item = way_item
-                    add_item.setToolTip(cls_item.__doc__)
-                    add_item.triggered.connect(self.add_item)
-                    menu_item.addAction(add_item)
+                    self.add_action_new_item(menu_item, prefix, cls_item, way_item)
 
         if isinstance(item, GlobalN):
             act_constraint = QtWidgets.QAction("Add constraint...", menu)
@@ -1597,16 +1572,34 @@ class CMainWindow(QMainWindow):
             self.history.push(label, text_before)
         self.renew_w_object_panel()
 
-    def add_item(self, *argv) -> NoReturn:
-        """Add object."""
-        sender = self.sender()
-        way_item = sender.way_item
-        if way_item == ():
-            item = self.rcif_object
-        else:
-            item = take_item(self.rcif_object, way_item)
-        if item is not None:
-            new_item = sender.cls_item()
+    def add_action_new_item(self, menu: QtWidgets.QMenu, prefix: str,
+                            cls_item, way_item: tuple):
+        """Action of the menu Add: a new object of cls_item in way_item.
+
+        The class and the place go to the slot as arguments, not through
+        self.sender(): the action is triggered inside the context menu of
+        the object panel (menu.exec_ in display_item_menu), and there PyQt
+        gives the panel as sender for a slot without pyqtSlot, so the old
+        add_item raised AttributeError and Qt closed the whole editor.
+        """
+        action = QtWidgets.QAction(f"{prefix:}", menu)
+        action.setToolTip(cls_item.__doc__)
+        action.triggered.connect(
+            lambda checked=False, cls_item=cls_item, way_item=way_item:
+            self.add_item(cls_item, way_item))
+        menu.addAction(action)
+        return action
+
+    def add_item(self, cls_item, way_item: tuple) -> NoReturn:
+        """Add a new object of cls_item to the object at way_item."""
+        try:
+            if way_item == ():
+                item = self.rcif_object
+            else:
+                item = take_item(self.rcif_object, way_item)
+            if item is None:
+                return
+            new_item = cls_item()
             if isinstance(new_item, DataN):
                 s_name = "".join(
                     random.choices(string.ascii_letters, k=4)
@@ -1619,5 +1612,9 @@ class CMainWindow(QMainWindow):
                         list(item.CLASSES_OPTIONAL) + [type(new_item)]
                     )
                     item.CLASSES = tuple(list(item.CLASSES) + [type(new_item)])
+            self.remember(f"add {new_item.get_name()}")
             item.add_items([new_item])
-            self.renew_w_object_panel()
+        except Exception as error:  # an exception in a slot closes Qt
+            self.show_error(f"'{cls_item.__name__}' is not added", error)
+            return
+        self.renew_w_object_panel()
