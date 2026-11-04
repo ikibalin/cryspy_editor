@@ -228,7 +228,7 @@ def test_take_settings():
 
 
 @pytest.mark.parametrize("memory, index", [
-    (None, None), (4, 0), (7.6, 1), (8, 1), (16, 2), (24, 2), (64, 2)])
+    (None, None), (4, 0), (7.6, 1), (8, 1), (16, 2), (24, 2), (32, 3), (64, 3)])
 def test_take_recommended_index(memory, index):
     assert assistant_module.take_recommended_index(memory) == index
 

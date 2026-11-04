@@ -103,14 +103,19 @@ logic are the same as in the assistant of PyColl5; only the actions differ.
    | Memory | Model | Q4_K_M file |
    | --- | --- | --- |
    | < 8 GB | Qwen2.5-3B-Instruct (single requests only: too weak for recipes) | 2 GB |
-   | 8 GB | Qwen2.5-7B-Instruct | 4.7 GB |
-   | 16 GB and more | Qwen2.5-14B-Instruct | 9 GB |
+   | 8 GB | Qwen2.5-7B-Instruct, or the thinking Qwen3-8B (better plans, slower) | 4.7–5 GB |
+   | 16 GB and more | Qwen3-14B (thinking), or Qwen2.5-14B-Instruct | 9 GB |
+   | 32 GB and more | Qwen3-30B-A3B (thinking; mixture of experts: as fast as an 8B model) | 18 GB |
 
    Recommended: Qwen2.5-7B-Instruct Q4_K_M; with 16 GB of memory or more
    Qwen2.5-14B-Instruct Q4_K_M, which follows the step-by-step recipes much
    more reliably. Take a general *Instruct* model, not a *Coder* one, and the
    Q4_K_M quantization (more accurate than Q4_0 at the same size). For the
-   step-by-step work by recipes set the context to 8192 or more.
+   step-by-step work by recipes set the context to 8192 or more. A
+   *thinking* model (Qwen3, e.g. *Qwen/Qwen3-14B-GGUF*; in Ollama
+   `qwen3:14b`) thinks before each answer: it plans the steps and reads a
+   request better, but answers more slowly; switch on **Thinking** and set
+   the context to 16384 or more.
 
 3. In CrysPy Editor choose **AI assistant → Load model (GGUF file or Ollama)...**,
    pick the file and, if needed, the threads, GPU layers, context size,
