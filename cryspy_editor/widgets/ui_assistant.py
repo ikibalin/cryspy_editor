@@ -71,7 +71,10 @@ def form_hint_html(memory_gb) -> str:
 <p>Any <i>instruct</i> (chat) model in GGUF format works. Recommended:
 <b>Qwen2.5-7B-Instruct Q4_K_M</b>; with 16 GB of memory or more
 <b>Qwen2.5-14B-Instruct Q4_K_M</b>, which follows the step-by-step recipes
-(e.g. the structure refinement) much more reliably. Take a general
+(e.g. the structure refinement) much more reliably. A <i>thinking</i> model
+(Qwen3, e.g. Qwen/Qwen3-14B-GGUF; in Ollama qwen3:14b) thinks before each
+answer: it plans the steps and reads a request better, but answers more
+slowly; switch on <b>Thinking</b> and take a context of 16384 or more. Take a general
 <i>Instruct</i> model, not a <i>Coder</i> one: coder models follow
 instructions and reason step by step worse. Take the Q4_K_M quantization:
 it is more accurate than Q4_0 at the same size. The model file should take
