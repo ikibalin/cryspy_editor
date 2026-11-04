@@ -65,6 +65,7 @@ from cryspy_editor.history import RcifHistory
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
 from cryspy_editor import update_check
+from cryspy_editor import error_guard
 
 from cryspy import __version__ as cryspy_version
 from cryspy_editor import __version__ as cryspy_editor_version
@@ -297,6 +298,8 @@ class CMainWindow(QMainWindow):
     def __init__(self, file_name: str = None):
         """Main window; file_name is opened instead of the last used file."""
         super(CMainWindow, self).__init__()
+        # an error nobody caught shows a window, never closes the editor
+        error_guard.install(self)
 
         self.dir_prog = os.path.dirname(__file__)
         self.d_setup = take_settings()
@@ -978,8 +981,16 @@ class CMainWindow(QMainWindow):
         ):
             l_hh = []
             s_info = ""
+            try:
+                if isinstance(item, ItemN):
+                    s_item = item.to_cif(
+                        separator="_", flag_all_attributes=True)
+                else:
+                    s_item = str(item)
+            except Exception as e:
+                s_item = ""
+                self.show_error(f"Text of '{item.get_name()}' is not made", e)
             if isinstance(item, ItemN):
-                s_item = item.to_cif(separator="_", flag_all_attributes=True)
                 try:
                     prefix = item.PREFIX
                     l_hh = [f"_{prefix:}_{hh:}" for hh in item.ATTR_CIF]
@@ -987,7 +998,6 @@ class CMainWindow(QMainWindow):
                 except AttributeError:  # ItemN without PREFIX
                     pass
             else:
-                s_item = str(item)
                 try:
                     item_class = item.ITEM_CLASS
                     if item_class == ItemN:
