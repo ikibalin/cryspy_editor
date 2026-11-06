@@ -23,8 +23,10 @@ from cryspy_editor.widgets.assistant_agent import (
     form_steps_text,
 )
 from cryspy_editor.widgets.assistant_commands import (
+    GREETING_TEXT,
     form_capabilities_text,
     is_capability_question,
+    is_greeting,
     parse_command,
     parse_command_arguments,
     take_recipe_names,
@@ -77,6 +79,12 @@ NO_MODEL = ("No model is loaded (AI assistant -> Load model). Without it type @n
             "or an action of CrysPy, or ask 'what can you do?'.")
 NOTHING_DONE = ("Nothing is done: no action of the assistant was run for this request. Ask in other words, "
                 "or do it in the window of CrysPy Editor.")
+# the beginning of the result of get_help that found nothing (cryspy.get_help)
+NOTHING_IN_HELP = "Nothing is found in CrysPy help"
+# a request about the assistant itself (its skills), not about CrysPy
+RE_ABOUT_ASSISTANT = re.compile(
+    r"\b(you|your|yourself|assistant)\b|\b(ты|тебя|тебе|вы|вас|ассистент\w*)\b|\b(tu|toi|vous|du|dich)\b",
+    re.IGNORECASE)
 # an answer that reports a change (English, Russian, French, German): without
 # an action that made it, it is not shown (claims_done)
 RE_DONE = re.compile(
@@ -219,8 +227,9 @@ To do what the user asks, choose the actions of CrysPy, done in their order:
 {form_tools_text()}
 
 A request of several parts (e.g. refine the cell and then refine) has one
-action for each part. A greeting or a question about scientific things needs
-no action. When the user asks how to describe something in rcif or what a
+action for each part. A greeting, a question about you (what you can do) or
+about scientific things needs no action: the help of CrysPy ("get_help") is
+about CrysPy, not about you. When the user asks how to describe something in rcif or what a
 category means (thermal vibrations, multipoles, extinction, twins, ...), use
 the action "get_help" and answer from its text only. A question about the
 opened file (parameters, cell, chi-square, structure) is answered by an
@@ -614,7 +623,8 @@ class Assistant:
         if command is not None:
             return self.run_command(command[0], command[1], question, cryspy_object, on_action, on_step)
         if self.model is None:
-            return {"text": NO_MODEL, "actions": [], "flag_object_changed": False, "question": False}
+            text = f"{GREETING_TEXT}\n{NO_MODEL}" if is_greeting(question) else NO_MODEL
+            return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
         messages = [{"role": "system", "content": form_system_prompt(cryspy_object)}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
         messages.append({"role": "user", "content": question})
@@ -663,6 +673,18 @@ class Assistant:
                 'actions only: {"actions": [...]}.')})
             raw = self.model.chat(messages, flag_json=True)
             l_todo = take_decision(raw)["actions"]
+        # "hi" or "what else do you know?" sent to 'get_help' by the model: the help is about
+        # CrysPy, not about the assistant, which describes itself
+        if self.dialog is None and l_action and all(action == "get_help" for action, _, _ in l_action):
+            text = None
+            if is_greeting(question):
+                text = GREETING_TEXT
+            elif RE_ABOUT_ASSISTANT.search(question) and all(
+                    result.startswith(NOTHING_IN_HELP) for _, _, result in l_action):
+                text = form_capabilities_text()
+            if text is not None:
+                self._remember(question, text)
+                return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
         # the answer was written before the results: not when an action failed
         flag_failed = any(result.startswith("Error") for _, _, result in l_action)
         if self.dialog is None and not flag_failed and announces_more(answer) and "get_recipe" in D_TOOLS:

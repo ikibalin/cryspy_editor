@@ -1,9 +1,25 @@
 """Start CrysPy Editor: cryspy-editor [file.rcif] or python -m cryspy_editor [file.rcif]."""
 import argparse
+import logging
 import os
 import sys
 
 from cryspy_editor import __version__
+
+
+def preload_msvc_runtime():
+    """On Windows load the C++ runtime msvcp140.dll of the system before
+    PyQt5. PyQt5 brings an old copy (14.26) in PyQt5/Qt5/bin; loaded first,
+    it is used by llama.dll of llama-cpp-python too, which needs >= 14.40
+    (std::mutex) and crashes with 'access violation reading 0x0' when a model
+    of the AI assistant is loaded (fix of Oscar Fabelo in PyColl5)."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+    try:
+        ctypes.WinDLL("msvcp140.dll")
+    except OSError:
+        logging.getLogger(__name__).debug("msvcp140.dll of the system is not found")
 
 
 def parse_arguments(l_argument=None):
@@ -39,6 +55,7 @@ def self_test() -> int:
     print(f"rhochi_no_refinement: chi_sq = {d_out['chi_sq']:.2f}")
     print(f"help topics: {len(cryspy.help_topics())}")
 
+    preload_msvc_runtime()
     from PyQt5 import QtWidgets
     from cryspy_editor.ceditor import CMainWindow
     from cryspy_editor.widgets import assistant
@@ -70,6 +87,7 @@ def main(l_argument=None):
             print(f"File '{file_name}' is not found.", file=sys.stderr)
             sys.exit(2)
 
+    preload_msvc_runtime()
     from PyQt5 import QtGui, QtWidgets
     from cryspy_editor.ceditor import CMainWindow
 
