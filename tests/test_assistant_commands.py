@@ -6,11 +6,11 @@ import pytest
 from cryspy_editor.widgets import assistant_commands, assistant_tools
 from cryspy_editor.widgets.assistant import Assistant
 from cryspy_editor.widgets.assistant_commands import (
-    form_capabilities_text, form_completions, is_capability_question, parse_command,
-    parse_command_arguments, take_recipe_names)
+    GREETING_TEXT, form_capabilities_text, form_completions, is_capability_question, is_greeting,
+    parse_command, parse_command_arguments, take_recipe_names)
 from cryspy_editor.widgets.assistant_tools import D_TOOLS
 
-from test_assistant import RCIF, make_assistant
+from test_assistant import RCIF, make_assistant, reply
 from test_assistant_agent import final, step
 
 
@@ -51,14 +51,46 @@ def test_only_argument_is_given_without_name():
 
 
 @pytest.mark.parametrize("text", ["What can you do?", "what else can you do", "help", "?", "@",
-                                  "Что ты умеешь?", "что можешь делать"])
+                                  "Что ты умеешь?", "что можешь делать", "Hi, what you can do?",
+                                  "Hello! What can you do?", "Привет, что ты умеешь?",
+                                  "what can you do in CrysPy Editor?", "hey, what are your capabilities",
+                                  "Чем можешь помочь?", "Bonjour, que sais-tu faire ?"])
 def test_capability_question(text):
-    assert is_capability_question(text)
+    """Also after a greeting and in the word order of the user ("Hi, what
+    you can do?" was sent to the help by the model)."""
+    assert is_capability_question(text) and not is_greeting(text)
 
 
-@pytest.mark.parametrize("text", ["refine the scale", "what can you do with the cell?", "@refine"])
+@pytest.mark.parametrize("text", ["refine the scale", "what can you do with the cell?", "@refine",
+                                  "hi, refine the scale", "how to describe multipoles?"])
 def test_not_capability_question(text):
-    assert not is_capability_question(text)
+    assert not is_capability_question(text) and not is_greeting(text)
+
+
+@pytest.mark.parametrize("text", ["Hi", "Hello!", "Привет!", "hello there", "Bonjour"])
+def test_greeting(text):
+    assert is_greeting(text) and not is_capability_question(text)
+
+
+def test_greeting_and_capabilities_without_model():
+    assistant = Assistant(None)
+    assert assistant.ask("Hi, what you can do?")["text"] == form_capabilities_text()
+    text = assistant.ask("Привет!")["text"]
+    assert text.startswith(GREETING_TEXT) and "No model is loaded" in text
+
+
+def test_question_about_the_assistant_sent_to_help():
+    """The model sends a question about the assistant (or a greeting) to
+    'get_help': the assistant describes itself; a question about CrysPy
+    keeps the help and its answer."""
+    l_help = ("get_help", {})
+    for question, text in [("And what else do you know?", form_capabilities_text()),
+                           ("Что ещё ты знаешь?", form_capabilities_text()), ("Good morning", GREETING_TEXT)]:
+        result = make_assistant([reply(l_help)]).ask(question, None)
+        assert result["text"] == text and result["actions"] == [], question
+    assistant = make_assistant([reply(l_help), reply(answer="Not in the help.")])
+    result = assistant.ask("How to describe the multipoles?", None)
+    assert result["text"].startswith("[get_help] ") and result["text"].endswith("Not in the help.")
 
 
 def test_completions_have_recipes_then_actions():
