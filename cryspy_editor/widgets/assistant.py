@@ -613,6 +613,7 @@ class Assistant:
         result), ...], "flag_object_changed": the CrysPy object was
         modified, "question": the assistant asks a question (a tool returned
         an assistant_dialog.Dialog); the next request is its answer}."""
+        self.flag_stop = False  # a Stop of an earlier request does not stop this one
         if self.dialog is not None:
             return self.answer_dialog(question, on_action, on_step)
         if is_capability_question(question):

@@ -62,6 +62,7 @@ from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
 from cryspy_editor.history import RcifHistory
+
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
 from cryspy_editor import update_check
@@ -77,6 +78,10 @@ import os, sys, subprocess
 STOP_SHORTCUT = "Ctrl+."
 STOP_SHORTCUT_TEXT = "Cmd+. or Esc" if sys.platform == "darwin" else "Ctrl+. or Esc"
 
+
+
+# label of the states kept before the requests to the AI assistant (History)
+ASSISTANT_LABEL = "AI assistant request"
 
 def open_file_wm(filename):
     if sys.platform == "win32":
@@ -1187,7 +1192,7 @@ class CMainWindow(QMainWindow):
 
     def take_rcif_object(self):
         self.apply_cif_edits()
-        self.remember("AI assistant request")
+        self.remember(ASSISTANT_LABEL)
         return getattr(self, "rcif_object", None)
 
     def remember(self, label: str):
@@ -1239,6 +1244,18 @@ class CMainWindow(QMainWindow):
             f"The object is as it was {entry.title()}.\n"
             "Save the file to keep it.")
         self.print_object_info()
+
+    def undo_assistant_change(self) -> bool:
+        """Go back to the state before the last request to the AI assistant
+        (kept by take_rcif_object); False when there is nothing to undo."""
+        if self.cthread.isRunning():
+            return False
+        l_entry = [entry for entry in self.history.entries if entry.label == ASSISTANT_LABEL]
+        rcif_object = getattr(self, "rcif_object", None)
+        if not l_entry or rcif_object is None or l_entry[-1].text == rcif_object.to_cif():
+            return False
+        self.restore_history(l_entry[-1])
+        return True
 
     def assistant_object_changed(self):
         self.renew_w_object_panel()
