@@ -38,6 +38,7 @@ def crystal():
 def widget(qapp, crystal, monkeypatch):
     monkeypatch.setattr(w_structure_view, "QWebEngineView", FakeWebView)
     monkeypatch.setattr(WStructureView, "settings", None)
+    monkeypatch.setattr(WStructureView, "show_options", False)
     widget = WStructureView(crystal)
     widget.make_view()  # as when the tab is opened
     yield widget
@@ -75,6 +76,20 @@ def test_settings_panel_from_dataclass(widget):
     for field in dataclasses.fields(WStructureView.settings):
         shown = field.name.replace("_", " ") in labels
         assert shown == (field.name not in w_structure_view.HIDDEN_FIELDS)
+
+
+def test_settings_panel_hidden_until_options(widget, crystal):
+    assert not widget.b_options.isChecked()
+    assert widget.w_settings.isHidden()
+    widget.b_options.setChecked(True)
+    assert not widget.w_settings.isHidden()
+    assert WStructureView.show_options
+    other = WStructureView(crystal)  # the choice is kept for another crystal
+    other.make_view()
+    assert other.b_options.isChecked() and not other.w_settings.isHidden()
+    other.close()
+    widget.b_options.setChecked(False)
+    assert widget.w_settings.isHidden()
 
 
 def test_change_of_setting_redraws(widget):
