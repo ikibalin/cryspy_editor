@@ -38,6 +38,9 @@ class WStructureView(QtWidgets.QWidget):
 
     # the settings are kept when another crystal is selected
     settings = None
+    # the settings panel is hidden until the user presses "Options";
+    # the choice is kept when another crystal is selected
+    show_options = False
 
     def __init__(self, item, parent=None):
         super().__init__(parent)
@@ -71,11 +74,33 @@ class WStructureView(QtWidgets.QWidget):
         w_left = QtWidgets.QWidget(self)
         layout_left = QtWidgets.QVBoxLayout(w_left)
         layout_left.setContentsMargins(0, 0, 0, 0)
+        layout_left.addLayout(self.make_options_bar())
         layout_left.addWidget(self.w_message)
         layout_left.addWidget(self.w_view, 1)
         layout.addWidget(w_left, 1)
-        layout.addWidget(self.make_settings_panel())
+        self.w_settings = self.make_settings_panel()
+        self.w_settings.setVisible(WStructureView.show_options)
+        layout.addWidget(self.w_settings)
         self.redraw()
+
+    def make_options_bar(self) -> QtWidgets.QHBoxLayout:
+        """A checkable "Options" button that shows the settings panel."""
+        self.b_options = QtWidgets.QToolButton(self)
+        self.b_options.setText("Options")
+        self.b_options.setCheckable(True)
+        self.b_options.setChecked(WStructureView.show_options)
+        self.b_options.setToolTip("Show or hide the settings of the 3D view")
+        self.b_options.setAutoRaise(True)
+        self.b_options.toggled.connect(self.set_options_visible)
+        bar = QtWidgets.QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.addStretch(1)
+        bar.addWidget(self.b_options)
+        return bar
+
+    def set_options_visible(self, visible: bool):
+        WStructureView.show_options = bool(visible)
+        self.w_settings.setVisible(bool(visible))
 
     def make_settings_panel(self) -> QtWidgets.QWidget:
         w_scroll = QtWidgets.QScrollArea(self)
