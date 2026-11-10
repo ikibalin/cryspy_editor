@@ -574,10 +574,6 @@ class AssistantWindow(QtWidgets.QWidget):
         self.button_thoughts.setToolTip("Show the thinking of the model (when the thinking is turned on)")
         self.button_thoughts.toggled.connect(self.show_thoughts)
         layout_title.addWidget(self.button_thoughts)
-        self.button_save = QtWidgets.QPushButton("Save chat...")
-        self.button_save.setToolTip("Save the chat as a text file (e.g. for the lab notebook)")
-        self.button_save.clicked.connect(self.save_chat)
-        layout_title.addWidget(self.button_save)
         self.button_clear = QtWidgets.QPushButton("Clear chat")
         self.button_clear.clicked.connect(self.clear_chat)
         layout_title.addWidget(self.button_clear)
@@ -589,6 +585,9 @@ class AssistantWindow(QtWidgets.QWidget):
         self.history_view.setOpenLinks(False)
         self.history_view.setOpenExternalLinks(False)
         self.history_view.anchorClicked.connect(self.on_link)
+        # 'Save chat...' in the context menu: no wider title bar
+        self.history_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.history_view.customContextMenuRequested.connect(self.show_history_menu)
         self.history_view.setPlaceholderText(EXAMPLES)
         self.thoughts_view = QtWidgets.QPlainTextEdit(self.splitter)
         self.thoughts_view.setReadOnly(True)
@@ -823,6 +822,14 @@ class AssistantWindow(QtWidgets.QWidget):
         if self.assistant is not None:
             self.assistant.clear_history()
         self.show_requests()
+
+    def show_history_menu(self, position):
+        menu = self.history_view.createStandardContextMenu(position)
+        menu.addSeparator()
+        action = menu.addAction("Save chat...")
+        action.setToolTip("Save the chat as a text file (e.g. for the lab notebook)")
+        action.triggered.connect(self.save_chat)
+        menu.exec_(self.history_view.viewport().mapToGlobal(position))
 
     def save_chat(self):
         file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
