@@ -4,6 +4,7 @@ The actions are the tools of CrysPy (cryspy.call_assistant_tool): CrysPy
 Editor keeps no tools of its own. This module is the counterpart of
 assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
+import inspect
 from typing import Dict
 
 import cryspy
@@ -14,6 +15,8 @@ from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 from cryspy_editor.widgets.assistant_dialog import Dialog, Question
 
 D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOOLS}
+# CrysPy reports the progress of long actions (newer than 0.17)
+FLAG_PROGRESS = "progress" in inspect.signature(call_assistant_tool).parameters
 
 # Actions that return information rather than change the object: the model
 # answers the request from their results. calculate and refine change the
@@ -65,6 +68,30 @@ def describe_value(value) -> str:
     return str(value)
 
 
+# buttons of one question: more are typed
+MAX_OPTIONS = 5
+# progress(info) of long actions (refinement iterations) while an action
+# runs; returning False stops it (set_progress)
+D_PROGRESS = {"callback": None}
+
+
+def set_progress(callback=None):
+    """Call callback(info) after every iteration of a long action (CrysPy
+    with progress in call_assistant_tool); None: no progress."""
+    D_PROGRESS["callback"] = callback
+
+
+def take_options(d_missing: dict) -> tuple:
+    """Possible answers of a question of CrysPy shown as buttons: its
+    options, else the allowed values (enum), else yes/no for a boolean."""
+    l_option = d_missing.get("options") or []
+    if not l_option and 0 < len(d_missing.get("enum") or []) <= MAX_OPTIONS:
+        l_option = d_missing["enum"]
+    if not l_option and d_missing.get("type") == "boolean":
+        l_option = ["yes", "no"]
+    return tuple(str(option) for option in l_option[:MAX_OPTIONS])
+
+
 def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dialog:
     """Dialog of the arguments of the action that CrysPy asks from the user
     (result["missing"], as MCP elicitation): CrysPy gives the questions and
@@ -74,7 +101,8 @@ def form_dialog(name: str, cryspy_object, arguments: dict, result: dict) -> Dial
         Question(d_missing["name"], d_missing.get("question", d_missing["name"]),
                  lambda text, d_missing=d_missing: cryspy.convert_assistant_answer(d_missing, text),
                  proposal=d_missing.get("proposal"), s_proposal=str(d_missing.get("s_proposal", "")),
-                 hint=str(d_missing.get("hint", "")), describe=describe_value)
+                 hint=str(d_missing.get("hint", "")), describe=describe_value,
+                 options=take_options(d_missing))
         for d_missing in result["missing"]]
     # the text is the message of the tool and "<name> needs to know: ..."
     l_line = str(result["text"]).split("\n")
@@ -97,10 +125,27 @@ def run_tool(name: str, cryspy_object, arguments: dict, flag_user: bool = False)
     When CrysPy asks values from the user (key "missing"), the result is a
     Dialog with its questions (form_dialog). flag_user: the user typed the
     action ('@name'), so the required arguments not given are asked too."""
-    result = call_assistant_tool(cryspy_object, name, arguments, ask_required=flag_user)
+    if D_PROGRESS["callback"] is not None and FLAG_PROGRESS:
+        result = call_assistant_tool(cryspy_object, name, arguments, ask_required=flag_user,
+                                     progress=D_PROGRESS["callback"])
+    else:
+        result = call_assistant_tool(cryspy_object, name, arguments, ask_required=flag_user)
     if result.get("missing"):
         return form_dialog(name, cryspy_object, arguments, result), False
     text = str(result["text"])
     if result.get("flag_error", False) and not text.startswith("Error"):
         text = f"Error: {text}"
     return text, bool(result["flag_object_changed"])
+
+
+def suggest_requests(cryspy_object) -> list:
+    """[(label, request)] proposed as buttons on an empty chat: made by
+    CrysPy from the object (cryspy.suggest_assistant_requests), or the
+    same few for every object with an older CrysPy."""
+    suggest = getattr(cryspy, "suggest_assistant_requests", None)
+    if suggest is not None:
+        try:
+            return [(str(item["label"]), str(item["request"])) for item in suggest(cryspy_object)]
+        except Exception:  # a proposal must never break the chat
+            pass
+    return [("Summarize the data", "@summarize_object"), ("What can you do?", "What can you do?")]

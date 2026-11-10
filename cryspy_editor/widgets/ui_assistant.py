@@ -5,6 +5,7 @@ The structure is the one of ui_assistant.py of PyColl5.
 """
 import html
 import os
+import time
 import traceback
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -20,6 +21,7 @@ from cryspy_editor.widgets.assistant import (
     take_settings,
 )
 from cryspy_editor.widgets.assistant_commands import COMMAND_PREFIX, form_completions
+from cryspy_editor.widgets.assistant_tools import set_progress, suggest_requests
 from cryspy_editor.widgets.assistant_models import (
     D_DEFAULT_URL,
     D_SOURCE_NAMES,
@@ -415,6 +417,29 @@ class LoadWorker(QObject):
             self.error.emit(f"{type(e).__name__}: {e}")
 
 
+# the progress of a long action is shown at most every PROGRESS_INTERVAL s
+PROGRESS_INTERVAL = 0.5
+
+
+def form_progress_text(info: dict) -> str:
+    """Placeholder text of an iteration of a long action ('Stop' ends it)."""
+    ls_out = [f"Iteration {info['iteration']}" if "iteration" in info else "Working"]
+    if info.get("chi_sq_per_n") is not None:
+        ls_out.append(f"chi²/n = {float(info['chi_sq_per_n']):.4g}")
+    return ", ".join(ls_out) + " ... (Stop ends it)"
+
+
+def take_link(text: str, token: int, n_link: int):
+    """Number of the button of a link 'act:<token>:<number>' of the last
+    reply, else None (an old button or another link)."""
+    l_part = text.split(":")
+    if len(l_part) != 3 or l_part[0] != "act" or not l_part[1].isdigit() or not l_part[2].isdigit():
+        return None
+    if int(l_part[1]) != token or int(l_part[2]) >= n_link:
+        return None
+    return int(l_part[2])
+
+
 class AskWorker(QObject):
     """Runs Assistant.ask in a background thread: the model and the tools
     of CrysPy work on the object there; the window reads the object only
@@ -425,17 +450,29 @@ class AskWorker(QObject):
     action_started = pyqtSignal(str)
     step_text = pyqtSignal(str)  # a step of the work by a recipe, as it goes
     thinking_text = pyqtSignal(str)  # the thinking of the model as it goes, "" starts a reply
+    progress_text = pyqtSignal(str)  # iterations of a long action (refinement)
 
     def __init__(self, assistant: Assistant, question: str, cryspy_object):
         super().__init__()
         self.assistant = assistant
         self.question = question
         self.cryspy_object = cryspy_object
+        self.time_progress = 0.
+
+    def on_progress(self, info: dict):
+        """An iteration of a long action (in the worker thread): shown at
+        most twice a second; Stop ends the action at once (False)."""
+        now = time.monotonic()
+        if now - self.time_progress > PROGRESS_INTERVAL:
+            self.time_progress = now
+            self.progress_text.emit(form_progress_text(info))
+        return not getattr(self.assistant, "flag_stop", False)
 
     def run(self):
         model = self.assistant.model
         if model is not None and hasattr(model, "on_thinking"):
             model.on_thinking = self.thinking_text.emit
+        set_progress(self.on_progress)
         try:
             self.finished.emit(self.assistant.ask(
                 self.question, self.cryspy_object, on_action=self.action_started.emit,
@@ -444,6 +481,7 @@ class AskWorker(QObject):
             traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
         finally:
+            set_progress(None)
             if model is not None and hasattr(model, "on_thinking"):
                 model.on_thinking = None
 
@@ -504,8 +542,17 @@ class AssistantWindow(QtWidgets.QWidget):
     signal_object_changed = pyqtSignal()
     signal_model_loaded = pyqtSignal(str)  # model path, empty if failed
 
-    def __init__(self, take_cryspy_object=None, parent=None):
+    def __init__(self, take_cryspy_object=None, parent=None, undo=None, peek_cryspy_object=None):
         super().__init__(parent, QtCore.Qt.Window)
+        # undo() -> bool: the object goes back to the state before the last
+        # change of the assistant; peek_cryspy_object() -> the object, without
+        # keeping its state in History (for the proposed requests)
+        self.undo = undo
+        self.peek_cryspy_object = peek_cryspy_object
+        # buttons in the chat are links "act:<token>:<number>"; only those of
+        # the last reply work (the token changes with every reply)
+        self.link_token = 0
+        self.l_link = []
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(600, 500)
         self.assistant = None
@@ -527,14 +574,21 @@ class AssistantWindow(QtWidgets.QWidget):
         self.button_thoughts.setToolTip("Show the thinking of the model (when the thinking is turned on)")
         self.button_thoughts.toggled.connect(self.show_thoughts)
         layout_title.addWidget(self.button_thoughts)
+        self.button_save = QtWidgets.QPushButton("Save chat...")
+        self.button_save.setToolTip("Save the chat as a text file (e.g. for the lab notebook)")
+        self.button_save.clicked.connect(self.save_chat)
+        layout_title.addWidget(self.button_save)
         self.button_clear = QtWidgets.QPushButton("Clear chat")
         self.button_clear.clicked.connect(self.clear_chat)
         layout_title.addWidget(self.button_clear)
         layout.addLayout(layout_title)
 
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical, self)
-        self.history_view = QtWidgets.QTextEdit(self.splitter)
-        self.history_view.setReadOnly(True)
+        # a browser for the links (buttons); a click must not open them as pages
+        self.history_view = QtWidgets.QTextBrowser(self.splitter)
+        self.history_view.setOpenLinks(False)
+        self.history_view.setOpenExternalLinks(False)
+        self.history_view.anchorClicked.connect(self.on_link)
         self.history_view.setPlaceholderText(EXAMPLES)
         self.thoughts_view = QtWidgets.QPlainTextEdit(self.splitter)
         self.thoughts_view.setReadOnly(True)
@@ -656,6 +710,8 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def show_window(self):
         """Show the window, or raise it if it is already open."""
+        if self.history_view.document().isEmpty():
+            self.show_requests()
         self.show()
         self.raise_()
         self.activateWindow()
@@ -766,6 +822,54 @@ class AssistantWindow(QtWidgets.QWidget):
         self.thoughts_view.clear()
         if self.assistant is not None:
             self.assistant.clear_history()
+        self.show_requests()
+
+    def save_chat(self):
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save chat", "assistant_chat.txt", "Text files (*.txt *.md);;All files (*)")
+        if not file_name:
+            return
+        try:
+            with open(file_name, "w", encoding="utf-8") as fid:
+                fid.write(self.history_view.toPlainText())
+        except OSError as error:
+            QtWidgets.QMessageBox.warning(self, "Save chat", f"The chat is not saved: {error}")
+
+    def show_requests(self):
+        """Requests proposed for the object as buttons (empty chat)."""
+        cryspy_object = self.peek_cryspy_object() if self.peek_cryspy_object is not None else None
+        l_request = suggest_requests(cryspy_object)
+        if l_request:
+            self.append_links([("request", label, request) for label, request in l_request],
+                              "You could start with:")
+
+    def append_links(self, l_link: list, title: str = ""):
+        """Buttons under the last message: l_link = [(kind, label, value)];
+        kind "answer" and "request" send value as typed text, "undo" calls
+        undo(). The buttons of earlier messages stop working."""
+        self.link_token += 1
+        self.l_link = list(l_link)
+        ls_html = [f"<a href='act:{self.link_token}:{number}' style='text-decoration: none'>"
+                   f"[{html.escape(label)}]</a>" for number, (_, label, _) in enumerate(l_link)]
+        s_title = f"{html.escape(title)} " if title else ""
+        self.history_view.append(f"<p>{s_title}{'&nbsp;&nbsp;'.join(ls_html)}</p>")
+        self.history_view.moveCursor(QtGui.QTextCursor.End)
+
+    def on_link(self, url):
+        """A click on a button of the chat."""
+        link = take_link(url.toString(), self.link_token, len(self.l_link))
+        if link is None or self.is_busy():
+            return
+        kind, label, value = self.l_link[link]
+        self.l_link = []  # one click per reply
+        if kind == "undo":
+            if self.undo is not None and self.undo():
+                self.append_history("You", label)
+                self.append_history("AI", "The object is as it was before the last change of the assistant "
+                                          "(History menu has all states).")
+            return
+        self.input_line.setText(value)
+        self.on_send()
 
     def append_history(self, role: str, text: str):
         # escape: replies contain CIF text and '<' signs
@@ -797,6 +901,7 @@ class AssistantWindow(QtWidgets.QWidget):
             lambda action: self.input_line.setPlaceholderText(f"Running '{action}'... (Stop ends the work)"))
         worker.step_text.connect(self.append_step)
         worker.thinking_text.connect(self.append_thinking)
+        worker.progress_text.connect(self.input_line.setPlaceholderText)
         self._start_thread(worker, self.on_reply, self.on_error)
 
     def on_stop(self):
@@ -813,9 +918,18 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def on_reply(self, result: dict):
         self.append_history("AI", result["text"])
-        self._ready_for_input(bool(result.get("question", False)))
+        flag_question = bool(result.get("question", False))
+        self._ready_for_input(flag_question)
+        l_link = []
+        dialog = getattr(self.take_assistant(), "dialog", None)
+        if flag_question and dialog is not None and hasattr(dialog, "current_options"):
+            l_link = [("answer", label, answer) for label, answer in dialog.current_options()]
         if result.get("flag_object_changed", False):
+            if self.undo is not None:
+                l_link.append(("undo", "Undo this change", ""))
             self.signal_object_changed.emit()
+        if l_link:
+            self.append_links(l_link)
 
     def on_error(self, msg: str):
         self.append_history("Error", msg)
@@ -836,7 +950,10 @@ class AssistantController(QObject):
         self.main_window = main_window
         self.d_setup = d_setup
         self.save_settings = save_settings
-        self.window = AssistantWindow(take_cryspy_object=take_cryspy_object, parent=main_window)
+        self.window = AssistantWindow(
+            take_cryspy_object=take_cryspy_object, parent=main_window,
+            undo=getattr(main_window, "undo_assistant_change", None),
+            peek_cryspy_object=lambda: getattr(main_window, "rcif_object", None))
         self.window.signal_object_changed.connect(on_object_changed)
         self.window.signal_model_loaded.connect(self.on_model_loaded)
         self.recipe_dialog = None

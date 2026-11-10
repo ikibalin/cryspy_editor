@@ -63,7 +63,8 @@ class Question:
     with "yes"; s_proposal: its text, describe(proposal) if empty;
     hint: the format of the answer, e.g. "a b c alpha beta gamma";
     skip(values) -> True when the question is not needed;
-    describe(value) -> text of the value in the replies."""
+    describe(value) -> text of the value in the replies;
+    options: possible answers, shown as buttons (the user may type another)."""
 
     key: str
     text: str
@@ -73,6 +74,7 @@ class Question:
     hint: str = ""
     skip: Optional[Callable[[dict], bool]] = None
     describe: Callable[[Any], str] = str
+    options: tuple = ()
 
     def is_whole_question(self) -> bool:
         return self.text.rstrip().endswith("?")
@@ -118,6 +120,22 @@ class Dialog:
         if question.key in self.l_dropped:
             return None
         return question.proposal
+
+    def current_options(self) -> list:
+        """[(label, answer)] of the buttons of the current question: the
+        proposal ('yes'), the options of the question and 'cancel'; the
+        answer is read by answer() as if the user typed it."""
+        question = self.current()
+        if question is None:
+            return []
+        l_option = []
+        proposal = self._proposal(question)
+        if proposal is not None:
+            s_proposal = question.s_proposal or question.describe(proposal)
+            l_option.append((f"Yes: {s_proposal}", "yes"))
+        l_option.extend((str(option), str(option)) for option in question.options)
+        l_option.append(("Cancel", "cancel"))
+        return l_option
 
     def start(self) -> str:
         s_intro = f"{self.intro}\n" if self.intro else ""
