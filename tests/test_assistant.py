@@ -461,3 +461,44 @@ def test_answer_announcing_the_next_step_goes_on_step_by_step():
 ])
 def test_announces_more(answer, flag_more):
     assert assistant_module.announces_more(answer) is flag_more
+
+
+RCIF_CRYSTAL = """
+global_
+
+data_mn
+_space_group_name_H-M_alt 'P n m a'
+_cell_length_a 5.5
+_cell_length_b 7.6
+_cell_length_c 5.4
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Mn Mn 0 0 0.5
+"""
+
+
+def test_methods_fitting_the_request_go_with_it():
+    """A model answered "cannot convert to superspace" without looking the
+    methods up: the methods of the file that fit the request are given
+    with it (CrysPy form_matching_methods_text)."""
+    pytest.importorskip("cryspy.procedure_assistant.methods").__dict__.get(
+        "form_matching_methods_text") or pytest.skip("CrysPy without form_matching_methods_text")
+    obj = cryspy.str_to_globaln(RCIF_CRYSTAL)
+    assistant = make_assistant([reply(("call_method", {"method": "convert_to_superspace"}),
+                                      answer="Converted."), "The crystal is converted."])
+    result = assistant.ask("Convert the structure to superspace", obj)
+    first = assistant.model.llm.l_messages[0][-1]["content"]
+    assert first.startswith("Convert the structure to superspace")
+    assert "convert_to_superspace" in first
+    assert obj.crystal_mn.is_attribute("space_group_symop_magn_ssg_operation")
+    assert result["flag_object_changed"]
+    # the history keeps the words of the user only
+    assert all("call_method {" not in message["content"]
+               for message in assistant.history if message["role"] == "user")
