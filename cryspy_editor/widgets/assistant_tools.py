@@ -53,6 +53,25 @@ def form_object_recipes_text(cryspy_object) -> str:
     return str(result["text"])
 
 
+def form_request_methods_text(cryspy_object, request: str) -> str:
+    """The methods of the object that fit the request (CrysPy
+    form_matching_methods_text, newer than 0.17); empty when none fits:
+    small models answer "cannot do" without looking the methods up."""
+    if cryspy_object is None or "call_method" not in D_TOOLS:
+        return ""
+    try:
+        from cryspy.procedure_assistant.methods import form_matching_methods_text
+    except ImportError:  # older CrysPy
+        return ""
+    return form_matching_methods_text(cryspy_object, request)
+
+
+def add_request_methods(question: str, cryspy_object) -> str:
+    """The request with the methods that fit it after it."""
+    text = form_request_methods_text(cryspy_object, question)
+    return f"{question}\n\n({text})" if text else question
+
+
 def is_request_tool(name: str) -> bool:
     """True if the action takes the request of the user (argument
     "request"), e.g. to find the values given in it."""

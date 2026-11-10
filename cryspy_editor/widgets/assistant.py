@@ -34,6 +34,7 @@ from cryspy_editor.widgets.assistant_commands import (
 from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
+    add_request_methods,
     form_object_recipes_text,
     form_recipes_text,
     form_tools_text,
@@ -236,8 +237,9 @@ opened file (parameters, cell, chi-square, structure) is answered by an
 action, never from the chat: the values in the chat may be old or wrong. In
 the answers name the menus and windows of CrysPy Editor, never the actions.
 Answer in the language of the user. Never invent results: use the actions.
-Nothing is changed without an action: when no action does what the user
-asks, give no action and say that you cannot do it (and where in CrysPy
+Nothing is changed without an action: when no action and no method of the
+file (call_method; those that fit the request are given after it) does what
+the user asks, give no action and say that you cannot do it (and where in CrysPy
 Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{s_recipe}
 
 Respond ONLY with a JSON object:
@@ -628,7 +630,7 @@ class Assistant:
             return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
         messages = [{"role": "system", "content": form_system_prompt(cryspy_object)}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
-        messages.append({"role": "user", "content": question})
+        messages.append({"role": "user", "content": add_request_methods(question, cryspy_object)})
         raw = self.model.chat(messages, flag_json=True)
         decision = take_decision(raw)
         if any(action in AGENT_ACTIONS for action, _ in decision["actions"]) and "get_recipe" in D_TOOLS:
@@ -792,7 +794,8 @@ class Assistant:
         elif l_first[0][0] == WRITE_RECIPE:  # writing a recipe changes nothing in the file
             l_action = [action for action in l_action if not D_TOOLS[action].flag_object_changed]
         agent = Agent(self.model, run_tool, l_action, take_json_object, max_steps=max_steps)
-        out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:], question,
+        out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:],
+                        add_request_methods(question, cryspy_object),
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
                         l_first=l_first, on_step=on_step, l_done=l_done)
         out["flag_object_changed"] = out["flag_object_changed"] or flag_changed
