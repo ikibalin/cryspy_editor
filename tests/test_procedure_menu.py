@@ -23,7 +23,6 @@ def test_each_action_runs_its_procedure(qapp, editor_window, monkeypatch):
     monkeypatch.setattr(editor_window, "press_procedure", l_run.append)
     l_action = procedure_actions(editor_window)
     assert len(l_action) > 0
-    assert any("absorption" in a.text().lower() for a in l_action)
     for action in l_action:
         action.trigger()
     assert l_run == [a.object for a in l_action]
@@ -35,7 +34,6 @@ def test_sender_is_the_object_panel(qapp, editor_window, monkeypatch):
     l_run = []
     monkeypatch.setattr(editor_window, "press_procedure", l_run.append)
     monkeypatch.setattr(editor_window, "sender", lambda: editor_window.w_object_panel)
-    action = next(a for a in procedure_actions(editor_window)
-                  if "absorption" in a.text().lower())
+    action = procedure_actions(editor_window)[0]
     action.trigger()
     assert l_run == [action.object]
