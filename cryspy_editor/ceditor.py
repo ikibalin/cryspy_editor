@@ -34,11 +34,12 @@ from cryspy import (
 from cryspy import L_DATA_CLASS, L_ITEM_CLASS, L_LOOP_CLASS
 
 
-from cryspy_editor.widgets.w_function import WFunction
 from cryspy_editor.widgets.w_constraint_dialog import ConstraintDialog
 from cryspy_editor.widgets.w_parameters_dialog import ParametersDialog
 from cryspy_editor.widgets.w_procedure_dialog import (
+    ArgumentsDialog,
     ProcedureDialog,
+    split_arguments,
     form_tooltip,
     is_autorun,
     take_description,
@@ -767,8 +768,8 @@ class CMainWindow(QMainWindow):
                     f_action.setToolTip(form_tooltip(d_procedure))
                     f_action.setStatusTip(d_procedure["summary"])
                     f_action.triggered.connect(
-                        lambda: self.object_to_procedure(self.press_procedure)
-                    )
+                        lambda checked=False, func=func:
+                        self.press_procedure(func))
                     menu_cryspy.addAction(f_action)
                     continue
                 if key.lower().startswith(func.__name__.split("_")[0].lower()):
@@ -790,14 +791,9 @@ class CMainWindow(QMainWindow):
                     f_action.setToolTip(func.__doc__)
                     f_action.setStatusTip(func.__doc__.strip().split("\n")[0])
                 f_action.triggered.connect(
-                    lambda: self.object_to_procedure(self.press_procedure)
-                )
+                    lambda checked=False, func=func:
+                    self.press_procedure(func))
                 menu_cryspy.addAction(f_action)
-
-    def object_to_procedure(self, procedure):
-        f_action = self.sender()
-        func_to_do = f_action.object
-        procedure(func_to_do)
 
     # procedures which is sended to  local classes to have connection with whole object
     def press_procedure(self, procedure):
@@ -811,9 +807,40 @@ class CMainWindow(QMainWindow):
             self.cthread.arguments = (self.rcif_object,)
             self.cthread.start()
         else:
-            self.w_function.set_function(
-                procedure, self.cthread, globaln=self.rcif_object
-            )
+            self.run_function_with_dialog(procedure)
+
+    def run_object_function(self, function):
+        """Run a method of an object (menu Methods of the object panel) in
+        a separate window, as the procedures of the menus."""
+        d_procedure = take_description(function)
+        if d_procedure is not None:
+            self.run_described_procedure(function, d_procedure)
+        else:
+            self.run_function_with_dialog(function)
+
+    def run_function_with_dialog(self, function):
+        """Run a function that CrysPy does not describe: its parameters are
+        asked in ArgumentsDialog, at once when it needs none."""
+        if self.cthread.isRunning():
+            return
+        self.apply_cif_edits()
+        dialog = ArgumentsDialog(function, self.rcif_object, self)
+        if len(dialog.d_widget) == 0:
+            d_argument = dialog.take_arguments()
+        else:
+            if dialog.exec_() != QtWidgets.QDialog.Accepted:
+                return
+            d_argument = dialog.arguments()
+        arguments, d_kwarg = split_arguments(function, d_argument)
+        if len(d_kwarg) != 0:
+            function_to_run = function
+
+            def function(*args):
+                return function_to_run(*args, **d_kwarg)
+            function.__name__ = getattr(function_to_run, "__name__", "function")
+        self.cthread.function = function
+        self.cthread.arguments = arguments
+        self.cthread.start()
 
     def run_described_procedure(self, procedure, d_procedure: dict):
         """Run a procedure described by CrysPy: at once when it needs only
@@ -821,8 +848,8 @@ class CMainWindow(QMainWindow):
         if self.cthread.isRunning():
             return
         self.apply_cif_edits()  # the items of the form are taken from the current object
-        if is_autorun(d_procedure):
-            arguments = (self.rcif_object,)
+        if is_autorun(d_procedure):  # the object only, or nothing (a method)
+            arguments = tuple(self.rcif_object for _ in d_procedure["parameters"])
         else:
             dialog = ProcedureDialog(procedure, d_procedure, self.rcif_object, self)
             if dialog.exec_() != QtWidgets.QDialog.Accepted:
@@ -1154,11 +1181,6 @@ class CMainWindow(QMainWindow):
         widget_main = QtWidgets.QWidget(self)
         layout_main = QtWidgets.QVBoxLayout()
 
-        # First
-        self.w_function = WFunction(widget_main)
-        layout_main.addWidget(self.w_function)
-
-        # Second
         w_splitter = QtWidgets.QSplitter(widget_main)
 
         # Panel from left site
@@ -1474,7 +1496,7 @@ class CMainWindow(QMainWindow):
                 item = take_item(self.rcif_object, way_item)
             if item is not None:
                 func = getattr(item, func_name)
-                self.w_function.set_function(func, self.cthread)
+                self.run_object_function(func)
         else:
             if name == "Delete":
                 way_item = sender.way_item
