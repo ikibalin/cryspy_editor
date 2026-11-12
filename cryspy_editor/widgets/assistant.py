@@ -288,8 +288,8 @@ def form_one_by_one_rule() -> str:
 When the user asks to refine parameters one by one (in turn) and keep each one
 only if chi_sq gets better (and/or no high correlation appears), otherwise fix
 it, give the single action "{ONE_BY_ONE}" with the pattern of the parameters
-(and rejected_value 0 when the values of the rejected ones should be zero, as
-for magnetic moments); it does the whole loop and reports every decision."""
+('*' for all parameters; rejected_value 0 only for magnetic moments, whose
+rejected values should be zero); it does the whole loop and reports every decision."""
 
 
 def form_write_recipe_rule() -> str:

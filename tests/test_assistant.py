@@ -442,6 +442,7 @@ def test_prompt_sends_one_by_one_requests_to_the_tool_of_cryspy():
     prompt = module.form_system_prompt(None)
     if module.ONE_BY_ONE in module.D_TOOLS:
         assert f'"action": "{module.ONE_BY_ONE}"' in prompt
+        assert "'*' for all parameters" in prompt
         from cryspy_editor.widgets.assistant_tools import is_answer_tool
         assert is_answer_tool(module.ONE_BY_ONE)
     else:
