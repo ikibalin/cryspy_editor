@@ -5,6 +5,7 @@ Editor keeps no tools of its own. This module is the counterpart of
 assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
 import inspect
+import re
 from typing import Dict
 
 import cryspy
@@ -19,9 +20,10 @@ D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOO
 FLAG_PROGRESS = "progress" in inspect.signature(call_assistant_tool).parameters
 
 # Actions that return information rather than change the object: the model
-# answers the request from their results. calculate and refine change the
-# object but their chi-square and refined values are what the user asks for.
-SET_ANSWER_ACTIONS = {"calculate", "refine"}
+# answers the request from their results. calculate and refine (also
+# refine_one_by_one) change the object but their chi-square and refined
+# values are what the user asks for.
+SET_ANSWER_ACTIONS = {"calculate", "refine", "refine_one_by_one"}
 
 
 def is_answer_tool(name: str) -> bool:
@@ -32,14 +34,51 @@ def is_answer_tool(name: str) -> bool:
     return (not tool.flag_object_changed) or name in SET_ANSWER_ACTIONS
 
 
+# the system prompt must fit the context of small models (4096 tokens) with the
+# history: an action is described by the first sentence of its description,
+# at most MAX_DESCRIPTION characters
+MAX_DESCRIPTION = 90
+RE_SENTENCE_END = re.compile(r"(?<!\be\.g)(?<!\bi\.e)\.\s|;\s")
+
+
+def shorten_description(text: str, max_length: int = MAX_DESCRIPTION) -> str:
+    """The first sentence (or the part before ';'), cut at a word."""
+    text = RE_SENTENCE_END.split(text.strip(), maxsplit=1)[0].rstrip(".")
+    if len(text) <= max_length:
+        return text
+    return text[:max_length].rsplit(" ", 1)[0].rstrip(",:(") + " ..."
+
+
+def form_tool_line(tool: AssistantTool) -> str:
+    """'- name(argument, optional?): description' for the system prompt."""
+    l_argument = [name if name in tool.required else f"{name}?" for name in tool.parameters]
+    return f"- {tool.name}({', '.join(l_argument)}): {shorten_description(tool.description)}"
+
+
 def form_tools_text() -> str:
-    """The actions with their arguments for the system prompt."""
-    return "\n".join(tool.to_short_text() for tool in L_ASSISTANT_TOOLS)
+    """The actions with their arguments for the system prompt (short: the
+    model gets the whole description of an action from its error text or
+    from list_methods/get_help when it needs more)."""
+    return "\n".join(form_tool_line(tool) for tool in L_ASSISTANT_TOOLS)
+
+
+# words of a recipe ('For:' of the recipe file) given in the system prompt
+MAX_RECIPE_WORDS = 3
 
 
 def form_recipes_text() -> str:
-    """The recipes of CrysPy (typical algorithms) for the system prompt."""
-    return recipes_as_text()
+    """The recipes of CrysPy (typical algorithms) for the system prompt: the
+    name, the title and the first requests they are for."""
+    try:
+        from cryspy.procedure_assistant.recipes import take_recipes
+    except ImportError:  # older CrysPy
+        return recipes_as_text()
+    ls_out = []
+    for recipe in take_recipes():
+        l_when = [when.strip() for when in str(recipe.when).split(",") if when.strip()]
+        s_when = f" (for: {', '.join(l_when[:MAX_RECIPE_WORDS])})" if l_when else ""
+        ls_out.append(f"- {recipe.name}: {recipe.title}{s_when}")
+    return "\n".join(ls_out)
 
 
 def form_object_recipes_text(cryspy_object) -> str:

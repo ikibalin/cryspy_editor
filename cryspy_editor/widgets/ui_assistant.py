@@ -424,6 +424,8 @@ PROGRESS_INTERVAL = 0.5
 def form_progress_text(info: dict) -> str:
     """Placeholder text of an iteration of a long action ('Stop' ends it)."""
     ls_out = [f"Iteration {info['iteration']}" if "iteration" in info else "Working"]
+    if info.get("n_step"):  # refine_one_by_one: the parameter being tried
+        ls_out.insert(0, f"Parameter {info.get('step', 0)}/{info['n_step']}")
     if info.get("chi_sq_per_n") is not None:
         ls_out.append(f"chi²/n = {float(info['chi_sq_per_n']):.4g}")
     return ", ".join(ls_out) + " ... (Stop ends it)"

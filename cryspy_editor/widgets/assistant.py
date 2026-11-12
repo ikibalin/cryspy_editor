@@ -74,6 +74,8 @@ ANSWER_KEYS = ("answer", "message", "reply", "text")  # the answer in the reply 
 # actions that start the agent loop (assistant_agent.py): a recipe of CrysPy,
 # or a task whose next steps depend on the results
 STEP_BY_STEP = "work_step_by_step"
+# CrysPy tool that refines parameters one by one and keeps those that improve the fit
+ONE_BY_ONE = "refine_one_by_one"
 WRITE_RECIPE = "get_recipe_guide"  # a recipe for the CookBook written from the words of the user
 AGENT_ACTIONS = ("get_recipe", "use_recipe", STEP_BY_STEP, WRITE_RECIPE, ASK_ACTION)
 NO_MODEL = ("No model is loaded (AI assistant -> Load model). Without it type @name to run a recipe "
@@ -202,9 +204,8 @@ def form_system_prompt(cryspy_object=None) -> str:
         s_recipe = f"""
 
 A task of several steps where the next step depends on the results (e.g. a
-step-by-step refinement) is done one action at a time. When the user describes
-the steps or the rule of decisions himself (e.g. "refine each parameter in turn
-and keep it if chi_sq gets better"), give the single action "{STEP_BY_STEP}" {{}}:
+step-by-step refinement) is done one action at a time.{form_one_by_one_rule()} When the user describes
+the steps or the rule of decisions himself, give the single action "{STEP_BY_STEP}" {{}}:
 the steps of the user are followed, never a recipe instead of them. When the
 user only names the task (e.g. "refine the structure step by step"), give the
 single action "get_recipe" with the name of the recipe that fits. Recipes:
@@ -243,7 +244,7 @@ the user asks, give no action and say that you cannot do it (and where in CrysPy
 Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{s_recipe}
 
 Respond ONLY with a JSON object:
-{{"actions": [{{"action": "<one of: {', '.join(take_action_names())}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
+{{"actions": [{{"action": "<{form_action_name_hint()}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
 
 Examples (request: actions):
 - how to describe thermal vibrations?:
@@ -278,6 +279,19 @@ that is not an action is looked up with "list_methods" {"pattern": "<a word of
 it>"} and done with "call_method" {"method": "<name>", <its arguments>}."""
 
 
+def form_one_by_one_rule() -> str:
+    """The rule for a selection of parameters one by one (CrysPy tool
+    refine_one_by_one, newer than 0.17): the tool runs the whole loop."""
+    if ONE_BY_ONE not in D_TOOLS:
+        return ""
+    return f"""
+When the user asks to refine parameters one by one (in turn) and keep each one
+only if chi_sq gets better (and/or no high correlation appears), otherwise fix
+it, give the single action "{ONE_BY_ONE}" with the pattern of the parameters
+(and rejected_value 0 when the values of the rejected ones should be zero, as
+for magnetic moments); it does the whole loop and reports every decision."""
+
+
 def form_write_recipe_rule() -> str:
     """The rule of the first reply for a request to write a recipe."""
     if WRITE_RECIPE not in D_TOOLS:
@@ -288,12 +302,28 @@ algorithm described in words, give the single action "{WRITE_RECIPE}" {{}}: the
 recipe is written step by step, with questions to the user when needed."""
 
 
+def form_action_name_hint() -> str:
+    """What the "action" of the answer is: the names are listed with the
+    actions above, repeating them costs the context of small models."""
+    l_extra = [name for name in take_action_names() if name not in D_TOOLS]
+    if l_extra:
+        return f"name of an action above, or {', '.join(l_extra)}"
+    return "name of an action above"
+
+
 def take_action_names() -> list:
     """Names of the actions of the first reply of the model."""
     l_name = list(D_TOOLS)
     if "get_recipe" in D_TOOLS:
         l_name.append(STEP_BY_STEP)
     return l_name
+
+
+def form_one_by_one_example() -> str:
+    if ONE_BY_ONE in D_TOOLS:
+        return (f'[{{"action": "{ONE_BY_ONE}", "arguments": '
+                '{"pattern": "atom_site_moment", "rejected_value": 0}}]')
+    return f'[{{"action": "{STEP_BY_STEP}", "arguments": {{}}}}]'
 
 
 def form_agent_examples() -> str:
@@ -303,7 +333,7 @@ def form_agent_examples() -> str:
 - refine the structure step by step:
   [{{"action": "get_recipe", "arguments": {{"name": "refine_structure"}}}}]
 - go through the parameters one by one, refine each and keep it only if chi_sq gets better:
-  [{{"action": "{STEP_BY_STEP}", "arguments": {{}}}}]"""
+  {form_one_by_one_example()}"""
     if "suggest_recipes" in D_TOOLS:
         s_out += """
 - analyse all the data of the file by the recipes:

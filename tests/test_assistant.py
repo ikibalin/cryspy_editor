@@ -435,6 +435,19 @@ def test_prompt_tells_how_to_call_methods_of_objects():
     assert '"list_methods" {"pattern"' in prompt and '"action": "call_method"' in prompt
 
 
+def test_prompt_sends_one_by_one_requests_to_the_tool_of_cryspy():
+    """'Refine X one by one, keep it if chi_sq is reduced' is one action of
+    CrysPy (refine_one_by_one) when CrysPy has it, else the agent loop."""
+    from cryspy_editor.widgets import assistant as module
+    prompt = module.form_system_prompt(None)
+    if module.ONE_BY_ONE in module.D_TOOLS:
+        assert f'"action": "{module.ONE_BY_ONE}"' in prompt
+        from cryspy_editor.widgets.assistant_tools import is_answer_tool
+        assert is_answer_tool(module.ONE_BY_ONE)
+    else:
+        assert module.form_one_by_one_rule() == ""
+
+
 def test_answer_announcing_the_next_step_goes_on_step_by_step():
     """'I will check the attributes and add...' after the first action is not
     the end: the agent loop goes on from its result."""
@@ -502,3 +515,20 @@ def test_methods_fitting_the_request_go_with_it():
     # the history keeps the words of the user only
     assert all("call_method {" not in message["content"]
                for message in assistant.history if message["role"] == "user")
+
+
+def test_system_prompt_leaves_room_for_the_history_in_4096_tokens():
+    """The default context of small models: the system prompt (actions and
+    recipes of CrysPy, rules, examples) with the answer (512 tokens) must
+    leave room for the request and the history, else fit_messages cuts it."""
+    from cryspy_editor.widgets.assistant import form_system_prompt
+    n_token = (len(form_system_prompt(cryspy.str_to_globaln(RCIF))) + 3) // 4
+    assert n_token < 4096 - 512 - 300, n_token
+
+
+def test_short_descriptions_of_actions():
+    from cryspy_editor.widgets.assistant_tools import shorten_description
+    assert shorten_description("Set a value, e.g. 'a' to 5. More words.") == "Set a value, e.g. 'a' to 5"
+    assert shorten_description("Refine; then more.") == "Refine"
+    text = shorten_description("word " * 50)
+    assert len(text) <= 115 and text.endswith(" ...")

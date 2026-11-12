@@ -40,6 +40,8 @@ def test_only_buttons_of_the_last_reply_work():
 def test_progress_text():
     assert form_progress_text({"iteration": 4, "chi_sq_per_n": 1.23456}) == \
         "Iteration 4, chi²/n = 1.235 ... (Stop ends it)"
+    assert form_progress_text({"iteration": 2, "chi_sq_per_n": 3., "step": 5, "n_step": 42}) == \
+        "Parameter 5/42, Iteration 2, chi²/n = 3 ... (Stop ends it)"
 
 
 def test_requests_without_suggestions_in_cryspy(monkeypatch):
