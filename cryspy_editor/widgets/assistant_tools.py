@@ -19,9 +19,10 @@ D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOO
 FLAG_PROGRESS = "progress" in inspect.signature(call_assistant_tool).parameters
 
 # Actions that return information rather than change the object: the model
-# answers the request from their results. calculate and refine change the
-# object but their chi-square and refined values are what the user asks for.
-SET_ANSWER_ACTIONS = {"calculate", "refine"}
+# answers the request from their results. calculate and refine (also
+# refine_one_by_one) change the object but their chi-square and refined
+# values are what the user asks for.
+SET_ANSWER_ACTIONS = {"calculate", "refine", "refine_one_by_one"}
 
 
 def is_answer_tool(name: str) -> bool:

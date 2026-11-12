@@ -435,6 +435,19 @@ def test_prompt_tells_how_to_call_methods_of_objects():
     assert '"list_methods" {"pattern"' in prompt and '"action": "call_method"' in prompt
 
 
+def test_prompt_sends_one_by_one_requests_to_the_tool_of_cryspy():
+    """'Refine X one by one, keep it if chi_sq is reduced' is one action of
+    CrysPy (refine_one_by_one) when CrysPy has it, else the agent loop."""
+    from cryspy_editor.widgets import assistant as module
+    prompt = module.form_system_prompt(None)
+    if module.ONE_BY_ONE in module.D_TOOLS:
+        assert f'"action": "{module.ONE_BY_ONE}"' in prompt
+        from cryspy_editor.widgets.assistant_tools import is_answer_tool
+        assert is_answer_tool(module.ONE_BY_ONE)
+    else:
+        assert module.form_one_by_one_rule() == ""
+
+
 def test_answer_announcing_the_next_step_goes_on_step_by_step():
     """'I will check the attributes and add...' after the first action is not
     the end: the agent loop goes on from its result."""
