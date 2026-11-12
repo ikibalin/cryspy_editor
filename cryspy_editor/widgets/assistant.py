@@ -244,7 +244,7 @@ the user asks, give no action and say that you cannot do it (and where in CrysPy
 Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{s_recipe}
 
 Respond ONLY with a JSON object:
-{{"actions": [{{"action": "<one of: {', '.join(take_action_names())}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
+{{"actions": [{{"action": "<{form_action_name_hint()}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
 
 Examples (request: actions):
 - how to describe thermal vibrations?:
@@ -300,6 +300,15 @@ def form_write_recipe_rule() -> str:
 When the user asks to write (compose, make) a recipe for the CookBook from an
 algorithm described in words, give the single action "{WRITE_RECIPE}" {{}}: the
 recipe is written step by step, with questions to the user when needed."""
+
+
+def form_action_name_hint() -> str:
+    """What the "action" of the answer is: the names are listed with the
+    actions above, repeating them costs the context of small models."""
+    l_extra = [name for name in take_action_names() if name not in D_TOOLS]
+    if l_extra:
+        return f"name of an action above, or {', '.join(l_extra)}"
+    return "name of an action above"
 
 
 def take_action_names() -> list:

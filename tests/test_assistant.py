@@ -515,3 +515,20 @@ def test_methods_fitting_the_request_go_with_it():
     # the history keeps the words of the user only
     assert all("call_method {" not in message["content"]
                for message in assistant.history if message["role"] == "user")
+
+
+def test_system_prompt_leaves_room_for_the_history_in_4096_tokens():
+    """The default context of small models: the system prompt (actions and
+    recipes of CrysPy, rules, examples) with the answer (512 tokens) must
+    leave room for the request and the history, else fit_messages cuts it."""
+    from cryspy_editor.widgets.assistant import form_system_prompt
+    n_token = (len(form_system_prompt(cryspy.str_to_globaln(RCIF))) + 3) // 4
+    assert n_token < 4096 - 512 - 300, n_token
+
+
+def test_short_descriptions_of_actions():
+    from cryspy_editor.widgets.assistant_tools import shorten_description
+    assert shorten_description("Set a value, e.g. 'a' to 5. More words.") == "Set a value, e.g. 'a' to 5"
+    assert shorten_description("Refine; then more.") == "Refine"
+    text = shorten_description("word " * 50)
+    assert len(text) <= 115 and text.endswith(" ...")
