@@ -23,6 +23,15 @@ for package in ("cryspy", "cryspy_editor", "pycifstar", "py3Dmol"):
     datas += d
     binaries += b
     hiddenimports += h
+# pypdf is imported lazily by cryspy (search in the PDF documents of the user)
+try:
+    import pypdf  # noqa: F401
+    d, b, h = collect_all("pypdf")
+    datas += d
+    binaries += b
+    hiddenimports += h
+except ImportError:
+    print("pypdf is not installed: build without the search in PDF documents")
 # __version__ is read by importlib.metadata
 datas += copy_metadata("cryspy") + copy_metadata("cryspy_editor")
 

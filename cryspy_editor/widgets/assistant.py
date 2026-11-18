@@ -241,7 +241,7 @@ Answer in the language of the user. Never invent results: use the actions.
 Nothing is changed without an action: when no action and no method of the
 file (call_method; those that fit the request are given after it) does what
 the user asks, give no action and say that you cannot do it (and where in CrysPy
-Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{s_recipe}
+Editor it is done); never write that something is done, applied or set.{form_methods_rule()}{form_documents_rule()}{s_recipe}
 
 Respond ONLY with a JSON object:
 {{"actions": [{{"action": "<{form_action_name_hint()}>", "arguments": {{...}}}}, ...], "answer": "<short text for the user>"}}
@@ -265,6 +265,12 @@ Examples (request: actions):
   [{{"action": "calculate_structure_factor", "arguments": {{"hkl": "5 0 3"}}}}]
 - download Al from COD and add it:
   [{{"action": "add_crystal_from_cod", "arguments": {{"formula": "Al"}}}}]{form_agent_examples()}"""
+
+
+def form_documents_rule() -> str:
+    """Rule of the search in the documents of the user (assistant_documents)."""
+    from cryspy_editor.widgets.assistant_documents import form_documents_rule as form_rule
+    return form_rule()
 
 
 def form_methods_rule() -> str:
