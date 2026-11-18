@@ -36,6 +36,13 @@ from cryspy_editor.widgets.assistant_models import (
     take_ollama_capabilities,
     take_ollama_context,
 )
+from cryspy_editor.widgets.assistant_documents import (
+    FLAG_DOCUMENTS,
+    KEY_FOLDER,
+    close_embedding,
+    init_documents,
+    take_document_folder,
+)
 from cryspy_editor.widgets.recipe_editor import init_user_recipe_folder
 
 WINDOW_TITLE = "AI Assistant / CrysPy Editor"
@@ -423,6 +430,9 @@ PROGRESS_INTERVAL = 0.5
 
 def form_progress_text(info: dict) -> str:
     """Placeholder text of an iteration of a long action ('Stop' ends it)."""
+    if info.get("label"):  # index_documents: "Reading documents 3/40"
+        s_step = f" {info.get('step', 0)}/{info['n_step']}" if info.get("n_step") else ""
+        return f"{info['label']}{s_step} ... (Stop ends it)"
     ls_out = [f"Iteration {info['iteration']}" if "iteration" in info else "Working"]
     if info.get("n_step"):  # refine_one_by_one: the parameter being tried
         ls_out.insert(0, f"Parameter {info.get('step', 0)}/{info['n_step']}")
@@ -966,7 +976,9 @@ class AssistantController(QObject):
         self.window.signal_object_changed.connect(on_object_changed)
         self.window.signal_model_loaded.connect(self.on_model_loaded)
         self.recipe_dialog = None
+        self.documents_dialog = None
         init_user_recipe_folder()
+        init_documents(d_setup)
         app = QtWidgets.QApplication.instance()
         if app is not None:
             # also when the program quits without closing the main window
@@ -988,7 +1000,29 @@ class AssistantController(QObject):
         recipes_action.setStatusTip(
             "Read, write and edit the recipes: the steps of typical analyses the assistant follows.")
         recipes_action.triggered.connect(self.show_recipes)
+        documents_action = menu_ai.addAction("Documents...")
+        documents_action.setStatusTip(
+            "The folder of your papers, books and reports the assistant searches and cites, "
+            "and the embedding model for the search by meaning.")
+        documents_action.triggered.connect(self.show_documents)
+        documents_action.setEnabled(FLAG_DOCUMENTS)
         return menu_ai
+
+    def show_documents(self):
+        from cryspy_editor.widgets.documents_dialog import DocumentsDialog
+        self.sync_document_folder()
+        if self.documents_dialog is None:
+            self.documents_dialog = DocumentsDialog(self.d_setup, self.save_settings, parent=self.main_window)
+        self.documents_dialog.show()
+        self.documents_dialog.raise_()
+
+    def sync_document_folder(self):
+        """Keep the folder of documents given in the chat (search_documents
+        asks it when none is set) for the next session."""
+        folder = take_document_folder()
+        if folder is not None and folder != self.d_setup.get(KEY_FOLDER, ""):
+            self.d_setup[KEY_FOLDER] = folder
+            self.save_settings()
 
     def show_recipes(self):
         from cryspy_editor.widgets.recipe_editor import RecipeEditorDialog
@@ -1066,8 +1100,13 @@ class AssistantController(QObject):
 
     def shutdown(self):
         """Free the model before the program exits."""
+        if self.documents_dialog is not None:
+            self.documents_dialog.wait()
         self.window.shutdown()
+        close_embedding()
 
     def save_window_state(self):
-        """Remember for the next session whether the window is open."""
+        """Remember for the next session whether the window is open (and
+        the folder of documents given in the chat)."""
+        self.sync_document_folder()
         self.d_setup["assistant_window_visible"] = self.window.isVisible()

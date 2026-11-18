@@ -177,6 +177,17 @@ assistant does the steps of the inner recipe and goes on with the next step
 (without a model `run_recipe` does the same). CrysPy rejects a recipe that
 uses an unknown recipe or recipes that use each other in a circle.
 
+**Your documents.** **AI assistant → Documents...** gives the folder of
+your papers, books and reports (PDF, txt, md; subfolders too). Ask e.g.
+"what do my papers say about the extinction in TbTe3?": the assistant
+searches them (`search_documents` of CrysPy), answers from the fragments
+found and cites them as [file, page]. The search by words (BM25) needs
+nothing; an embedding model (Ollama `bge-m3` for many languages or
+`nomic-embed-text`, an OpenAI-compatible server, or a GGUF embedding file)
+also finds fragments by meaning and in another language. **Save and update
+index** reads the files once; later only new and changed files are read.
+The index is kept in the `documents_index` folder next to the settings.
+
 **Commands.** Type `@` in the input line to see the names of the recipes and
 of the actions with a short description (Tab and Shift+Tab go through them,
 Enter takes one), and run one directly, without the

@@ -30,7 +30,7 @@ jobs:
         include:
           - os: windows-latest
             name: Windows-x64
-          - os: macos-14 # Apple Silicon, llama.cpp with Metal
+          - os: macos-latest # Apple Silicon, llama.cpp with Metal (macos-14 is no longer offered)
             name: macOS-arm64
           - os: ubuntu-22.04 # older glibc, runs on newer distributions too
             name: Linux-x64
