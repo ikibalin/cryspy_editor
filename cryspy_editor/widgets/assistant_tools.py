@@ -6,7 +6,7 @@ assistant_tools.py of PyColl5, where the actions work on the list of scans.
 """
 import inspect
 import re
-from typing import Dict
+from typing import Dict, Optional
 
 import cryspy
 from cryspy import call_assistant_tool
@@ -14,6 +14,7 @@ from cryspy.procedure_assistant.recipes import recipes_as_text
 from cryspy.procedure_assistant.tools import L_ASSISTANT_TOOLS, AssistantTool
 
 from cryspy_editor.widgets.assistant_dialog import Dialog, Question
+from cryspy_editor.widgets.assistant_language import add_english_request
 
 D_TOOLS: Dict[str, AssistantTool] = {tool.name: tool for tool in L_ASSISTANT_TOOLS}
 # CrysPy reports the progress of long actions (newer than 0.17)
@@ -105,9 +106,14 @@ def form_request_methods_text(cryspy_object, request: str) -> str:
     return form_matching_methods_text(cryspy_object, request)
 
 
-def add_request_methods(question: str, cryspy_object) -> str:
-    """The request with the methods that fit it after it."""
-    text = form_request_methods_text(cryspy_object, question)
+def add_request_methods(question: str, cryspy_object, request_en: Optional[str] = None) -> str:
+    """The request with the methods that fit it after it. request_en: the
+    request in English (assistant_language.translate_to_english), used to
+    find the methods and given after the words of the user when it differs."""
+    if request_en is None:
+        request_en = question
+    text = form_request_methods_text(cryspy_object, request_en)
+    question = add_english_request(question, request_en)
     return f"{question}\n\n({text})" if text else question
 
 

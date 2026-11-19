@@ -134,7 +134,9 @@ def test_error_stays_after_retries():
 
 
 def test_help_from_cryspy():
-    assistant = make_assistant([reply(("get_help", {"query": "multipoles"})),
+    # a request in another language is rewritten in English first (one call)
+    assistant = make_assistant(["How to describe multipoles?",
+                                reply(("get_help", {"query": "multipoles"})),
                                 reply(answer="Use atom_rho_multipole.")])
     l_called = []
     result = assistant.ask("как описать мультиполи?", None, on_action=l_called.append)

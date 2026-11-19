@@ -84,9 +84,14 @@ def test_question_about_the_assistant_sent_to_help():
     'get_help': the assistant describes itself; a question about CrysPy
     keeps the help and its answer."""
     l_help = ("get_help", {})
-    for question, text in [("And what else do you know?", form_capabilities_text()),
-                           ("Что ещё ты знаешь?", form_capabilities_text()), ("Good morning", GREETING_TEXT)]:
-        result = make_assistant([reply(l_help)]).ask(question, None)
+    # a request in another language is first rewritten in English by the model
+    for question, l_reply, text in [
+            ("And what else do you know?", [], form_capabilities_text()),
+            ("Что ещё ты знаешь?", ["What else do you know?"], form_capabilities_text()),
+            ("Qu'est-ce que tu sais faire d'autre ?", ["What else can you do?"], form_capabilities_text()),
+            ("Good morning", [], GREETING_TEXT),
+            ("Buenos días", ["Good morning"], GREETING_TEXT)]:
+        result = make_assistant(l_reply + [reply(l_help)]).ask(question, None)
         assert result["text"] == text and result["actions"] == [], question
     assistant = make_assistant([reply(l_help), reply(answer="Not in the help.")])
     result = assistant.ask("How to describe the multipoles?", None)
