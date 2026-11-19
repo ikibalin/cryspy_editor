@@ -71,6 +71,13 @@ vibrations?" are answered from the help pages of CrysPy, which are shown in
 the answer. The same help is in **Options → CrysPy help...** (F1) without a
 model.
 
+Requests may be written in any language. The help, the methods and the
+procedures of CrysPy are found by English words, so a request in another
+language is first rewritten in English by the loaded model (one short extra
+call); the English text is used for the search and given to the model with
+the request, and the chat keeps your own words. An English request needs no
+extra call.
+
 The assistant works in its own window, **AI Assistant / CrysPy Editor**,
 opened by **AI assistant → Show assistant**. One request may hold several
 actions (e.g. "fix everything, refine the cell and run the refinement"); a

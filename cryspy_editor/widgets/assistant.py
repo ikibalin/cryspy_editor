@@ -32,6 +32,7 @@ from cryspy_editor.widgets.assistant_commands import (
     take_recipe_names,
 )
 from cryspy_editor.widgets.assistant_dialog import ALL_INFORMATION, Dialog, is_cancel
+from cryspy_editor.widgets.assistant_language import translate_to_english
 from cryspy_editor.widgets.assistant_tools import (
     D_TOOLS,
     add_request_methods,
@@ -664,13 +665,17 @@ class Assistant:
         if self.model is None:
             text = f"{GREETING_TEXT}\n{NO_MODEL}" if is_greeting(question) else NO_MODEL
             return {"text": text, "actions": [], "flag_object_changed": False, "question": False}
+        # the methods, procedures and the help are found by English words: a request
+        # in another language is rewritten in English, the history keeps the user's words
+        request_en = translate_to_english(self.model, question)
         messages = [{"role": "system", "content": form_system_prompt(cryspy_object)}]
         messages.extend(self.history[-MAX_HISTORY_MESSAGES:])
-        messages.append({"role": "user", "content": add_request_methods(question, cryspy_object)})
+        messages.append({"role": "user", "content": add_request_methods(question, cryspy_object, request_en)})
         raw = self.model.chat(messages, flag_json=True)
         decision = take_decision(raw)
         if any(action in AGENT_ACTIONS for action, _ in decision["actions"]) and "get_recipe" in D_TOOLS:
-            return self.ask_step_by_step(question, cryspy_object, decision["actions"], on_action, on_step)
+            return self.ask_step_by_step(question, cryspy_object, decision["actions"], on_action, on_step,
+                                         request_en=request_en)
         answer = decision["answer"]
         l_action, l_done = [], []
         flag_object_changed = False
@@ -683,7 +688,7 @@ class Assistant:
                     continue
                 l_done.append(key)
                 if action == "get_help" and not arguments.get("query"):
-                    arguments = dict(arguments, query=question)
+                    arguments = dict(arguments, query=request_en)
                 if is_request_tool(action):
                     arguments = dict(arguments, request=question)
                 if on_action is not None:
@@ -716,9 +721,9 @@ class Assistant:
         # CrysPy, not about the assistant, which describes itself
         if self.dialog is None and l_action and all(action == "get_help" for action, _, _ in l_action):
             text = None
-            if is_greeting(question):
+            if is_greeting(question) or is_greeting(request_en):
                 text = GREETING_TEXT
-            elif RE_ABOUT_ASSISTANT.search(question) and all(
+            elif (RE_ABOUT_ASSISTANT.search(question) or RE_ABOUT_ASSISTANT.search(request_en)) and all(
                     result.startswith(NOTHING_IN_HELP) for _, _, result in l_action):
                 text = form_capabilities_text()
             if text is not None:
@@ -729,7 +734,8 @@ class Assistant:
         if self.dialog is None and not flag_failed and announces_more(answer) and "get_recipe" in D_TOOLS:
             # "I will check ... and add ...": the work goes on step by step from these results
             return self.ask_step_by_step(question, cryspy_object, [], on_action, on_step,
-                                         l_done=l_action, flag_changed=flag_object_changed)
+                                         l_done=l_action, flag_changed=flag_object_changed,
+                                         request_en=request_en)
         if flag_failed or self.dialog is not None:  # the questions are the answer
             answer = ""
         # a change is never reported without an action that made it
@@ -812,15 +818,18 @@ class Assistant:
     def ask_step_by_step(self, question: str, cryspy_object, l_first: list,
                          on_action: Optional[Callable] = None,
                          on_step: Optional[Callable] = None, l_done: Optional[list] = None,
-                         flag_changed: bool = False) -> dict:
+                         flag_changed: bool = False, request_en: Optional[str] = None) -> dict:
         """The request is done by the agent loop (assistant_agent.Agent):
         one action at a time, each chosen after the result of the previous
         one. l_first: the actions chosen already (get_recipe); l_done:
         [(name, arguments, result)] of the actions done already for this
         request (flag_changed: they changed the object). on_step(text):
         the steps are shown to the user as they go; the reply then has only
-        the end (its "text"), the history of the chat keeps all."""
+        the end (its "text"), the history of the chat keeps all. request_en:
+        the request in English when it was translated already."""
         self.flag_stop = False
+        if request_en is None:
+            request_en = translate_to_english(self.model, question)
         l_first = [(action, arguments) for action, arguments in l_first
                    if action in AGENT_ACTIONS and action != STEP_BY_STEP][:1]
         max_steps = getattr(self.model, "settings", {}).get("max_steps", MAX_AGENT_STEPS)
@@ -831,7 +840,7 @@ class Assistant:
             l_action = [action for action in l_action if not D_TOOLS[action].flag_object_changed]
         agent = Agent(self.model, run_tool, l_action, take_json_object, max_steps=max_steps)
         out = agent.run(form_system_prompt(cryspy_object), self.history[-MAX_HISTORY_MESSAGES:],
-                        add_request_methods(question, cryspy_object),
+                        add_request_methods(question, cryspy_object, request_en),
                         cryspy_object, on_action=on_action, should_stop=lambda: self.flag_stop,
                         l_first=l_first, on_step=on_step, l_done=l_done)
         out["flag_object_changed"] = out["flag_object_changed"] or flag_changed
