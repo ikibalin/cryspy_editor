@@ -59,8 +59,31 @@ def form_tool_line(tool: AssistantTool) -> str:
 def form_tools_text() -> str:
     """The actions with their arguments for the system prompt (short: the
     model gets the whole description of an action from its error text or
-    from list_methods/get_help when it needs more)."""
-    return "\n".join(form_tool_line(tool) for tool in L_ASSISTANT_TOOLS)
+    from list_methods/get_help when it needs more).
+
+    The general actions of CrysPy (tool.flag_core) are described, the
+    special ones (absorption, twins, geometry, documents, ...) are named in
+    one line: those that fit a request are described with it
+    (form_request_tools_text), so the prompt does not grow with every new
+    tool of CrysPy and fits the context of small models."""
+    l_core = [tool for tool in L_ASSISTANT_TOOLS if getattr(tool, "flag_core", True)]
+    l_special = [tool.name for tool in L_ASSISTANT_TOOLS if not getattr(tool, "flag_core", True)]
+    text = "\n".join(form_tool_line(tool) for tool in l_core)
+    if l_special:
+        text += ("\n- special actions (described with the request when they fit it): "
+                 + ", ".join(l_special))
+    return text
+
+
+def form_request_tools_text(request: str) -> str:
+    """The special actions that fit the request with their descriptions
+    (CrysPy form_matching_tools_text); empty when none fits or with an
+    older CrysPy (which describes all actions in the prompt)."""
+    try:
+        from cryspy.procedure_assistant.tools import form_matching_tools_text
+    except ImportError:  # older CrysPy
+        return ""
+    return form_matching_tools_text(request)
 
 
 # words of a recipe ('For:' of the recipe file) given in the system prompt
@@ -107,14 +130,16 @@ def form_request_methods_text(cryspy_object, request: str) -> str:
 
 
 def add_request_methods(question: str, cryspy_object, request_en: Optional[str] = None) -> str:
-    """The request with the methods that fit it after it. request_en: the
+    """The request with the special actions and the methods that fit it
+    after it. request_en: the
     request in English (assistant_language.translate_to_english), used to
     find the methods and given after the words of the user when it differs."""
     if request_en is None:
         request_en = question
-    text = form_request_methods_text(cryspy_object, request_en)
+    l_text = [text for text in (form_request_tools_text(request_en),
+                                form_request_methods_text(cryspy_object, request_en)) if text]
     question = add_english_request(question, request_en)
-    return f"{question}\n\n({text})" if text else question
+    return f"{question}\n\n({chr(10).join(l_text)})" if l_text else question
 
 
 def is_request_tool(name: str) -> bool:
