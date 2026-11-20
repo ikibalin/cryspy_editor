@@ -8,6 +8,7 @@ import time
 
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
+from cryspy_editor import error_guard
 
 from cryspy_editor.widgets.assistant_documents import (
     D_EMBEDDING_SOURCE_NAMES,
@@ -70,7 +71,7 @@ class IndexWorker(QObject):
     def run(self):
         try:
             text = update_index(progress=self.on_progress)
-        except Exception as error:
+        except BaseException as error:  # noqa: BLE001 - the thread must end with a signal
             text = f"Error: {type(error).__name__}: {error}"
         self.finished.emit(text)
 
@@ -243,6 +244,7 @@ class DocumentsDialog(QtWidgets.QDialog):
         self.button_stop.setEnabled(True)
         self.label_status.setText("Reading documents ...")
         self.thread = QThread(self)
+        error_guard.prepare_thread(self.thread)  # 512 KB on macOS by default
         self.worker = IndexWorker()
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)

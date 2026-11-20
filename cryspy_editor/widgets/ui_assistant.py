@@ -10,6 +10,7 @@ import traceback
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
+from cryspy_editor import error_guard
 
 from cryspy_editor.widgets.assistant import (
     DEFAULT_SETTINGS,
@@ -420,7 +421,8 @@ class LoadWorker(QObject):
             # kept here too: shutdown frees it if the window never gets it
             self.assistant = Assistant(create_model(self.d_model, self.settings))
             self.finished.emit(self.assistant)
-        except Exception as e:
+        except BaseException as e:  # noqa: BLE001 - the thread must end with a signal
+            traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
 
 
@@ -489,7 +491,7 @@ class AskWorker(QObject):
             self.finished.emit(self.assistant.ask(
                 self.question, self.cryspy_object, on_action=self.action_started.emit,
                 on_step=self.step_text.emit))
-        except Exception as e:
+        except BaseException as e:  # noqa: BLE001 - the thread must end with a signal
             traceback.print_exc()
             self.error.emit(f"{type(e).__name__}: {e}")
         finally:
@@ -732,6 +734,7 @@ class AssistantWindow(QtWidgets.QWidget):
 
     def _start_thread(self, worker, on_finished, on_error):
         self.thread = QThread()
+        error_guard.prepare_thread(self.thread)  # 512 KB on macOS by default
         self.worker = worker
         worker.moveToThread(self.thread)
         self.thread.started.connect(worker.run)
