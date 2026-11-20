@@ -50,6 +50,7 @@ from cryspy_editor.widgets.w_editcif import (
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy.procedure_assistant.parameters import take_parameter_records, is_number
+from cryspy.procedure_assistant.procedures import parse_docstring
 from cryspy_editor.widgets.w_structure_view import (
     WStructureView, has_structure_view)
 from cryspy_editor.widgets.cryspy_objects import (
@@ -63,7 +64,7 @@ from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
 from cryspy_editor.history import RcifHistory
-from cryspy_editor.method_groups import group_method_names
+from cryspy_editor.method_groups import group_methods
 
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
@@ -1424,15 +1425,16 @@ class CMainWindow(QMainWindow):
             act_paste_from_clipboard.triggered.connect(self.do_function)
             menu.addAction(act_paste_from_clipboard)
 
-        method_names = [
-            _1
+        d_method = {
+            _1: _2
             for _1, _2 in type(item).__dict__.items()
             if ((type(_2) == FunctionType) & (not (_1.startswith("_"))))
-        ]
+        }
+        l_group = group_methods(d_method)
 
-        if len(method_names) != 0:
+        if len(l_group) != 0:
             menu_methods = menu.addMenu("Methods")
-            for title, names in group_method_names(method_names):
+            for title, names in l_group:
                 if title is None:
                     menu_group = menu_methods
                 else:
@@ -1630,8 +1632,10 @@ class CMainWindow(QMainWindow):
             action_method.setToolTip(form_tooltip(d_procedure))
             action_method.setStatusTip(d_procedure["summary"])
         elif func.__doc__ is not None and func.__doc__.strip() != "":
-            action_method.setToolTip(func.__doc__.strip())
-            action_method.setStatusTip(func.__doc__.strip().split("\n")[0])
+            d_doc = parse_docstring(func.__doc__)  # without the "Menu:" line
+            action_method.setToolTip(
+                (d_doc["summary"] + "\n\n" + d_doc["description"]).strip())
+            action_method.setStatusTip(d_doc["summary"])
         # the slot takes the method from its arguments, not from self.sender()
         action_method.triggered.connect(
             lambda checked=False, way_item=way_item, name=name:
