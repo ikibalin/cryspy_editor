@@ -11,6 +11,8 @@ from PyQt5 import QtCore
 
 import cryspy
 
+from cryspy_editor import error_guard
+
 
 class CalculationStopped(Exception):
     """Raised in the calculation thread when the user presses Stop."""
@@ -163,6 +165,8 @@ class CThread(QtCore.QThread):
 
     def __init__(self, parent=None):
         QtCore.QThread.__init__(self, parent)
+        # the default stack of a QThread on macOS (512 KB) is too small
+        error_guard.prepare_thread(self)
         self.message = None
         self.function = None
         self.arguments = None
@@ -210,16 +214,28 @@ class CThread(QtCore.QThread):
         super().start(*args, **kwargs)
 
     def run(self):
-        """Run."""
-        func = self.function
-        arg = self.arguments
-        n_row_need = func.__code__.co_argcount
-        l_var_name = func.__code__.co_varnames[:n_row_need]
-        
+        """Run the function; whatever it raises (an exception, sys.exit,
+        an error in str() of its result) ends as text in the output window,
+        and signal_end is always emitted, so that the editor neither closes
+        nor stays in the state "Calculations are running"."""
         self.out_terminal = COutputLogget()
         self.flag_stopped = False
-        self.flag_use_callback = accepts_callback(func)
         self.flag_stop_by_callback = False
+        try:
+            self.run_function()
+        except BaseException:  # noqa: BLE001 - nothing may leave the thread
+            try:
+                self.out_terminal.write(
+                    "ERROR DURING PROGRAM EXECUTION\n\n" + traceback.format_exc())
+            except BaseException:  # noqa: BLE001 - a closed output, Stop pressed
+                pass
+        finally:
+            self.signal_end.emit()
+
+    def run_function(self):
+        func = self.function
+        arg = self.arguments
+        self.flag_use_callback = accepts_callback(func)
         kwargs = {}
         if self.flag_use_callback:
             kwargs["callback"] = self.refinement_callback
@@ -230,13 +246,9 @@ class CThread(QtCore.QThread):
         if logger_cryspy.getEffectiveLevel() > logging.INFO:
             logger_cryspy.setLevel(logging.INFO)
         self.signal_start.emit()
-        flag_out = False
-        if len(arg) >= 1:
-            if not(isinstance(arg[0], cryspy.GlobalN)):
-                flag_out = True
+        out = None
         cwd = os.getcwd()
         try:
-            flag_out = True
             if self.work_dir is not None and os.path.isdir(self.work_dir):
                 os.chdir(self.work_dir)
             with redirect_stdout(self.out_terminal):
@@ -250,20 +262,22 @@ class CThread(QtCore.QThread):
         except CalculationStopped as e:
             self.flag_stopped = True
             out = str(e)
-        except Exception:
-            flag_out = True
+        except BaseException:  # noqa: BLE001 - also sys.exit() of a library
             out = "ERROR DURING PROGRAM EXECUTION\n\n" + \
                 str(traceback.format_exc())
         finally:
             os.chdir(cwd)
             logger_cryspy.removeHandler(handler)
             logger_cryspy.setLevel(level_old)
+        self.out_terminal.flag_stop = False  # Stop pressed after the end
         self.out_terminal.write(45*"*"+"\n")
         self.out_terminal.write("Calculations are completed.\n")
         self.out_terminal.write(45*"*"+"\n")
-        if ((out is not None) and flag_out):
+        if out is not None:
+            try:
+                s_out = str(out)
+            except Exception:  # noqa: BLE001 - e.g. nan in a loop of the result
+                s_out = ("The result cannot be shown as text:\n"
+                         + traceback.format_exc())
             self.out_terminal.write("Result of function is \n")
-            self.out_terminal.write(str(out))
-        self.signal_end.emit()
-        
-        
+            self.out_terminal.write(s_out)

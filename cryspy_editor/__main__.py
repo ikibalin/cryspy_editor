@@ -87,6 +87,13 @@ def main(l_argument=None):
             print(f"File '{file_name}' is not found.", file=sys.stderr)
             sys.exit(2)
 
+    # a crash below Python (segfault, abort) leaves the stack in crash.log;
+    # the crash of the previous session is shown after the start
+    from cryspy_editor import error_guard
+    from cryspy_editor.settings import take_config_dir
+    dir_log = take_config_dir()
+    text_crash = error_guard.enable_crash_log(dir_log)
+
     preload_msvc_runtime()
     from PyQt5 import QtGui, QtWidgets
     from cryspy_editor.ceditor import CMainWindow
@@ -105,6 +112,7 @@ def main(l_argument=None):
     app.setWindowIcon(QtGui.QIcon(f_icon))
 
     main_window = CMainWindow(file_name)
+    box_crash = error_guard.show_previous_crash(text_crash, dir_log, main_window)  # noqa: F841
     sys.exit(app.exec_())
 
 
