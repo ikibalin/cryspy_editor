@@ -171,11 +171,21 @@ def test_progress_text_of_documents():
     assert form_progress_text({"iteration": 2}).startswith("Iteration 2")
 
 
-def test_documents_dialog_saves_and_indexes(qapp, qtbot, folder):
+def wait_until(qapp, condition, timeout: float = 10.):
+    """Process the events of Qt until condition() (no pytest-qt in the
+    dependencies)."""
+    import time
+    time_end = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < time_end, "timeout"
+        qapp.processEvents()
+        time.sleep(0.01)
+
+
+def test_documents_dialog_saves_and_indexes(qapp, folder):
     from cryspy_editor.widgets.documents_dialog import DocumentsDialog
     d_setup, l_saved = {}, []
     dialog = DocumentsDialog(d_setup, lambda: l_saved.append(True))
-    qtbot.addWidget(dialog)
     # only the fields of the chosen source are shown
     dialog.show()
     assert not dialog.line_url.isVisible() and not dialog.line_path.isVisible()
@@ -186,10 +196,11 @@ def test_documents_dialog_saves_and_indexes(qapp, qtbot, folder):
     assert not dialog.apply() and "not found" in dialog.label_status.text()
     dialog.line_folder.setText(str(folder))
     dialog.update_index()
-    qtbot.waitUntil(lambda: not dialog.is_busy(), timeout=10000)
+    wait_until(qapp, lambda: not dialog.is_busy())
     assert "2 files" in dialog.label_status.text()
     assert d_setup[KEY_FOLDER] == str(folder) and d_setup[KEY_SOURCE] == SOURCE_NONE and l_saved
     assert assistant_documents.take_document_folder() == str(folder)
+    dialog.close()
 
 
 def test_folder_given_in_the_chat_is_kept(qapp, folder):

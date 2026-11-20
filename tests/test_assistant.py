@@ -535,3 +535,20 @@ def test_short_descriptions_of_actions():
     assert shorten_description("Refine; then more.") == "Refine"
     text = shorten_description("word " * 50)
     assert len(text) <= 115 and text.endswith(" ...")
+
+
+def test_special_actions_are_described_with_the_request():
+    """The prompt describes the general actions; the special ones (e.g.
+    estimate_absorption) are named, and described with a request they fit,
+    so the prompt does not grow with every new tool of CrysPy."""
+    tools = pytest.importorskip("cryspy.procedure_assistant.tools")
+    if not hasattr(tools, "form_matching_tools_text"):
+        pytest.skip("CrysPy without form_matching_tools_text")
+    from cryspy_editor.widgets.assistant_tools import add_request_methods, form_tools_text
+    text = form_tools_text()
+    assert "- refine(" in text and "special actions" in text
+    assert "estimate_absorption" in text and "- estimate_absorption(" not in text
+    question = add_request_methods("Is an absorption correction needed?", None)
+    assert question.startswith("Is an absorption correction needed?")
+    assert "- estimate_absorption(" in question
+    assert add_request_methods("refine the cell", None) == "refine the cell"
