@@ -50,6 +50,7 @@ from cryspy_editor.widgets.w_editcif import (
 from cryspy_editor.widgets.w_textedit import WTextEdit
 from cryspy_editor.widgets.matplotlib_g import Graph
 from cryspy.procedure_assistant.parameters import take_parameter_records, is_number
+from cryspy.procedure_assistant.procedures import parse_docstring
 from cryspy_editor.widgets.w_structure_view import (
     WStructureView, has_structure_view)
 from cryspy_editor.widgets.cryspy_objects import (
@@ -63,6 +64,7 @@ from cryspy_editor.widgets.ui_assistant import AssistantController
 
 from cryspy_editor.cl_thread import CThread
 from cryspy_editor.history import RcifHistory
+from cryspy_editor.method_groups import group_methods
 
 from cryspy_editor.settings import (
     take_settings, save_settings, add_recent_file)
@@ -1423,31 +1425,22 @@ class CMainWindow(QMainWindow):
             act_paste_from_clipboard.triggered.connect(self.do_function)
             menu.addAction(act_paste_from_clipboard)
 
-        method_names = [
-            _1
+        d_method = {
+            _1: _2
             for _1, _2 in type(item).__dict__.items()
             if ((type(_2) == FunctionType) & (not (_1.startswith("_"))))
-        ]
+        }
+        l_group = group_methods(d_method)
 
-        if len(method_names) != 0:
+        if len(l_group) != 0:
             menu_methods = menu.addMenu("Methods")
-            for name in method_names:
-                func = getattr(item, name)
-                l_param = [
-                    _
-                    for _ in func.__code__.co_varnames[
-                        : func.__code__.co_argcount
-                    ]
-                    if _ != "self"
-                ]
-                s_par = ""
-                if len(l_param) > 0:
-                    s_par = ", ".join(l_param)
-                s_val = f"{name:}({s_par:})"
-                action_method = QtWidgets.QAction(s_val, menu_methods)
-                action_method.way_item = way_item
-                action_method.triggered.connect(self.do_function)
-                menu_methods.addAction(action_method)
+            for title, names in l_group:
+                if title is None:
+                    menu_group = menu_methods
+                else:
+                    menu_group = menu_methods.addMenu(title)
+                for name in names:
+                    self.add_action_method(menu_group, item, name, way_item)
 
         if isinstance(item, (LoopN, ItemN)):
             qaction = QtWidgets.QAction("Refine all variables", menu)
@@ -1620,6 +1613,44 @@ class CMainWindow(QMainWindow):
         if text_before is not None:
             self.history.push(label, text_before)
         self.renew_w_object_panel()
+
+    def add_action_method(self, menu: QtWidgets.QMenu, item, name: str,
+                          way_item: tuple):
+        """Action "name(arguments)" of a method of the item in the menu."""
+        func = getattr(item, name)
+        l_param = [
+            _
+            for _ in func.__code__.co_varnames[: func.__code__.co_argcount]
+            if _ != "self"
+        ]
+        s_val = f"{name:}({', '.join(l_param):})"
+        action_method = QtWidgets.QAction(s_val, menu)
+        action_method.way_item = way_item
+        # tooltip as in the menus of CrysPy procedures: from the docstring
+        d_procedure = take_description(func)
+        if d_procedure is not None:
+            action_method.setToolTip(form_tooltip(d_procedure))
+            action_method.setStatusTip(d_procedure["summary"])
+        elif func.__doc__ is not None and func.__doc__.strip() != "":
+            d_doc = parse_docstring(func.__doc__)  # without the "Menu:" line
+            action_method.setToolTip(
+                (d_doc["summary"] + "\n\n" + d_doc["description"]).strip())
+            action_method.setStatusTip(d_doc["summary"])
+        # the slot takes the method from its arguments, not from self.sender()
+        action_method.triggered.connect(
+            lambda checked=False, way_item=way_item, name=name:
+            self.run_method_of_item(way_item, name))
+        menu.setToolTipsVisible(True)
+        menu.addAction(action_method)
+
+    def run_method_of_item(self, way_item: tuple, name: str):
+        """Run the method "name" of the item at way_item (menu Methods)."""
+        if way_item == ():
+            item = self.rcif_object
+        else:
+            item = take_item(self.rcif_object, way_item)
+        if item is not None:
+            self.run_object_function(getattr(item, name))
 
     def add_action_new_item(self, menu: QtWidgets.QMenu, prefix: str,
                             cls_item, way_item: tuple):

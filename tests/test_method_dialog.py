@@ -109,6 +109,8 @@ def test_method_from_context_menu(qapp, editor_window, monkeypatch):
     tree_item = editor_window.w_object_panel.topLevelItem(0)
     editor_window.item_clicked_on_w_object_panel(tree_item)
     crystal = editor_window.rcif_object.items[0]
-    click_in_context_menu(qapp, editor_window, tree_item, ["Methods", "report()"])
+    from test_method_groups import methods_menu_path
+    path = methods_menu_path(crystal, "report")
+    click_in_context_menu(qapp, editor_window, tree_item, path + ["report()"])
     assert len(l_run) == 1
     assert l_run[0][0]() == crystal.report()

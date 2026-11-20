@@ -14,6 +14,12 @@ def cryspy_procedures_to_dictionary(l_func_external: list):
     d_procedures = {}
     l_func = [func for func in L_FUNCTION+L_FUNCTION_ADD if check_function_for_procedure(func)]
     l_func.extend(l_func_external)
+    try:  # menus by names and "Menu:" lines of the docstrings (CrysPy)
+        from cryspy import group_procedures_for_menu
+    except ImportError:  # CrysPy before menus.py; remove after its release
+        group_procedures_for_menu = None
+    if group_procedures_for_menu is not None:
+        return group_procedures_for_menu(l_func)
 
     l_func_name = [
         func.__name__.replace("_", " ").title().replace("Mempy", "MEMPy")\
