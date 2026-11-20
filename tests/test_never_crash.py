@@ -82,6 +82,8 @@ def test_deep_recursion_in_a_method():
 def test_report_magnetic_models_from_the_menu(qapp, editor_window, monkeypatch):
     """The method of the crystal reported by the user: menu Methods →
     window of its parameters → thread → the table in the output."""
+    if not hasattr(cryspy.Crystal, "report_magnetic_models"):  # PyPI cryspy <= 0.20.0
+        pytest.skip("the installed cryspy has no Crystal.report_magnetic_models yet")
     from cryspy_editor import ceditor
 
     def exec_(dialog):
